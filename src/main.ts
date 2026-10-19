@@ -170,7 +170,11 @@ async function boot() {
   input.onFirstGesture = () => {
     if (state !== 'title') return;
     state = 'intro';
-    audio.start().catch((e) => console.warn('audio failed', e));
+    // The lullaby plays under the bedtime story and stays with you as you wake.
+    audio
+      .start()
+      .catch((e) => console.warn('audio failed', e));
+    audio.playTrack('lullaby.mp3', 4).catch((e) => console.warn('lullaby failed', e));
     $('hint').style.opacity = '0';
     $('title').style.opacity = '0';
     fade.style.transitionDuration = '0.8s';
@@ -339,6 +343,8 @@ async function boot() {
           state = 'play';
           $('title').style.opacity = '0';
           story.beginPlay();
+          // Let the song carry the first steps, then hand over to the island's own sound.
+          setTimeout(() => audio.stopTrack(12), 35000);
           story.narrative.say('WASD walk  ·  mouse look  ·  shift run  ·  space jump  ·  E use', 'hint', 7);
           story.narrative.say('Esc  ·  menu and settings', 'hint', 4);
           story.narrative.say(LINES.stakes);

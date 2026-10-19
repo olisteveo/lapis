@@ -22,6 +22,7 @@ export class Audio {
   private sfxBus!: GainNode;
   private volumes = { master: 0.9, music: 0.8, sfx: 0.9 };
   private pausedDuck = 1;
+  private track: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   private buffers = new Map<string, AudioBuffer>();
   private loops = new Map<LoopName, GainNode>();
   private musicDuck = 1;
@@ -117,6 +118,39 @@ export class Audio {
     this.duck(10);
   }
 
+  /**
+   * A composed music track (from public/audio/music) played over the ambience. While one
+   * plays, the generated pad loop steps aside.
+   */
+  async playTrack(file: string, fadeIn = 3, volume = 0.9) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.stopTrack(1);
+    const res = await fetch(`/audio/music/${file}`);
+    const buf = await ctx.decodeAudioData(await res.arrayBuffer());
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.gain.setTargetAtTime(volume, ctx.currentTime, fadeIn / 3);
+    src.connect(gain).connect(this.musicBus);
+    src.start();
+    const t = { src, gain };
+    this.track = t;
+    src.onended = () => {
+      if (this.track === t) this.track = null;
+    };
+  }
+
+  stopTrack(fadeOut = 6) {
+    const ctx = this.ctx;
+    const t = this.track;
+    if (!ctx || !t) return;
+    t.gain.gain.setTargetAtTime(0, ctx.currentTime, fadeOut / 3);
+    t.src.stop(ctx.currentTime + fadeOut * 1.5);
+    this.track = null;
+  }
+
   setVolumes(v: { master: number; music: number; sfx: number }) {
     this.volumes = { ...v };
     const ctx = this.ctx;
@@ -165,6 +199,6 @@ export class Audio {
     set('lapping', mix.inBoat ? 0.55 : mix.sea * 0.25);
     set('wind', 0.12 + Math.min(0.6, mix.altitude / 400) + (mix.inBoat ? 0.15 : 0));
     set('jungle', mix.jungle * 0.6 * (1 - mix.sea * 0.4));
-    set('music', 0.32 * this.musicDuck);
+    set('music', this.track ? 0 : 0.32 * this.musicDuck);
   }
 }

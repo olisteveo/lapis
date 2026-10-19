@@ -231,6 +231,7 @@ Planned mix (Claude can implement once files exist):
 
 | Area / moment | Track | Behaviour |
 |---|---|---|
+| Storybook, wake, first steps | Find the Bright One (`lullaby.mp3`, in the game) | One-shot from the first click, fades ~35s into play |
 | Title screen | Beyond the Sea | Loop |
 | Storybook | Storybook opening | One-shot, then silence for the wake |
 | Coral Shore, beaches | Coral Shore | Loop, crossfade by area |
