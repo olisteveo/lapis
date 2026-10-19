@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
-import { color, float, hash, length, mix, positionLocal, positionWorld, sin, smoothstep, time, uniform, uv, vertexColor, normalWorld, saturate, dot, vec3 } from 'three/tsl';
+import { color, float, hash, length, mix, positionLocal, positionWorld, sin, smoothstep, time, uniform, uv, vertexColor, normalWorld, saturate, vec3 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { PALETTE, SKY } from '../config';
+import { PALETTE } from '../config';
+import { drawnSurface } from '../render/drawn';
 import { BIOMES, LIGHTHOUSE, WORLD_HALF, type Heightfield } from './heightfield';
 import type { Colliders } from '../game/player';
 
@@ -202,8 +203,6 @@ export class Landmarks implements Colliders {
 
   private material(name: string, lamp?: { value: number }, lighthouse = false) {
     const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-    const key = vec3(SKY.keyLight.x, SKY.keyLight.y, SKY.keyLight.z);
-    const lambert = saturate(dot(normalWorld, key).mul(0.6).add(0.4));
     const variety = hash(positionWorld.x.mul(0.31).add(positionWorld.z.mul(0.17)).floor());
     const vc = vertexColor();
     const L: any = lamp ?? this.lamp;
@@ -240,7 +239,9 @@ export class Landmarks implements Colliders {
     const tint = color(base[name] ?? 0x34405e);
     // A cool moonlit lift on top faces so built things read against the dark jungle.
     const moonlit = saturate(normalWorld.y).mul(0.12);
-    let col: any = tint.mul(lambert).mul(variety.mul(0.2).add(0.85)).mul(vc.r.mul(0.25).add(0.8)).add(vec3(0.08, 0.1, 0.22).mul(moonlit));
+    // Painted colour first, then inked like the rest of the world: flat tones and pen hatching.
+    const painted = tint.mul(variety.mul(0.2).add(0.85)).mul(vc.r.mul(0.25).add(0.8)).mul(0.85);
+    let col: any = drawnSurface(painted, normalWorld, positionWorld).add(vec3(0.08, 0.1, 0.22).mul(moonlit));
     if (lighthouse) {
       // Inside the hollow tower no moonlight reaches; the lanterns and windows warm it instead.
       const lp = positionLocal as any;

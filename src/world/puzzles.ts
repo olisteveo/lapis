@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { color, dot, mix, normalWorld, saturate, vec3 } from 'three/tsl';
+import { color, normalWorld, positionWorld, vec3 } from 'three/tsl';
+import { drawnSurface } from '../render/drawn';
 import { SKY } from '../config';
 import { BIOMES, mulberry32, type Heightfield } from './heightfield';
 import type { Wonder } from './wonders';
@@ -307,8 +308,7 @@ export const KEY = vec3(SKY.keyLight.x, SKY.keyLight.y, SKY.keyLight.z);
 
 export function stoneMaterial() {
   const m = new THREE.MeshBasicNodeMaterial();
-  const lambert = saturate(dot(normalWorld, KEY).mul(0.55).add(0.45));
-  m.colorNode = mix(color(0x2c3557), color(0x7a84b4), lambert);
+  m.colorNode = drawnSurface(color(0x6a74a8), normalWorld, positionWorld);
   return m;
 }
 

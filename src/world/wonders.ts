@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
-import { color, dot, float, normalWorld, saturate, sin, time, uniform, vec3, positionLocal } from 'three/tsl';
+import { atan, color, float, length, mix, normalWorld, positionWorld, smoothstep, saturate, sin, time, uniform, vec3, positionLocal } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { PALETTE, SKY } from '../config';
+import { PALETTE } from '../config';
+import { drawnSurface, penLines } from '../render/drawn';
 import { BIOMES, WORLD_HALF, type Heightfield } from './heightfield';
 import type { Colliders } from '../game/player';
 
@@ -64,7 +65,6 @@ export function layoutWonders(hf: Heightfield): Wonder[] {
   return out;
 }
 
-const key = vec3(SKY.keyLight.x, SKY.keyLight.y, SKY.keyLight.z);
 
 const BASE: Record<string, number> = {
   bone: 0xd8d2e6, stone: 0x6a74a8, rock: 0x4a5488, bark: 0x5a4a78, wood: 0x6b5450, bronze: 0x6a8a8a,
@@ -84,16 +84,22 @@ export class Wonders implements Colliders {
 
   private material(name: string, wonder: string) {
     const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-    const lambert = saturate(dot(normalWorld, key).mul(0.55).add(0.45));
     if (name.includes('glow') || name.includes('light')) {
       const tint = wonder === 'moontree' ? 0xbfe4ff : wonder === 'ring' ? 0xc6a0ff : wonder === 'bell' ? 0x8ff0e6 : PALETTE.starGold;
       // Glows breathe, and brighten as you come close.
       const breathe = sin(time.mul(1.3).add(positionLocal.y.mul(0.6) as N)).mul(0.2).add(0.9);
-      mat.colorNode = color(tint).mul(float(wonder === 'ring' ? 0.7 : 1.1).add(this.near1.mul(0.5))).mul(breathe);
+      let glowCol: N = color(tint).mul(float(wonder === 'ring' ? 0.7 : 1.1).add(this.near1.mul(0.5))).mul(breathe);
+      if (name.includes('mushroom_glow')) {
+        // The ring's giant gills: radial ink lines, light gathered at the rim.
+        const lp = positionLocal as N;
+        const gills = penLines(atan(lp.z, lp.x).div(Math.PI * 2).mul(72), 1.2);
+        glowCol = mix(glowCol.mul(smoothstep(1, 7, length(lp.xz)).mul(0.8).add(0.3)), color(0x0b1030), gills.mul(0.5));
+      }
+      mat.colorNode = glowCol;
       return mat;
     }
     const tint = color(BASE[Object.keys(BASE).find((k) => name.includes(k)) ?? ''] ?? 0x5b6890);
-    mat.colorNode = tint.mul(lambert).add(vec3(0.07, 0.09, 0.2).mul(saturate(normalWorld.y).mul(0.6)));
+    mat.colorNode = drawnSurface(tint.mul(0.9), normalWorld, positionWorld).add(vec3(0.07, 0.09, 0.2).mul(saturate(normalWorld.y).mul(0.6)));
     return mat;
   }
 

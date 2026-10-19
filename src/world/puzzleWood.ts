@@ -151,7 +151,7 @@ export class MirrorCaps implements PuzzleImpl {
     orb.position.set(n[0].x, n[0].y + 1.6, n[0].z);
     this.group.add(src, orb);
     for (let i = 1; i < last; i++) {
-      const m = mushroom(n[i], { value: 0.35 }, 0xb8c8ff, 1.1);
+      const m = mushroom(n[i], uniform(0.35), 0xb8c8ff, 1.1);
       // The cap is a tilted mirror; it turns to face where it sends the light.
       m.cap.scale.set(1, 0.35, 1);
       m.cap.rotation.x = 0.5;

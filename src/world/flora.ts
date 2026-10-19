@@ -1,11 +1,11 @@
 import * as THREE from 'three/webgpu';
 import {
   abs, attribute, cameraPosition, color, cos, dot, float, hash, mix, normalGeometry, positionLocal, saturate, sin, smoothstep,
-  step, time, uniform, vec2, vec3, vertexColor, length, varying, normalize,
+  step, time, uniform, vec2, vec3, vertexColor, length, varying, atan, floor,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FLORA, PALETTE, QUALITY, SKY, onQualityChange } from '../config';
-import { hatchAt, strokes, tones } from '../render/drawn';
+import { drawnSurface, penLines } from '../render/drawn';
 import { WORLD_HALF } from './heightfield';
 import type { WorkerPool } from './terrain';
 import type { FloraResult } from './terrainWorker';
@@ -72,7 +72,8 @@ applyRadii();
 const GLOW_PARTS = new Set(['trunk', 'frond', 'fruit', 'flower']);
 // Each region glows in its own colour: teal spores, gold lanterns, pale petals, icy crystal.
 const REGION_GLOW: Record<string, [number, number]> = {
-  mushroom_glow: [0x5fe8d8, 0.8],
+  // Shared by hundreds of small caps: kept modest, or their bloom floods the whole frame.
+  mushroom_glow: [0x5fe8d8, 0.45],
   lantern_glow: [0xffc070, 1.8],
   moonflower_glow: [0xece0ff, 1.25],
   crystal: [0xc6b6ff, 0.75],
@@ -252,6 +253,18 @@ export class Flora implements Colliders {
       const [hex, k] = REGION_GLOW[partName];
       const breathe = sin(time.mul(0.7).add(variety.mul(20))).mul(0.15).add(0.9);
       col = color(hex).mul(k).mul(vc.r.mul(0.4).add(0.7)).mul(breathe);
+      if (partName === 'mushroom_glow') {
+        // Gills drawn as fine radial ink lines; the light gathers at the rim and dies toward the stem.
+        const rel = wp.xz.sub(inst.xz);
+        const r = length(rel);
+        const ang = atan(rel.y, rel.x);
+        const gills = penLines(ang.div(Math.PI * 2).mul(44), 2.4).mul(smoothstep(0.4, 1.2, r));
+        const rim = smoothstep(0.6, 4.5, r);
+        const mottle = hash(floor(ang.mul(9)).add(variety.mul(13))).mul(0.3).add(0.75);
+        // Keep the inner gills below the bloom threshold (a big evenly bright surface blooms over
+        // its own lines); only the rim burns bright.
+        col = mix(col.mul(rim.mul(rim).mul(1.1).add(0.12)).mul(mottle), color(0x0b1030), gills.mul(0.85));
+      }
     } else if (REGION_BASE[partName] !== undefined) {
       col = color(REGION_BASE[partName]).mul(lambert.mul(0.6).add(0.3)).mul(variety.mul(0.25).add(0.85));
     } else if (GLOW_PARTS.has(partName)) {
@@ -282,16 +295,7 @@ export class Flora implements Colliders {
     // Trunks, bark and mushroom flesh are drawn: flat tones and vertical pen strokes on the
     // shadow side, anchored in the world so they don't swim. Leaves stay painted.
     const drawn = partName === 'trunk' || partName.includes('bark') || partName.includes('core') || partName.startsWith('mushroom_') && !partName.includes('glow');
-    if (drawn) {
-      const nl = dot(n, key);
-      const edge = sin(wp.y.mul(0.9).add(variety.mul(9))).mul(0.06);
-      const t = tones(nl, edge, 0.6);
-      const view = normalize(wp.xz.sub(cameraPosition.xz));
-      const u = dot(wp.xz, vec2(view.y.negate(), view.x)).add(sin(wp.y.mul(0.7)).mul(0.04));
-      const dc = length(wp.sub(cameraPosition));
-      const hatch = hatchAt(u, dc, 0.8, 1.0, 0.3).mul(float(1).sub(t.lit1)).mul(strokes(wp, wp.y.mul(2), u.mul(3), false)).mul(smoothstep(140, 50, dc));
-      col = mix(col.mul(t.tone.mul(0.7).add(0.45)), color(0x0b1030), hatch.mul(0.72));
-    }
+    if (drawn) col = drawnSurface(col, n, wp);
     mat.colorNode = col.mul(fade.mul(0.3).add(0.7));
     return mat;
   }
