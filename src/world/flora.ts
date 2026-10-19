@@ -4,7 +4,7 @@ import {
   step, time, uniform, vec2, vec3, vertexColor, length,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { FLORA, PALETTE, SKY } from '../config';
+import { FLORA, PALETTE, QUALITY, SKY } from '../config';
 import { WORLD_HALF } from './heightfield';
 import type { WorkerPool } from './terrain';
 import type { FloraResult } from './terrainWorker';
@@ -41,6 +41,12 @@ const TRUNKS: Record<string, number> = {
   PalmTall: 0.3, PalmMid: 0.3, PalmLean: 0.28, PalmYoung: 0.25,
   CanopyA: 1.3, CanopyB: 1.0, Understory: 0.3, TreeFern: 0.35, Banana: 0.45,
 };
+
+// Lower quality presets pull every draw radius in proportionally.
+for (const cfg of Object.values(TYPES)) {
+  cfg.hi *= QUALITY.flora;
+  cfg.far *= QUALITY.flora;
+}
 
 const GLOW_PARTS = new Set(['trunk', 'frond', 'fruit', 'flower']);
 

@@ -3,11 +3,11 @@ import {
   cameraFar, cameraNear, cameraPosition, color, dot, float, max, mix, mx_noise_float, normalize, perspectiveDepthToViewZ,
   positionView, positionWorld, pow, reflect, reflector, saturate, sin, smoothstep, time, vec2, vec3, viewportDepthTexture,
 } from 'three/tsl';
-import { PALETTE, SKY } from '../config';
+import { PALETTE, QUALITY, SKY } from '../config';
 import { LAGOONS } from './heightfield';
 
 export function createWater() {
-  const reflection = reflector({ resolutionScale: 0.5 });
+  const reflection = reflector({ resolutionScale: QUALITY.reflection });
   reflection.target.rotateX(-Math.PI / 2);
 
   const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: true });

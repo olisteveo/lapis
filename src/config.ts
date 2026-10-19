@@ -39,8 +39,59 @@ export const SKY = {
   keyLight: dir(20, 38),
 };
 
+export type QualityName = 'low' | 'medium' | 'high';
+
+interface Quality {
+  /** Cap on device pixel ratio; the paint filter hides low resolution well. */
+  pixelRatio: number;
+  fps: number;
+  reflection: number;
+  strokeSteps: number;
+  sparkles: number;
+  motes: number;
+  /** Multiplier on flora draw radii. */
+  flora: number;
+  /** Multiplier on terrain LOD distances. */
+  terrain: number;
+}
+
+const QUALITIES: Record<QualityName, Quality> = {
+  low: { pixelRatio: 0.75, fps: 30, reflection: 0.25, strokeSteps: 5, sparkles: 0.4, motes: 0.5, flora: 0.6, terrain: 0.6 },
+  medium: { pixelRatio: 1, fps: 60, reflection: 0.35, strokeSteps: 7, sparkles: 0.7, motes: 0.8, flora: 0.85, terrain: 0.85 },
+  high: { pixelRatio: 1.5, fps: 60, reflection: 0.5, strokeSteps: 9, sparkles: 1, motes: 1, flora: 1, terrain: 1 },
+};
+
+function pickQuality(): QualityName {
+  const q = new URLSearchParams(location.search).get('quality');
+  if (q === 'low' || q === 'medium' || q === 'high') return q;
+  try {
+    const saved = localStorage.getItem('lapis.quality');
+    if (saved === 'low' || saved === 'medium' || saved === 'high') return saved;
+  } catch {
+    // Storage blocked: fall through to the default.
+  }
+  return 'medium';
+}
+
+export const QUALITY_NAME = pickQuality();
+export const QUALITY = QUALITIES[QUALITY_NAME];
+
+/** Cycle presets; most of them size GPU resources at startup, so the page reloads. */
+export function cycleQuality() {
+  const order: QualityName[] = ['low', 'medium', 'high'];
+  const next = order[(order.indexOf(QUALITY_NAME) + 1) % order.length];
+  try {
+    localStorage.setItem('lapis.quality', next);
+  } catch {
+    // Ignore; the reload will fall back to the default.
+  }
+  const url = new URL(location.href);
+  url.searchParams.delete('quality');
+  location.href = url.toString();
+}
+
 export const RENDER = {
-  maxPixelRatio: 1.5,
+  maxPixelRatio: QUALITY.pixelRatio,
   fov: 48,
   near: 0.25,
   far: 24000,
@@ -51,10 +102,10 @@ export const TERRAIN = {
   chunkSize: 512,
   /** [max distance, segments per chunk side] from fine to coarse. */
   lods: [
-    [520, 256],
-    [1150, 128],
-    [2300, 64],
-    [4200, 32],
+    [520 * QUALITY.terrain, 256],
+    [1150 * QUALITY.terrain, 128],
+    [2300 * QUALITY.terrain, 64],
+    [4200 * QUALITY.terrain, 32],
     [Infinity, 16],
   ] as [number, number][],
 };

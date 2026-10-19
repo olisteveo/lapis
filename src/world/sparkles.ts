@@ -3,7 +3,7 @@ import {
   cameraPosition, color, dot, float, fract, floor, hash, instancedBufferAttribute, length, mix, mod, normalize, pow, reflect,
   saturate, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4, mx_noise_float,
 } from 'three/tsl';
-import { PALETTE, SKY } from '../config';
+import { PALETTE, QUALITY, SKY } from '../config';
 import { mulberry32 } from './heightfield';
 import { starShape } from '../render/starShape';
 
@@ -69,9 +69,10 @@ function layer(count: number, span: number, seed: number, sizeScale: number, nea
 
 export function createSparkles() {
   // Each layer keeps its glints far enough out that none can swell across the view.
-  const near = layer(22000, 240, 7, 1.1, 5);
-  const mid = layer(22000, 900, 9, 1.4, 40);
-  const far = layer(18000, 2600, 8, 2.0, 160);
+  const q = QUALITY.sparkles;
+  const near = layer(Math.round(22000 * q), 240, 7, 1.1, 5);
+  const mid = layer(Math.round(22000 * q), 900, 9, 1.4, 40);
+  const far = layer(Math.round(18000 * q), 2600, 8, 2.0, 160);
   const group = new THREE.Group();
   group.name = 'sparkles';
   group.add(near.sprite, mid.sprite, far.sprite);

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { PALETTE, RENDER, SKY } from './config';
+import { PALETTE, QUALITY, QUALITY_NAME, RENDER, SKY, cycleQuality } from './config';
 import { createHeightfield, findSpawn } from './world/heightfield';
 import { Terrain, WorkerPool } from './world/terrain';
 import { createReflectionProxy, createTerrainMaterial } from './world/terrainMaterial';
@@ -240,6 +240,11 @@ async function boot() {
   const focus = new THREE.Vector3();
 
   let lastFrame = 0;
+  let lastRender = 0;
+  addEventListener('keydown', (e) => {
+    if (e.code === 'KeyP') cycleQuality();
+  });
+  if (debug) console.log('quality', QUALITY_NAME, QUALITY);
   let forcedDt = 0;
   let paused = false;
   const frame = () => {
@@ -280,7 +285,8 @@ async function boot() {
           state = 'play';
           $('title').style.opacity = '0';
           story.beginPlay();
-          story.narrative.say('WASD walk  ·  mouse look  ·  shift run  ·  E use', 'hint', 7);
+          story.narrative.say('WASD walk  ·  mouse look  ·  shift run  ·  space jump  ·  E use', 'hint', 7);
+          story.narrative.say(`graphics: ${QUALITY_NAME}  ·  P to change`, 'hint', 4);
           story.narrative.say(LINES.stakes);
         }
       }
@@ -347,7 +353,14 @@ async function boot() {
       fpsT = 0;
     }
   };
-  renderer.setAnimationLoop(frame);
+  // Capped: a 120Hz display would otherwise render twice as many frames for no visible gain.
+  // Unfocused windows drop to a trickle so the game doesn't heat the machine in the background.
+  renderer.setAnimationLoop((t: number) => {
+    const cap = document.hasFocus() ? QUALITY.fps : 8;
+    if (t - lastRender < 1000 / cap - 2) return;
+    lastRender = t;
+    frame();
+  });
   if (debug) {
     // Deterministic stepping for tests: advance game time regardless of display throttling.
     (window as unknown as { lapis: Record<string, unknown> }).lapis.advance = (seconds: number, step = 1 / 60) => {

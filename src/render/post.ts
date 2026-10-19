@@ -6,7 +6,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
-import { PALETTE } from '../config';
+import { PALETTE, QUALITY } from '../config';
 
 // TSL's generics can't follow values through these unrolled loops; nodes are typed loosely.
 type N = any;
@@ -115,8 +115,9 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
 
   // ---- 3. Line integral along the flow: smears colour into strokes and carries a bristle
   // noise with it, so each stroke has streaks. Bristles re-lay at the boil rate.
-  const STEPS = 9;
-  const stepPx = 1.6;
+  // Fewer, longer steps on lower presets keep stroke length while cutting texture reads.
+  const STEPS = QUALITY.strokeSteps;
+  const stepPx = (1.6 * 9) / STEPS;
   // The land and sea re-draw at the boil rate; the sky holds still so the stars don't crawl.
   const strokeBoil = select(isSky, float(0), boil) as N;
   const bristle = (p: N) => hash(floor(p.x.mul(0.55)).add(floor(p.y.mul(0.55)).mul(1931)).add(strokeBoil.mul(17.31)));
