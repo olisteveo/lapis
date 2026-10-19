@@ -170,11 +170,12 @@ async function boot() {
   input.onFirstGesture = () => {
     if (state !== 'title') return;
     state = 'intro';
-    // The lullaby plays under the bedtime story and stays with you as you wake.
+    // The storybook theme plays under the bedtime story and stays with you as you wake.
     audio
       .start()
       .catch((e) => console.warn('audio failed', e));
-    audio.playTrack('lullaby.mp3', 4).catch((e) => console.warn('lullaby failed', e));
+    audio.music.beginOpening();
+    audio.music.preload();
     $('hint').style.opacity = '0';
     $('title').style.opacity = '0';
     fade.style.transitionDuration = '0.8s';
@@ -206,6 +207,7 @@ async function boot() {
     audio.step(surface, speed);
   };
   let lastStroke = 0;
+  let playStarted = 0;
   player.onEvent = (e) => {
     if (e === 'jump') audio.jump();
     else if (e === 'land') audio.land(hf.height(player.x, player.z) < 0);
@@ -343,8 +345,7 @@ async function boot() {
           state = 'play';
           $('title').style.opacity = '0';
           story.beginPlay();
-          // Let the song carry the first steps, then hand over to the island's own sound.
-          setTimeout(() => audio.stopTrack(12), 35000);
+          playStarted = performance.now();
           story.narrative.say('WASD walk  ·  mouse look  ·  shift run  ·  space jump  ·  E use', 'hint', 7);
           story.narrative.say('Esc  ·  menu and settings', 'hint', 4);
           story.narrative.say(LINES.stakes);
@@ -384,7 +385,20 @@ async function boot() {
     story.update(dt, player, camera, state === 'play');
     const memTarget = performance.now() / 1000 < memoryUntil ? 1 : 0;
     post.memoryMix.value += (memTarget - post.memoryMix.value) * Math.min(1, dt * (memTarget ? 1.2 : 0.7));
-    audio.update(story.audioMix(player));
+    const mix = story.audioMix(player);
+    audio.update(mix);
+    // Score follows where you are; the opening theme carries the first half-minute of play.
+    const area =
+      state !== 'play' || performance.now() - playStarted < 35000
+        ? 'opening'
+        : player.mode === 'boat'
+          ? mix.sea > 0.95 && hf.height(player.x, player.z) < -15
+            ? 'deep'
+            : 'sea'
+          : mix.jungle > 0.45
+            ? 'jungle'
+            : 'shore';
+    audio.music.update(dt, area);
     const promptEl = $('prompt');
     const prompt = story.currentPrompt || player.prompt;
     promptEl.textContent = prompt;

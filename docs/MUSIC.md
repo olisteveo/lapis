@@ -229,15 +229,14 @@ I'll find my way home
 
 Planned mix (Claude can implement once files exist):
 
-| Area / moment | Track | Behaviour |
+| Area / moment | File | Behaviour |
 |---|---|---|
-| Storybook, wake, first steps | Find the Bright One (`lullaby.mp3`, in the game) | One-shot from the first click, fades ~35s into play |
-| Title screen | Beyond the Sea | Loop |
-| Storybook | Storybook opening | One-shot, then silence for the wake |
-| Coral Shore, beaches | Coral Shore | Loop, crossfade by area |
-| Jungle (grove density) | Night jungle | Loop, crossfade by area |
-| In the boat | Rowing | Loop, crossfade when boarding |
-| Gathering a star | Memory stinger | One-shot, ducks the loop |
-| The Boat complete | Constellation complete | One-shot |
-| Acts 3 and 4 | Dark Water | Loop, mixed by the Dark Water intensity |
-| Ending | Let Go | One-shot |
+| Storybook, wake, first ~35s of play | `storybook.mp3` (The Storybook) | Starts on the first click |
+| Beaches, open ground | `coral_shore.mp3` (Coral Shore) | Area track |
+| Jungle (grove density > 0.45) | `jungle.mp3` (Jungle Night) | Area track |
+| In the boat | `beyond_the_sea.mp3` (Beyond the Sea) | Area track |
+| Boat, far out over deep water | `dark_water.mp3` (Dark Waters) | Area track |
+| Gathering a star, meeting an echo | `memory.mp3` (Glass Memory) | First ~14s as a sting; score ducks |
+| Ending | `let_go.mp3` (Let Go) | Reserved for the ending |
+
+Area tracks crossfade over ~5s once the player has stayed in a new area for 5s (8s for deep water). When a track ends, 30-70s of ambience-only silence passes before it plays again. No vocals anywhere in the game.
