@@ -4,7 +4,7 @@ import { MusicDirector } from './music';
 
 type Surface = 'sand' | 'wet' | 'water' | 'jungle';
 
-const LOOPS = ['surf', 'lapping', 'wind', 'jungle', 'music', 'dread'] as const;
+const LOOPS = ['surf', 'lapping', 'wind', 'jungle', 'music', 'dread', 'falls'] as const;
 type LoopName = (typeof LOOPS)[number];
 
 export interface AudioMix {
@@ -17,6 +17,8 @@ export interface AudioMix {
   inBoat: boolean;
   /** 0..1 how close the nearest nightmare is. */
   dread?: number;
+  /** 0..1 how close the nearest waterfall is. */
+  falls?: number;
 }
 
 export class Audio {
@@ -289,5 +291,6 @@ export class Audio {
     // Nightmares near: the dread rises and the score sinks under it.
     this.loops.get('dread')!.gain.setTargetAtTime(Math.pow(dread, 0.7) * 0.95, now, dread > 0.05 ? 0.8 : 2.5);
     this.music.setDread(dread);
+    set('falls', (mix.falls ?? 0) * 0.9);
   }
 }

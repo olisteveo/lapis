@@ -18,6 +18,7 @@ import { Wildlife } from './world/wildlife';
 import { Fauna } from './world/fauna';
 import { Wonders, layoutWonders } from './world/wonders';
 import { Puzzles, layoutPuzzles, skyFeatures } from './world/puzzles';
+import { Waterfalls, layoutFalls } from './world/waterfalls';
 import { LighthouseClimb } from './world/lighthouseClimb';
 import { Nightmares, type LightSource } from './world/nightmares';
 import { layoutRegionStars } from './story/placement';
@@ -114,6 +115,7 @@ async function boot() {
   }, skyFeatures(boatAz));
   player.colliders = new CompositeColliders([flora, landmarks, fauna, wonders, puzzles]);
   const nightmares = new Nightmares(hf);
+  const waterfalls = new Waterfalls(layoutFalls(hf));
   const CLEAR: Record<string, number> = { RuinArch: 4, RuinWall: 4, RuinSteps: 3, Beacon: 14, Lighthouse: 14, Hut: 6, Wreck: 7, Jetty: 4, Swing: 2.5, Cairn: 2, StoneLantern: 1.5 };
   flora.setClearings([
     ...landmarks.placed.map((p) => ({ x: p.x, z: p.z, r: (CLEAR[p.type] ?? 2) * p.scale })),
@@ -121,7 +123,7 @@ async function boot() {
     ...puzzleSites.map((p) => ({ x: p.x, z: p.z, r: { stones: 22, glowcaps: 18, mirrors: 26, fireflies: 34, footprints: 6, bells: 11 }[p.kind] })),
     ...wonders.list.filter((w) => w.id !== 'rocks').map((w) => ({ x: w.x, z: w.z, r: { whale: 26, ring: 30, moontree: 24, bell: 12 }[w.id] ?? 16 })),
   ]);
-  scene.add(landmarks.group, wildlife.group, fauna.group, wonders.group, puzzles.group, nightmares.group, stones.mesh, currents.group);
+  scene.add(landmarks.group, wildlife.group, fauna.group, wonders.group, puzzles.group, nightmares.group, waterfalls.group, stones.mesh, currents.group);
   player.place(spawn.x, spawn.z, Math.PI);
   player.placeBoat(layout.boat.x, layout.boat.z, layout.boat.heading);
 
@@ -346,7 +348,7 @@ async function boot() {
     // Console handle for art direction: lapis.view(x, z, yaw, pitch), lapis.player, etc.
     Object.assign(window, {
       lapis: {
-        player, input, camera, hf, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones, fauna, wonders, nightmares, puzzles, climb, renderer,
+        player, input, camera, hf, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones, fauna, wonders, nightmares, puzzles, climb, renderer, waterfalls,
         get post() {
           return post;
         },
@@ -540,7 +542,7 @@ async function boot() {
     post.frost.value += (Math.max(0, (frostTarget - 0.55) / 0.45) - post.frost.value) * Math.min(1, dt * 0.8);
     const memTarget = performance.now() / 1000 < memoryUntil ? 1 : 0;
     post.memoryMix.value += (memTarget - post.memoryMix.value) * Math.min(1, dt * (memTarget ? 1.2 : 0.7));
-    const mix = { ...story.audioMix(player), dread: nightmares.dread };
+    const mix = { ...story.audioMix(player), dread: nightmares.dread, falls: waterfalls.loudness(camera.position) };
     audio.update(mix);
     // Score follows where you are; the opening theme carries the first half-minute of play.
     const area =
@@ -569,6 +571,7 @@ async function boot() {
     wildlife.update(dt, focus, camera, player.mode === 'boat' || story.audioMix(player).sea > 0.55);
     fauna.update(dt, focus, player.mode === 'walk' ? player.speed : 0);
     wonders.update(dt, focus);
+    waterfalls.update(dt, focus);
     if (state === 'play') {
       const lights: LightSource[] = [];
       landmarks.beacons.forEach((b, i) => landmarks.isLit(i) && lights.push({ x: b.placed.x, z: b.placed.z, r: 55 }));

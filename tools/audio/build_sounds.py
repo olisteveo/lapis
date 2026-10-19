@@ -504,6 +504,21 @@ def loop_dread(seconds=32.0):
     return reverb(out, 0.4, 3.4, circular=True, damp=2.4)
 
 
+def loop_falls(seconds=20.0):
+    """A lagoon waterfall: a deep pouring roar, a hissing curtain, and the splash and churn below."""
+    n = int(seconds * SR)
+    t = np.arange(n) / SR
+    roar = shaped_noise(n, mul_shape(tilt(1.0), band(40, 900))) * 0.8
+    curtain = shaped_noise(n, mul_shape(tilt(0.35), band(600, 7000))) * 0.35
+    churn = shaped_noise(n, band(150, 1600)) * (0.6 + 0.4 * np.sin(2 * np.pi * 9 * t / seconds) * np.sin(2 * np.pi * 4 * t / seconds + 1))
+    splashes = np.zeros(n)
+    for _ in range(int(seconds * 6)):
+        m = int(rng.uniform(0.05, 0.2) * SR)
+        place(splashes, shaped_noise(m, band(800, 5000)) * env_ad(m, 0.005, 0.12, 5) * rng.uniform(0.1, 0.3), int(rng.uniform(0, seconds) * SR), wrap=True)
+    swell = 0.85 + 0.15 * np.sin(2 * np.pi * 3 * t / seconds)
+    return reverb((roar + curtain + churn * 0.4 + splashes) * swell, 0.3, 2.2, circular=True)
+
+
 def loop_music(seconds=48.0):
     """Slow dream pad: D lydian colours, each chord breathing into the next."""
     n = int(seconds * SR)
@@ -562,6 +577,7 @@ def main():
     write("loop_jungle", loop_jungle(), -3)
     write("loop_music", loop_music(), -3)
     write("loop_dread", loop_dread(), -3)
+    write("loop_falls", loop_falls(), -3)
 
 
 if __name__ == "__main__":

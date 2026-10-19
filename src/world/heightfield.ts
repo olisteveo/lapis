@@ -267,10 +267,20 @@ export function createHeightfield(seed = 1337): Heightfield {
       const wallH = 24 + n * 10 + fbm(nKarst, x / 50, z / 50, 2) * 8;
       const wall = smoothstep(L.r + 34, L.r + 12, d) * smoothstep(L.r - 6, L.r + 6, d);
       let out = h;
+      // The waterfall pours over the wall opposite the cleft.
+      let df = Math.abs(ang - (lagoonGaps[i] + Math.PI));
+      df = Math.min(df % (Math.PI * 2), Math.PI * 2 - (df % (Math.PI * 2)));
+      const atFalls = smoothstep(0.26, 0.16, df);
       // Interior: a still pool with a sandy inner beach.
       if (d < L.r + 2) out = lerp(-2.6, 0.55 + n * 0.15, smoothstep(L.r - 22, L.r - 8, d));
-      // The ring of rock, broken by the flooded cleft.
-      out = lerp(out, Math.max(out, wallH), wall * (1 - inGap));
+      // Below the falls: deep water right up to a narrow ledge tucked behind the curtain.
+      if (d < L.r + 2) {
+        const ledge = smoothstep(L.r - 11, L.r - 9.5, d);
+        out = lerp(out, lerp(-2.6, 0.7, ledge), atFalls);
+      }
+      // The ring of rock, broken by the flooded cleft, with a notch where the water comes over.
+      const notch = smoothstep(0.14, 0.05, df) * 7;
+      out = lerp(out, Math.max(out, wallH - notch), wall * (1 - inGap));
       out = lerp(out, -2.4 + n * 0.3, wall * inGap);
       // A short flooded run beyond the cleft, so the stones start from the outside beach.
       const outside = smoothstep(L.r + 40, L.r + 22, d) * smoothstep(L.r + 8, L.r + 20, d) * inGap;
