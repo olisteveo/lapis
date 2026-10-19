@@ -34,7 +34,9 @@ export class PauseMenu {
     this.root.addEventListener('input', (e) => {
       const t = e.target as HTMLInputElement;
       if (t.dataset.setting === 'invertY') updateSettings({ invertY: t.checked });
+      else if (t.dataset.setting === 'nights') updateSettings({ nights: t.checked });
       else if (t.dataset.setting) updateSettings({ [t.dataset.setting]: Number(t.value) } as never);
+      if (t.dataset.setting === 'nights') this.render();
     });
     this.render();
   }
@@ -88,6 +90,10 @@ export class PauseMenu {
         <div class="group"><div class="label">Graphics</div>
           <div class="segs">${seg('low', 'Low')}${seg('medium', 'Medium')}${seg('high', 'High')}</div>
           <div class="note">${q === 'low' ? 'Cooler and quieter: 30fps, lighter effects.' : q === 'high' ? 'Full detail. Runs hot on laptops.' : 'Balanced: 60fps.'}</div>
+        </div>
+        <div class="group"><div class="label">Play</div>
+          <label class="row"><span>Night cycle</span><input type="checkbox" data-setting="nights" ${settings.nights ? 'checked' : ''}></label>
+          <div class="note">${settings.nights ? 'Carry fallen stars to a lighthouse before she wakes.' : 'Free wandering: no nights, stars are kept as soon as you gather them.'}</div>
         </div>
         <div class="group"><div class="label">Sound</div>
           ${slider('master', 'Master', 0, 1, 0.01)}

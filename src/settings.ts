@@ -8,10 +8,12 @@ export interface Settings {
   sfx: number;
   sensitivity: number;
   invertY: boolean;
+  /** Night cycle on (stars must be carried to a lighthouse) or off (free wandering). */
+  nights: boolean;
 }
 
 const KEY = 'lapis.settings';
-const DEFAULTS: Omit<Settings, 'quality'> = { master: 0.9, music: 0.8, sfx: 0.9, sensitivity: 1, invertY: false };
+const DEFAULTS: Omit<Settings, 'quality'> = { master: 0.9, music: 0.8, sfx: 0.9, sensitivity: 1, invertY: false, nights: true };
 
 function load(): Settings {
   try {

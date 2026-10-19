@@ -14,12 +14,18 @@ import { createFootprints, createNote, DistantFigure } from './prologue';
 import type { PrologueLayout } from './placement';
 import { Echoes, type EchoDef } from './echoes';
 import type { Landmarks } from '../world/landmarks';
+import { NightClock, type NightCue } from './night';
+import { settings } from '../settings';
 
 const SAVE_KEY = 'lapis.save.v1';
 
 interface Save {
+  /** Banked stars: carried to a lighthouse, lit in the sky for good. */
   collected: string[];
   seen: string[];
+  /** Beacons whose lamps you've lit. */
+  lit?: number[];
+  lastBeacon?: number;
 }
 
 function loadSave(): Save {
@@ -48,6 +54,12 @@ export class Story {
   private wasBoat = false;
   /** Fired when a memory plays, with its duration in seconds (drives the duotone wash). */
   onMemory: ((seconds: number) => void) | null = null;
+  /** Night progress 0..1 each frame (drives frost and dimming). */
+  onNight: ((progress: number) => void) | null = null;
+  /** She wakes: move the Keeper to this spot (the last lit light, or the first beach). */
+  onWake: ((spot: { x: number; z: number }) => void) | null = null;
+  readonly night = new NightClock(20 * 60);
+  private landmarks: Landmarks | null = null;
 
   constructor(
     private layout: PrologueLayout,
@@ -75,6 +87,7 @@ export class Story {
       this.boat.light(i);
       if (this.boat.isComplete) this.onConstellationComplete();
     };
+    this.night.onCue = (cue) => this.nightCue(cue);
   }
 
   /** Opening: hide the first star until it's seen to fall, and keep pillars dark. */
@@ -99,6 +112,63 @@ export class Story {
   /** Yaw that faces the sea from the spawn: the boat, the footprints and The Boat overhead. */
   get wakeYaw() {
     return Math.atan2(-this.layout.seaward.x, -this.layout.seaward.z);
+  }
+
+  /** Beacons exist once the props have loaded; re-light the ones lit in earlier sessions. */
+  attachBeacons(landmarks: Landmarks) {
+    this.landmarks = landmarks;
+    for (const i of this.save.lit ?? []) landmarks.lightBeacon(i, true);
+  }
+
+  private nightCue(cue: NightCue) {
+    if (cue === 'late') this.narrative.say(LINES.late);
+    else if (cue === 'cold') {
+      this.narrative.say(LINES.cold, 'whisper');
+      this.audio.voice('night-cold').catch(() => {});
+    } else if (cue === 'eyes') {
+      this.narrative.say(LINES.eyes, 'whisper');
+      this.audio.voice('night-eyes').catch(() => {});
+    } else this.wake();
+  }
+
+  /** The night runs out: carried stars fall back, and you wake at your last light. */
+  private wake() {
+    const carried = this.stars.carriedIds;
+    for (const id of carried) this.stars.drop(id);
+    this.night.reset();
+    const b = this.save.lastBeacon;
+    const spot = this.landmarks && b !== undefined && b >= 0 ? this.landmarks.beaconRestSpot(b) : this.layout.spawn;
+    this.onWake?.(spot);
+    setTimeout(() => {
+      this.narrative.say(LINES.waking);
+      if (carried.length) this.narrative.say(LINES.lost);
+    }, 3200);
+  }
+
+  /** Light a beacon (first visit) or rest by it: bank carried stars and begin a new night. */
+  private rest(i: number) {
+    const lm = this.landmarks!;
+    const first = !lm.isLit(i);
+    if (first) {
+      lm.lightBeacon(i);
+      this.save.lit = [...(this.save.lit ?? []), i];
+      this.narrative.say(LINES.lit);
+      this.audio.chime(4);
+    }
+    this.save.lastBeacon = i;
+    this.bankCarried();
+    this.night.reset();
+    if (!first) this.narrative.say(LINES.rest);
+    this.persist();
+  }
+
+  private bankCarried() {
+    for (const id of this.stars.carriedIds) {
+      const index = THE_BOAT.fragments.findIndex((f) => f.id === id);
+      this.stars.collect(id, this.boat.dirs[index]);
+      if (!this.save.collected.includes(id)) this.save.collected.push(id);
+    }
+    this.persist();
   }
 
   loadFigure(keeper: GLTF) {
@@ -187,8 +257,14 @@ export class Story {
     this.prompt = '';
     this.pendingAction = null;
     if (!playing) return;
+    // Nights: the clock runs while you play; turned off, anything carried is kept at once.
+    const carried = this.stars.carriedIds.length;
+    if (settings.nights) this.night.update(dt);
+    else if (carried) this.bankCarried();
+    this.onNight?.(settings.nights ? this.night.progress : 0);
     const found = LAGOONS.filter((_, i) => this.save.seen.includes(`lagoon-${i}`)).length;
-    this.narrative.objective(THE_BOAT.name, this.save.collected.length, THE_BOAT.fragments.length, found ? `secret lagoons ${found} / ${LAGOONS.length}` : '');
+    const extra = [settings.nights ? this.night.phrase : '', found ? `secret lagoons ${found} / ${LAGOONS.length}` : ''].filter(Boolean).join('   ·   ');
+    this.narrative.objective(THE_BOAT.name, this.save.collected.length, THE_BOAT.fragments.length, extra, carried);
     LAGOONS.forEach((L, i) => {
       if (Math.hypot(L.x - player.x, L.z - player.z) < L.r - 6 && !this.seen(`lagoon-${i}`)) {
         this.narrative.say(LINES.lagoon);
@@ -226,6 +302,18 @@ export class Story {
       };
     }
 
+    // Lighthouses: light the lamp, or rest by it.
+    if (this.landmarks && walking) {
+      const nb = this.landmarks.nearestBeacon(px, pz);
+      if (nb.index >= 0 && nb.dist < 60 && !this.landmarks.isLit(nb.index) && !this.seen('lightHint')) this.narrative.say(LINES.lightHint);
+      if (nb.index >= 0 && nb.dist < 7.5) {
+        const lit = this.landmarks.isLit(nb.index);
+        const n = this.stars.carriedIds.length;
+        this.prompt = !lit ? 'E   light the lamp' : n ? `E   rest by the light  ·  ${n} star${n > 1 ? 's' : ''} carried` : 'E   rest by the light';
+        this.pendingAction = () => this.rest(nb.index);
+      }
+    }
+
     const star = this.stars.nearest(px, pz);
     if (star && this.save.collected.length === 0 && star.dist < 18 && !this.seen('warm')) this.narrative.say(LINES.warm);
     if (star && star.dist < (walking ? 2.6 : 4.2)) {
@@ -233,7 +321,8 @@ export class Story {
       this.pendingAction = () => this.gather(star.id, star.index);
     }
 
-    this.skyTimer -= dt;
+    // Stars fall more often as the night runs down.
+    this.skyTimer -= dt * (1 + (settings.nights ? this.night.progress * 3 : 0));
     if (this.skyTimer <= 0) {
       this.skyTimer = 70 + Math.random() * 70;
       const az = Math.random() * Math.PI * 2;
@@ -247,15 +336,21 @@ export class Story {
 
   private gather(id: string, index: number) {
     const fragment = THE_BOAT.fragments[index];
-    this.stars.collect(id, this.boat.dirs[index]);
-    this.save.collected.push(id);
-    this.persist();
+    if (settings.nights) {
+      // Carried until you reach a lighthouse; lost if she wakes first.
+      this.stars.carry(id);
+      if (!this.seen('carryHint')) setTimeout(() => this.narrative.say(LINES.carryHint), 7000);
+    } else {
+      this.stars.collect(id, this.boat.dirs[index]);
+      this.save.collected.push(id);
+      this.persist();
+    }
     this.audio.chime(index);
     this.audio.memory();
     this.narrative.say(fragment.line, 'memory');
     this.audio.voice(fragment.id).catch(() => {});
     this.onMemory?.(8);
-    const n = this.save.collected.length;
+    const n = this.save.collected.length + this.stars.carriedIds.length;
     if (n === 1) this.narrative.say(LINES.firstStar);
     if (n === 3) this.narrative.say(LINES.atSea);
     if (n === 2 || n === 4) this.figure.advance();

@@ -222,12 +222,21 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const duo = mix(pow(color(0x161a52), vec3(1 / 2.2)), pow(color(0xc4c8f4), vec3(1 / 2.2)), smoothstep(0.04, 0.85, luminance(c).add(riso)));
   c = mix(c, duo, memoryMix.mul(0.85));
 
-  // ---- 10. Vignette and grain.
+  // ---- 10. The night running out: colour drains, the light dims, frost grows in from the edges.
+  const frost = uniform(0);
+  const fl = luminance(c);
+  c = mix(c, vec3(fl).mul(vec3(0.86, 0.93, 1.06)), frost.mul(0.45)).mul(float(1).sub(frost.mul(0.22)));
+  const ev = length(screenUV.sub(0.5).mul(vec2(1.2, 1)));
+  const crystals = mx_noise_float(px.mul(0.018)).mul(0.6).add(mx_noise_float(px.mul(0.09)).mul(0.25));
+  const frostEdge = smoothstep(float(0.98).sub(frost.mul(0.5)), float(1.18).sub(frost.mul(0.35)), ev.add(crystals.mul(0.12))).mul(smoothstep(0.45, 0.75, frost));
+  c = mix(c, vec3(0.86, 0.91, 1.0), frostEdge.mul(0.8));
+
+  // ---- 11. Vignette and grain.
   const v = length(screenUV.sub(0.5).mul(vec2(1.1, 1)));
   c = mix(pow(color(PALETTE.zenith), vec3(1 / 2.2)).mul(0.7), c, smoothstep(0.9, 0.3, v).mul(0.3).add(0.7));
   c = c.add(hash(px.x.add(px.y.mul(4096)).add(boil.mul(31))).sub(0.5).mul(0.025));
 
   pipeline.outputNode = vec4(min(c, vec3(1)), 1);
   pipeline.outputColorTransform = false;
-  return { pipeline, paint, boilRate, memoryMix };
+  return { pipeline, paint, boilRate, memoryMix, frost };
 }

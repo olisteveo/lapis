@@ -78,4 +78,13 @@ export const LINES = {
   fell: 'The sea takes you, gently, and gives you back.',
   currentHint: 'A current of starlight. Let it carry you.',
   strokeHint: 'Space as the oars dip, for a long stroke.',
+  carryHint: 'Carry it to a lighthouse before the night runs out.',
+  lightHint: 'A lighthouse. Its lamp is cold.',
+  lit: 'The lamp catches. The light goes out across the water.',
+  rest: 'She sleeps more deeply. The night begins again.',
+  late: 'The night grows late. Find a light.',
+  cold: "I'm so cold.",
+  eyes: "I'll just close my eyes for a bit.",
+  waking: 'She surfaces, for a moment, and the dream lets go of you.',
+  lost: 'The stars you carried have fallen back to where they lay.',
 };

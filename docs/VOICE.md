@@ -46,3 +46,12 @@ a gentle little girl, about six years old, soft and slightly breathy, quiet bedt
 | `echo-point.mp3` | Which one's the bright one? That one? That one? | Pointing at the sky, impatient, delighted. |
 | `echo-jetty.mp3` | Can we stay out till the lamp comes on? | Legs dangling off the jetty, bargaining for more time. |
 | `echo-cairn.mp3` | One more stone. For luck. For you. | Careful, serious, placing a stone; the last two words are a gift. |
+
+### The night running out, age 5-7
+
+Played late in each night, before she wakes. Barely awake, almost asleep.
+
+| File | Line | Direction |
+|---|---|---|
+| `night-cold.mp3` | I'm so cold. | Small, shivering, not complaining, just noticing. |
+| `night-eyes.mp3` | I'll just close my eyes for a bit. | Drowsy, trailing off at the end. |

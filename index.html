@@ -61,6 +61,8 @@
       #objective .obj-title { font-size: 20px; letter-spacing: 0.35em; text-transform: uppercase; font-weight: 300; }
       #objective .obj-line { font-size: 15px; font-style: italic; letter-spacing: 0.06em; margin-top: 6px; opacity: 0.8; }
       #objective .dots i { display: inline-block; width: 7px; height: 7px; margin-left: 7px; border-radius: 50%; border: 1px solid rgba(243, 230, 218, 0.6); vertical-align: middle; }
+      #objective .dots i.carried { border-color: #ffb065; box-shadow: 0 0 8px rgba(255, 176, 101, 0.6); animation: carry 1.6s ease-in-out infinite; }
+      @keyframes carry { 50% { background: rgba(255, 176, 101, 0.45); } }
       #objective .dots i.lit { background: #ffb065; border-color: #ffb065; box-shadow: 0 0 10px #ffb065; }
       #menu {
         position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 20;

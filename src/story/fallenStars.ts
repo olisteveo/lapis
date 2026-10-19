@@ -15,6 +15,8 @@ interface Star {
   pillarAlpha: { value: number };
   landT: number;
   collected: boolean;
+  carried: boolean;
+  flightFrom: THREE.Vector3;
   flight: number;
   target: THREE.Vector3;
 }
@@ -63,7 +65,7 @@ export class FallenStars {
 
       group.add(core, pillar);
       this.group.add(group);
-      this.stars.push({ id, index: i, home, group, core, pillar, alpha, pillarAlpha, landT: -1, collected: false, flight: -1, target: new THREE.Vector3() });
+      this.stars.push({ id, index: i, home, group, core, pillar, alpha, pillarAlpha, landT: -1, collected: false, carried: false, flightFrom: new THREE.Vector3(), flight: -1, target: new THREE.Vector3() });
     });
   }
 
@@ -121,10 +123,39 @@ export class FallenStars {
   /** Lift the star away toward its place in the constellation. */
   collect(id: string, skyTarget: THREE.Vector3) {
     const s = this.stars.find((v) => v.id === id);
+    if (!s || (s.collected && !s.carried)) return;
+    s.collected = true;
+    s.carried = false;
+    s.flight = 0;
+    s.flightFrom.copy(s.group.position);
+    s.target.copy(skyTarget);
+  }
+
+  /** Pick a star up: it follows you as a small light until banked or lost. */
+  carry(id: string) {
+    const s = this.stars.find((v) => v.id === id);
     if (!s || s.collected) return;
     s.collected = true;
-    s.flight = 0;
-    s.target.copy(skyTarget);
+    s.carried = true;
+    s.pillar.visible = false;
+    s.core.scale.setScalar(0.7);
+  }
+
+  /** Lost when you wake: the star drifts back to where it fell. */
+  drop(id: string) {
+    const s = this.stars.find((v) => v.id === id);
+    if (!s || !s.carried) return;
+    s.carried = false;
+    s.collected = false;
+    s.core.scale.setScalar(1.3);
+    s.pillar.visible = true;
+    s.group.visible = true;
+    s.group.position.copy(s.home);
+    s.landT = 0;
+  }
+
+  get carriedIds() {
+    return this.stars.filter((s) => s.carried).map((s) => s.id);
   }
 
   update(dt: number, camera: THREE.Camera) {
@@ -138,7 +169,7 @@ export class FallenStars {
         const e = k * k * (3 - 2 * k);
         // Rise gently, then accelerate toward the sky point (a fixed offset from the camera).
         const to = camera.position.clone().addScaledVector(s.target, 600);
-        s.group.position.lerpVectors(s.home, to, e * e);
+        s.group.position.lerpVectors(s.flightFrom, to, e * e);
         s.group.position.y += Math.sin(k * Math.PI) * 6;
         s.pillar.visible = false;
         s.alpha.value = 1 - Math.max(0, (k - 0.75) / 0.25);
@@ -147,6 +178,16 @@ export class FallenStars {
           s.group.visible = false;
           this.onArrive?.(s.index);
         }
+        continue;
+      }
+      if (s.carried) {
+        // Orbit the Keeper slowly at chest height, each carried star in its own slot.
+        const carried = this.stars.filter((v) => v.carried);
+        const k = carried.indexOf(s);
+        const a = t * 0.7 + (k / carried.length) * Math.PI * 2;
+        const want = camera.position.clone().add(new THREE.Vector3(Math.cos(a) * 1.2, -0.45 + Math.sin(t * 1.3 + k) * 0.12, Math.sin(a) * 1.2));
+        s.group.position.lerp(want, Math.min(1, dt * 4));
+        s.alpha.value = 0.75 + Math.sin(t * 2 + k) * 0.15;
         continue;
       }
       if (s.collected) continue;

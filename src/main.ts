@@ -75,7 +75,7 @@ async function boot() {
   const landmarks = new Landmarks(layoutLandmarks(hf, spawn));
   const wildlife = new Wildlife(hf);
   player.colliders = new CompositeColliders([flora, landmarks]);
-  const CLEAR: Record<string, number> = { Lighthouse: 14, Hut: 6, Wreck: 7, Jetty: 4, Swing: 2.5, Cairn: 2, StoneLantern: 1.5 };
+  const CLEAR: Record<string, number> = { Beacon: 14, Lighthouse: 14, Hut: 6, Wreck: 7, Jetty: 4, Swing: 2.5, Cairn: 2, StoneLantern: 1.5 };
   flora.setClearings(landmarks.placed.map((p) => ({ x: p.x, z: p.z, r: (CLEAR[p.type] ?? 2) * p.scale })));
   scene.add(landmarks.group, wildlife.group, stones.mesh, currents.group);
   player.place(spawn.x, spawn.z, Math.PI);
@@ -114,6 +114,22 @@ async function boot() {
   let post = createPost(renderer, scene, camera);
   let postSteps = QUALITY.strokeSteps;
   let memoryUntil = 0;
+  let frostTarget = 0;
+  story.onNight = (p) => (frostTarget = p);
+  // She wakes: frost whites everything out, the Keeper is moved to the last light, and it clears.
+  story.onWake = (spot) => {
+    fade.style.background = '#dfe6f7';
+    fade.style.transitionDuration = '2.2s';
+    fade.style.opacity = '1';
+    setTimeout(() => {
+      player.mode = 'walk';
+      player.place(spot.x, spot.z, 0);
+      frostTarget = 0;
+      fade.style.transitionDuration = '3.5s';
+      fade.style.opacity = '0';
+      setTimeout(() => (fade.style.background = '#02030a'), 3600);
+    }, 2600);
+  };
   story.onMemory = (seconds) => (memoryUntil = performance.now() / 1000 + seconds);
 
   wildlife.onEvent = (kind, at) => {
@@ -123,7 +139,13 @@ async function boot() {
   };
   const optional = (p: Promise<unknown>, what: string) => p.catch((e) => console.warn(`${what} not loaded yet`, e?.message ?? e));
   await Promise.all([
-    optional(landmarks.load('/models/props.glb').then((t) => debug && console.log('landmarks', t)), 'props'),
+    optional(
+      landmarks.load('/models/props.glb').then((t) => {
+        story.attachBeacons(landmarks);
+        if (debug) console.log('landmarks', t);
+      }),
+      'props',
+    ),
     optional(wildlife.load('/models/creatures.glb').then((t) => debug && console.log('wildlife', t)), 'creatures'),
     avatar.load('/models/keeper.glb', '/models/boat.glb').then(() => {
       if (!avatar.keeperGltf) return;
@@ -229,7 +251,10 @@ async function boot() {
     // Console handle for art direction: lapis.view(x, z, yaw, pitch), lapis.player, etc.
     Object.assign(window, {
       lapis: {
-        player, input, camera, hf, post, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones,
+        player, input, camera, hf, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones,
+        get post() {
+          return post;
+        },
         view(x: number, z: number, yaw = input.yaw, pitch = input.pitch) {
           state = 'play';
           player.mode = 'walk';
@@ -383,6 +408,8 @@ async function boot() {
       }
     }
     story.update(dt, player, camera, state === 'play');
+    // Frost only shows in the last part of the night.
+    post.frost.value += (Math.max(0, (frostTarget - 0.55) / 0.45) - post.frost.value) * Math.min(1, dt * 0.8);
     const memTarget = performance.now() / 1000 < memoryUntil ? 1 : 0;
     post.memoryMix.value += (memTarget - post.memoryMix.value) * Math.min(1, dt * (memTarget ? 1.2 : 0.7));
     const mix = story.audioMix(player);
@@ -410,7 +437,7 @@ async function boot() {
     terrain.update(focus);
     flora.update(focus, now);
     beams.update(dt, focus);
-    landmarks.update(focus);
+    landmarks.update(focus, dt);
     wildlife.update(dt, focus, camera, player.mode === 'boat' || story.audioMix(player).sea > 0.55);
     water.update(focus);
     camera.updateMatrixWorld();
