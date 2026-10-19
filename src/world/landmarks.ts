@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { color, float, hash, mix, positionWorld, sin, time, uniform, uv, vertexColor, normalWorld, saturate, dot, vec3 } from 'three/tsl';
+import { color, float, hash, length, mix, positionLocal, positionWorld, sin, smoothstep, time, uniform, uv, vertexColor, normalWorld, saturate, dot, vec3 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE, SKY } from '../config';
 import { BIOMES, LIGHTHOUSE, WORLD_HALF, type Heightfield } from './heightfield';
@@ -173,7 +173,7 @@ export function layoutLandmarks(hf: Heightfield, spawn: { x: number; z: number }
 // Footprint radius per landmark for collision (scaled by placement scale).
 const SOLID: Record<string, number> = { Lighthouse: 0, Beacon: 0, Hut: 2.2, Cairn: 0.5, StoneLantern: 0.35, Wreck: 0, RuinColumn: 0.7, RuinColumnBroken: 0.7 };
 /** Lamp-room height of the lighthouse model, before placement scale. */
-const LAMP_Y = 24.4;
+const LAMP_Y = 25;
 const LIGHTS: Record<string, [number, number, number]> = {
   // [height of the light, intensity, range]
   Hut: [1.6, 2.4, 14],
@@ -200,7 +200,7 @@ export class Landmarks implements Colliders {
   /** Beacons (and the home lighthouse): the lights you save at. */
   readonly beacons: { placed: Placed; lit: { value: number }; litTarget: number; beam: THREE.Group; lampY: number; crystal: THREE.Object3D | null }[] = [];
 
-  private material(name: string, lamp?: { value: number }) {
+  private material(name: string, lamp?: { value: number }, lighthouse = false) {
     const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
     const key = vec3(SKY.keyLight.x, SKY.keyLight.y, SKY.keyLight.z);
     const lambert = saturate(dot(normalWorld, key).mul(0.6).add(0.4));
@@ -240,7 +240,17 @@ export class Landmarks implements Colliders {
     const tint = color(base[name] ?? 0x34405e);
     // A cool moonlit lift on top faces so built things read against the dark jungle.
     const moonlit = saturate(normalWorld.y).mul(0.12);
-    mat.colorNode = tint.mul(lambert).mul(variety.mul(0.2).add(0.85)).mul(vc.r.mul(0.25).add(0.8)).add(vec3(0.08, 0.1, 0.22).mul(moonlit));
+    let col: any = tint.mul(lambert).mul(variety.mul(0.2).add(0.85)).mul(vc.r.mul(0.25).add(0.8)).add(vec3(0.08, 0.1, 0.22).mul(moonlit));
+    if (lighthouse) {
+      // Inside the hollow tower no moonlight reaches; the lanterns and windows warm it instead.
+      const lp = positionLocal as any;
+      const wallR = float(3.2).sub(lp.y.clamp(0, 22).mul(0.8 / 22));
+      const inside = smoothstep(wallR.sub(0.2), wallR.sub(0.45), length(lp.xz)).mul(smoothstep(23.2, 22.8, lp.y));
+      const flicker = sin(time.mul(3.1).add(lp.y.mul(0.7))).mul(0.06).add(0.94);
+      const warm = tint.mul(0.36).add(color(PALETTE.starGold).mul(0.07)).mul(flicker);
+      col = mix(col, warm, inside);
+    }
+    mat.colorNode = col;
     return mat;
   }
 
@@ -270,8 +280,9 @@ export class Landmarks implements Colliders {
           m.material = this.material(name, lamp);
           return;
         }
-        if (!mats.has(name)) mats.set(name, this.material(name));
-        m.material = mats.get(name)!;
+        const key = isLight ? `${name}:lighthouse` : name;
+        if (!mats.has(key)) mats.set(key, this.material(name, undefined, isLight));
+        m.material = mats.get(key)!;
       });
       if (isLight && lamp) {
         const lampY = p.y + LAMP_Y * p.scale;
@@ -288,6 +299,8 @@ export class Landmarks implements Colliders {
       obj.updateMatrix();
       // The crystal spins, so its own matrix must keep updating.
       obj.getObjectByName('StarCrystal')?.traverse((c) => (c.matrixAutoUpdate = true));
+      // The model's floating rune rings read as clutter; leave them out.
+      for (let k = 0; k < 3; k++) obj.getObjectByName(`RuneRing_${k}`)?.removeFromParent();
       this.group.add(obj);
     }
     return [...templates.keys()];
@@ -358,7 +371,7 @@ export class Landmarks implements Colliders {
       b.beam.rotation.y += dt * 0.35;
       if (b.crystal) {
         b.crystal.rotation.y += dt * (0.25 + b.lit.value * 0.6);
-        b.crystal.position.y = 24.4 + Math.sin(performance.now() / 900) * 0.15;
+        b.crystal.position.y = 25 + Math.sin(performance.now() / 900) * 0.15;
       }
       b.beam.scale.setScalar(Math.min(1, b.lit.value * 1.2));
     }

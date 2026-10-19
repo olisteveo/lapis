@@ -17,8 +17,8 @@ export interface Colliders {
 export interface Platforms {
   /** Highest standable top at (x, z) within a step of height y (stacked surfaces, like a stair), or -Infinity. */
   top(x: number, z: number, y?: number): number;
-  /** Optionally push a walker at (x, z, y) back inside walls and rails. */
-  confine?(x: number, z: number, y: number, body: number): { x: number; z: number } | null;
+  /** Optionally: is a walker at (x, z, y) inside a wall, rail or under a low ceiling? */
+  blocked?(x: number, z: number, y: number): boolean;
   /** True if something solid in the water blocks a hull at (x, z). */
   blocksBoat(x: number, z: number, radius: number): boolean;
 }
@@ -103,11 +103,6 @@ export class PlayerController {
 
   /** Push the walker out of trunks and the boat hull, sliding along them rather than stopping. */
   private resolve() {
-    const c = this.platforms?.confine?.(this.x, this.z, this.y, BODY_RADIUS);
-    if (c) {
-      this.x = c.x;
-      this.z = c.z;
-    }
     this.colliders?.near(this.x, this.z, 3, (cx, cz, r) => {
       const dx = this.x - cx;
       const dz = this.z - cz;
@@ -193,6 +188,7 @@ export class PlayerController {
     const mx = Math.sin(this.heading) * step;
     const mz = Math.cos(this.heading) * step;
     const canMoveTo = (x: number, z: number, len2: number) => {
+      if (this.platforms?.blocked?.(x, z, this.y)) return false;
       const g = this.ground(x, z);
       if (this.airborne) return g <= this.y + 0.15; // only a wall stops you mid-air
       if (g < WADE_DEPTH) return false; // deep water: jump it or stay out

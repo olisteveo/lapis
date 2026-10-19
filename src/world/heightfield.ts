@@ -349,7 +349,8 @@ export function createHeightfield(seed = 1337): Heightfield {
     }
 
     // The drowned town: a broad shallow shelf you can wade across among the ruins.
-    if (R.drowned > 0) h = lerp(h, -1.15 + fbm(nDetail, x / 30, z / 30, 2) * 0.35, R.drowned);
+    // Kept above wading depth (-0.85) so the whole town can be walked, knee-deep.
+    if (R.drowned > 0) h = lerp(h, -0.5 + fbm(nDetail, x / 30, z / 30, 2) * 0.25, R.drowned);
 
     // Sandbars and runnels so the waterline wanders instead of following one smooth contour.
     if (Math.abs(h) < 4) h += (fbm(nDetail, x / 24, z / 24, 3) * 0.45 + fbm(nDetail, x / 7, z / 7, 2) * 0.12) * smoothstep(4, 0.5, Math.abs(h));

@@ -17,7 +17,7 @@ import { Landmarks, layoutLandmarks, CompositeColliders } from './world/landmark
 import { Wildlife } from './world/wildlife';
 import { Fauna } from './world/fauna';
 import { Wonders, layoutWonders } from './world/wonders';
-import { Puzzles, layoutPuzzles } from './world/puzzles';
+import { Puzzles, layoutPuzzles, skyFeatures } from './world/puzzles';
 import { LighthouseClimb } from './world/lighthouseClimb';
 import { Nightmares, type LightSource } from './world/nightmares';
 import { layoutRegionStars } from './story/placement';
@@ -38,6 +38,15 @@ import { LINES, STORYBOOK } from './story/content';
 const SEED = 1337;
 const $ = (id: string) => document.getElementById(id)!;
 const debug = new URLSearchParams(location.search).has('debug');
+// ?reset wipes progress before anything reads it (puzzles and the chart load state before the story does).
+if (new URLSearchParams(location.search).has('reset')) {
+  try {
+    localStorage.removeItem('lapis.save.v1');
+    localStorage.removeItem('lapis.map.v1');
+  } catch {
+    // Nothing stored.
+  }
+}
 
 async function boot() {
   if (!('gpu' in navigator)) console.warn('WebGPU unavailable; three.js will fall back to WebGL2.');
@@ -88,26 +97,28 @@ async function boot() {
   player.platforms = {
     top: (x, z, y) => Math.max(stones.top(x, z), climb.top(x, z, y)),
     blocksBoat: (x, z, r) => stones.blocksBoat(x, z, r),
-    confine: (x, z, y, b) => climb.confine(x, z, y, b),
+    blocked: (x, z, y) => climb.blocked(x, z, y),
   };
   const wildlife = new Wildlife(hf);
   const fauna = new Fauna(hf);
   const wonders = new Wonders(layoutWonders(hf));
-  const puzzleSites = layoutPuzzles(hf, wonders.list);
+  // The Boat hangs over the sea as seen from where you wake; the stones need its bearing too.
+  const boatAz = ((THREE.MathUtils.radToDeg(Math.atan2(layout.seaward.x, -layout.seaward.z)) % 360) + 360) % 360;
+  const puzzleSites = layoutPuzzles(hf, wonders.list, boatAz);
   const puzzles = new Puzzles(puzzleSites, (id) => {
     try {
       return (JSON.parse(localStorage.getItem('lapis.save.v1') ?? '{}').seen ?? []).includes(id);
     } catch {
       return false;
     }
-  });
+  }, skyFeatures(boatAz));
   player.colliders = new CompositeColliders([flora, landmarks, fauna, wonders, puzzles]);
   const nightmares = new Nightmares(hf);
   const CLEAR: Record<string, number> = { RuinArch: 4, RuinWall: 4, RuinSteps: 3, Beacon: 14, Lighthouse: 14, Hut: 6, Wreck: 7, Jetty: 4, Swing: 2.5, Cairn: 2, StoneLantern: 1.5 };
   flora.setClearings([
     ...landmarks.placed.map((p) => ({ x: p.x, z: p.z, r: (CLEAR[p.type] ?? 2) * p.scale })),
     // Wonders stand in open ground so they can be seen from the edge of their clearing.
-    ...puzzleSites.map((p) => ({ x: p.x, z: p.z, r: p.slot === 0 ? 11 : 16 })),
+    ...puzzleSites.map((p) => ({ x: p.x, z: p.z, r: p.kind === 'stones' ? 22 : p.kind === 'lanterns' && p.slot === 1 ? 16 : 11 })),
     ...wonders.list.filter((w) => w.id !== 'rocks').map((w) => ({ x: w.x, z: w.z, r: { whale: 26, ring: 30, moontree: 24, bell: 12 }[w.id] ?? 16 })),
   ]);
   scene.add(landmarks.group, wildlife.group, fauna.group, wonders.group, puzzles.group, nightmares.group, stones.mesh, currents.group);
@@ -132,6 +143,7 @@ async function boot() {
     beams.group.visible = !mirror;
     wildlife.setMirror(mirror);
     fauna.group.visible = !mirror;
+    puzzles.setMirror(mirror);
     flora.setMirror(mirror);
     proxy.node.value = mirror || settleFrames > 0 ? proxy.dummy : water.reflection.value;
   };
@@ -142,6 +154,7 @@ async function boot() {
       beams.group.visible = beams.wanted;
       wildlife.setMirror(false);
       fauna.group.visible = true;
+      puzzles.setMirror(false);
       flora.setMirror(false);
       proxy.node.value = settleFrames > 0 ? proxy.dummy : water.reflection.value;
     }

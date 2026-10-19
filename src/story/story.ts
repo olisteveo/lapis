@@ -134,8 +134,15 @@ export class Story {
       if (this.skies[r.c].isComplete) this.onConstellationComplete(r.c);
     };
     puzzles.onSolve = (site) => this.solvePuzzle(site);
-    puzzles.onDiscover = () => {
-      if (!this.seen('puzzleHint')) this.guide('Hey! A circle of lanterns. Stand in the middle and listen, then light them in the same order.', 'hey');
+    puzzles.onDiscover = (site) => {
+      if (site.kind === 'stones') {
+        if (!this.seen('stonesPuzzleHint'))
+          this.guide("Hmm? Each stone has a picture of the sky. I think each one should show what it's looking at. Stand behind a stone and look up past it!", 'hmm');
+        else this.guide('Listen! More sky stones. What can each of them see?', 'listen');
+      } else if (site.kind === 'bells') {
+        if (site.slot === 0) this.guide('Listen! Bells, under the water. The water remembers things the air forgets... look at their reflections.', 'listen');
+        else this.guide("Hmm? These bells have marks on them. But I don't trust them. What does the water say?", 'hmm');
+      } else if (!this.seen('puzzleHint')) this.guide('Hey! A circle of lanterns. Stand in the middle and listen, then light them in the same order.', 'hey');
       else this.guide('Listen! More lanterns. I think they want to sing.', 'listen');
     };
     puzzles.onNote = (k) => this.audio.note(k);
@@ -254,7 +261,8 @@ export class Story {
     const c = CONSTELLATIONS.find((k) => k.region === site.region)!;
     const f = c.fragments.filter((k) => k.source === 'puzzle')[site.slot];
     if (f) this.stars.land(this.stars.indexOf(f.id));
-    this.guide('Oh! The lanterns are singing! A star is falling, right there!', 'oh', 'star');
+    const line = { lanterns: 'Oh! The lanterns are singing!', stones: 'Oh! The stones can see the sky!', bells: 'Oh! The water remembered!' }[site.kind];
+    this.guide(`${line} A star is falling, right there!`, 'oh', 'star');
   }
 
   /** Has this place been found (a lagoon, a wonder)? */
