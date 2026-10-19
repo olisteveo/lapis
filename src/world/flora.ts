@@ -34,12 +34,25 @@ const TYPES: Record<string, TypeCfg> = {
   Groundcover: { hi: 40, far: 90, sway: 0.1 },
   Bush0: { hi: 45, far: 170, sway: 0.1 },
   Bush1: { hi: 60, far: 300, sway: 0.1 },
+  // Lantern Wood
+  GiantMushroomA: { hi: 90, far: 900, sway: 0.04 },
+  GiantMushroomB: { hi: 90, far: 900, sway: 0.04 },
+  LanternTree: { hi: 80, far: 600, sway: 0.15 },
+  MushroomCluster: { hi: 40, far: 90, sway: 0 },
+  // Moonflower Meadows
+  Moonflowers: { hi: 45, far: 170, sway: 0.22 },
+  MeadowGrass: { hi: 35, far: 95, sway: 0.4 },
+  // Glass Dunes
+  CrystalA: { hi: 60, far: 700, sway: 0 },
+  CrystalB: { hi: 60, far: 700, sway: 0 },
+  DuneGrass: { hi: 35, far: 110, sway: 0.3 },
 };
 
 // Trunk radius at scale 1. Ferns, bushes and ground cover stay soft so you can push through.
 const TRUNKS: Record<string, number> = {
   PalmTall: 0.3, PalmMid: 0.3, PalmLean: 0.28, PalmYoung: 0.25,
   CanopyA: 1.3, CanopyB: 1.0, Understory: 0.3, TreeFern: 0.35, Banana: 0.45,
+  GiantMushroomA: 0.7, GiantMushroomB: 0.7, LanternTree: 0.45, CrystalA: 0.6, CrystalB: 0.6,
 };
 
 // Base radii; the live ones (and the shader uniforms) scale with the quality preset.
@@ -56,6 +69,18 @@ function applyRadii() {
 applyRadii();
 
 const GLOW_PARTS = new Set(['trunk', 'frond', 'fruit', 'flower']);
+// Each region glows in its own colour: teal spores, gold lanterns, pale petals, icy crystal.
+const REGION_GLOW: Record<string, [number, number]> = {
+  mushroom_glow: [0x5fe8d8, 0.8],
+  lantern_glow: [0xffc070, 1.8],
+  moonflower_glow: [0xece0ff, 1.25],
+  crystal: [0xc6b6ff, 0.75],
+};
+const REGION_BASE: Record<string, number> = {
+  mushroom_cap: 0x3a2a72,
+  mushroom_stem: 0x8a86b8,
+  grass: 0x3a6a60,
+};
 
 interface Part {
   geometry: THREE.BufferGeometry;
@@ -134,9 +159,17 @@ export class Flora implements Colliders {
     });
   }
 
-  async load(url: string) {
-    const gltf = await new GLTFLoader().loadAsync(url);
-    gltf.scene.updateMatrixWorld(true);
+  /** Loads one or more flora files; missing optional files are skipped. */
+  async load(...urls: string[]) {
+    const loader = new GLTFLoader();
+    const scenes = await Promise.all(urls.map((u) => loader.loadAsync(u).then((g) => g.scene).catch(() => null)));
+    for (const scene of scenes) if (scene) this.collectTypes(scene);
+    this.buildBatches();
+    return [...this.parts.keys()];
+  }
+
+  private collectTypes(scene: THREE.Object3D) {
+    scene.updateMatrixWorld(true);
     const collect = (root: THREE.Object3D) => {
       const out: Part[] = [];
       root.traverse((o) => {
@@ -151,7 +184,7 @@ export class Flora implements Colliders {
       });
       return out;
     };
-    for (const child of gltf.scene.children) {
+    for (const child of scene.children) {
       const match = /^(.+)_(hi|lo)$/.exec(child.name);
       if (!match) continue;
       const [, type, lod] = match;
@@ -160,6 +193,9 @@ export class Flora implements Colliders {
       entry[lod as 'hi' | 'lo'] = collect(child);
       this.parts.set(type, entry);
     }
+  }
+
+  private buildBatches() {
     for (const [type, { hi, lo }] of this.parts) {
       const cfg = TYPES[type];
       const b = {
@@ -170,7 +206,6 @@ export class Flora implements Colliders {
       if (!type.startsWith('Palm')) this.mirrorHidden.push(...[...b.hi, ...b.lo].map((x) => x.mesh));
       this.batches.set(type, b);
     }
-    return [...this.parts.keys()];
   }
 
   private material(partName: string, cfg: TypeCfg, lod: 'hi' | 'lo', type: string) {
@@ -210,7 +245,13 @@ export class Flora implements Colliders {
     const fade = smoothstep(R.far, R.far.mul(0.85), d);
 
     let col;
-    if (GLOW_PARTS.has(partName)) {
+    if (REGION_GLOW[partName]) {
+      const [hex, k] = REGION_GLOW[partName];
+      const breathe = sin(time.mul(0.7).add(variety.mul(20))).mul(0.15).add(0.9);
+      col = color(hex).mul(k).mul(vc.r.mul(0.4).add(0.7)).mul(breathe);
+    } else if (REGION_BASE[partName] !== undefined) {
+      col = color(REGION_BASE[partName]).mul(lambert.mul(0.6).add(0.3)).mul(variety.mul(0.25).add(0.85));
+    } else if (GLOW_PARTS.has(partName)) {
       // The palms drank the starlight: crowns glow coral, trunks warm to salmon toward the top.
       const tipRamp = vc.r;
       if (partName === 'trunk') col = mix(color(PALETTE.salmon).mul(0.12), color(PALETTE.coral).mul(0.55), tipRamp).mul(lambert.mul(0.3).add(0.7));

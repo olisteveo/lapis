@@ -116,6 +116,7 @@ export class Terrain {
     geo.setAttribute('position', new THREE.BufferAttribute(r.positions, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(r.normals, 3));
     geo.setAttribute('terrainAttrs', new THREE.BufferAttribute(r.attrs, 2));
+    geo.setAttribute('biomeAttrs', new THREE.BufferAttribute(r.biome, 4));
     geo.setIndex(new THREE.BufferAttribute(r.indices, 1));
     const s = TERRAIN.chunkSize;
     geo.boundingBox = new THREE.Box3(new THREE.Vector3(0, r.minY - 20, 0), new THREE.Vector3(s, r.maxY, s));

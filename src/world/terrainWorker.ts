@@ -1,5 +1,5 @@
 // Builds terrain chunk meshes and flora scatter off the main thread.
-import { createHeightfield, type Heightfield } from './heightfield';
+import { createHeightfield, type Heightfield, type TerrainSample } from './heightfield';
 
 export type WorkerRequest =
   | { kind: 'chunk'; id: number; seed: number; x0: number; z0: number; size: number; segs: number }
@@ -11,6 +11,8 @@ export interface ChunkResult {
   positions: Float32Array;
   normals: Float32Array;
   attrs: Float32Array;
+  /** meadow, lantern, dunes, drowned weights per vertex. */
+  biome: Float32Array;
   indices: Uint32Array;
   minY: number;
   maxY: number;
@@ -39,6 +41,7 @@ function buildChunk(req: Extract<WorkerRequest, { kind: 'chunk' }>): ChunkResult
   const heights = new Float32Array(stride * stride);
   const rock = new Float32Array((n + 1) * (n + 1));
   const grove = new Float32Array((n + 1) * (n + 1));
+  const region = new Float32Array((n + 1) * (n + 1) * 4);
   for (let j = 0; j < stride; j++)
     for (let i = 0; i < stride; i++) {
       const x = req.x0 + (i - 1) * step;
@@ -48,6 +51,7 @@ function buildChunk(req: Extract<WorkerRequest, { kind: 'chunk' }>): ChunkResult
         heights[j * stride + i] = s.height;
         rock[(j - 1) * (n + 1) + (i - 1)] = s.rock;
         grove[(j - 1) * (n + 1) + (i - 1)] = s.grove;
+        region.set([s.meadow, s.lantern, s.dunes, s.drowned], ((j - 1) * (n + 1) + (i - 1)) * 4);
       } else {
         heights[j * stride + i] = h.height(x, z);
       }
@@ -59,6 +63,7 @@ function buildChunk(req: Extract<WorkerRequest, { kind: 'chunk' }>): ChunkResult
   const positions = new Float32Array(total * 3);
   const normals = new Float32Array(total * 3);
   const attrs = new Float32Array(total * 2);
+  const biome = new Float32Array(total * 4);
   let minY = Infinity;
   let maxY = -Infinity;
 
@@ -85,6 +90,7 @@ function buildChunk(req: Extract<WorkerRequest, { kind: 'chunk' }>): ChunkResult
       normals[v * 3 + 2] = nz;
       attrs[v * 2] = rock[v];
       attrs[v * 2 + 1] = grove[v];
+      biome.set(region.subarray(v * 4, v * 4 + 4), v * 4);
       minY = Math.min(minY, hy);
       maxY = Math.max(maxY, hy);
     }
@@ -124,6 +130,7 @@ function buildChunk(req: Extract<WorkerRequest, { kind: 'chunk' }>): ChunkResult
       positions[sv * 3 + 2] = positions[v * 3 + 2];
       normals.copyWithin(sv * 3, v * 3, v * 3 + 3);
       attrs.copyWithin(sv * 2, v * 2, v * 2 + 2);
+      biome.copyWithin(sv * 4, v * 4, v * 4 + 4);
       sv++;
     }
     for (let i = 0; i < n; i++) {
@@ -137,7 +144,7 @@ function buildChunk(req: Extract<WorkerRequest, { kind: 'chunk' }>): ChunkResult
     }
   });
 
-  return { kind: 'chunk', id: req.id, positions, normals, attrs, indices, minY, maxY };
+  return { kind: 'chunk', id: req.id, positions, normals, attrs, biome, indices, minY, maxY };
 }
 
 function hash(x: number, z: number, k: number) {
@@ -154,61 +161,122 @@ const smooth = (a: number, b: number, x: number) => {
 interface Rule {
   cell: number;
   /** Returns instance probability for this location, or 0. */
-  p: (hgt: number, slope: number, rock: number, grove: number, x: number, z: number) => number;
+  p: (s: TerrainSample, slope: number, x: number, z: number) => number;
   types: [string, number][];
   scale: [number, number];
   sink?: number;
 }
 
-// Jungle structure: emergent canopy over understory over ferns and ground cover, with
-// glowing palm groves fringing the beaches. Probabilities read from height, slope and grove.
+// Cheap smooth patchiness for flower drifts (no noise library in the rules).
+const patch = (x: number, z: number) =>
+  smooth(0.15, 0.85, 0.5 + 0.5 * Math.sin(x * 0.013 + Math.cos(z * 0.011) * 2) * Math.sin(z * 0.017 + Math.sin(x * 0.009) * 2));
+
+// Coral Shore jungle: emergent canopy over understory over ferns and ground cover, glowing
+// palm groves on the beaches. Other regions swap in their own plants, so each reads apart.
 const RULES: Rule[] = [
   {
     cell: 11,
-    p: (h, sl, r, g, _x, z) =>
-      smooth(0.5, 1.6, h) * smooth(35, 6, h) * (sl < 0.35 ? 1 : 0) * (1 - r) * (0.35 + g) * (0.55 + 0.6 * smooth(500, 1500, z)),
+    p: (s, sl, _x, z) =>
+      smooth(0.5, 1.6, s.height) * smooth(35, 6, s.height) * (sl < 0.35 ? 1 : 0) * (1 - s.rock) * (0.35 + s.grove) *
+      (0.55 + 0.6 * smooth(500, 1500, z)) * (1 - 0.7 * s.meadow) * (1 - s.lantern) * (1 - 0.8 * s.dunes),
     types: [['PalmLean', 0.35], ['PalmYoung', 0.25], ['PalmMid', 0.25], ['PalmTall', 0.15]],
     scale: [0.85, 1.2],
   },
   {
     cell: 13,
     // Sparse emergent palms glowing above the canopy, so the jungle still carries the coral light.
-    p: (h, sl, r, g) => smooth(8, 30, h) * smooth(420, 200, h) * (sl < 0.55 ? 1 : 0) * (1 - r) * smooth(0.15, 0.6, g) * 0.07,
+    p: (s, sl) => smooth(8, 30, s.height) * smooth(420, 200, s.height) * (sl < 0.55 ? 1 : 0) * (1 - s.rock) * smooth(0.15, 0.6, s.grove) * 0.07 * (1 - s.lantern),
     types: [['PalmTall', 0.5], ['PalmMid', 0.5]],
     scale: [0.9, 1.25],
   },
   {
     cell: 11,
-    p: (h, sl, r, g) => smooth(5, 16, h) * (sl < 0.7 ? 1 : 0) * (1 - r) * smooth(0.1, 0.5, g) * 0.9,
+    p: (s, sl) => smooth(5, 16, s.height) * (sl < 0.7 ? 1 : 0) * (1 - s.rock) * smooth(0.1, 0.5, s.grove) * 0.9 * (1 - 0.85 * s.lantern),
     types: [['CanopyA', 0.55], ['CanopyB', 0.45]],
     scale: [0.8, 1.35],
     sink: 0.4,
   },
   {
+    // Lone trees on the meadow skyline.
+    cell: 70,
+    p: (s, sl) => s.meadow * smooth(4, 12, s.height) * (sl < 0.5 ? 1 : 0) * 0.35,
+    types: [['CanopyA', 0.6], ['CanopyB', 0.4]],
+    scale: [1.1, 1.5],
+    sink: 0.4,
+  },
+  {
     // Lianas hang from canopy height in the densest jungle.
     cell: 16,
-    p: (h, sl, r, g) => smooth(6, 20, h) * (sl < 0.5 ? 1 : 0) * (1 - r) * smooth(0.35, 0.8, g) * 0.5,
+    p: (s, sl) => smooth(6, 20, s.height) * (sl < 0.5 ? 1 : 0) * (1 - s.rock) * smooth(0.35, 0.8, s.grove) * 0.5 * (1 - s.lantern),
     types: [['Vines', 1]],
     scale: [0.9, 1.25],
     sink: 0,
   },
   {
     cell: 5.5,
-    p: (h, sl, r, g) => smooth(3, 10, h) * (sl < 0.7 ? 1 : 0) * (1 - r) * smooth(0.05, 0.4, g) * 0.7,
+    p: (s, sl) => smooth(3, 10, s.height) * (sl < 0.7 ? 1 : 0) * (1 - s.rock) * smooth(0.05, 0.4, s.grove) * 0.7 * (1 - 0.9 * s.lantern),
     types: [['Understory', 0.4], ['TreeFern', 0.3], ['Banana', 0.3]],
     scale: [0.8, 1.25],
   },
   {
     cell: 2.3,
-    p: (h, sl, r, g) => smooth(2, 6, h) * (sl < 0.75 ? 1 : 0) * (1 - r) * smooth(0.0, 0.35, g) * 0.85,
+    p: (s, sl) => smooth(2, 6, s.height) * (sl < 0.75 ? 1 : 0) * (1 - s.rock) * smooth(0.0, 0.35, s.grove) * 0.85 * (1 - 0.6 * s.lantern),
     types: [['FernA', 0.35], ['FernB', 0.3], ['Groundcover', 0.2], ['Bush0', 0.15]],
     scale: [0.7, 1.4],
   },
   {
     cell: 9,
-    p: (h, sl, r, g) => smooth(1.4, 4, h) * smooth(60, 20, h) * (sl < 0.5 ? 1 : 0) * (1 - r) * (0.25 + g * 0.5) * 0.45,
+    p: (s, sl) => smooth(1.4, 4, s.height) * smooth(60, 20, s.height) * (sl < 0.5 ? 1 : 0) * (1 - s.rock) * (0.25 + s.grove * 0.5) * 0.45 * (1 - s.dunes),
     types: [['Bush1', 0.6], ['Bush0', 0.4]],
     scale: [0.7, 1.3],
+  },
+  // ---- Lantern Wood: giant glowing mushrooms and lantern trees over glowing ground clusters.
+  {
+    cell: 12,
+    p: (s, sl) => s.lantern * smooth(3, 12, s.height) * (sl < 0.8 ? 1 : 0) * (1 - s.rock) * 0.7,
+    types: [['GiantMushroomA', 0.55], ['GiantMushroomB', 0.45]],
+    scale: [0.7, 1.4],
+    sink: 0.3,
+  },
+  {
+    cell: 15,
+    p: (s, sl) => s.lantern * smooth(3, 12, s.height) * (sl < 0.6 ? 1 : 0) * (1 - s.rock) * 0.35,
+    types: [['LanternTree', 1]],
+    scale: [0.85, 1.25],
+    sink: 0.3,
+  },
+  {
+    cell: 3,
+    p: (s, sl) => s.lantern * smooth(2, 6, s.height) * (sl < 0.8 ? 1 : 0) * 0.5,
+    types: [['MushroomCluster', 1]],
+    scale: [0.7, 1.5],
+  },
+  // ---- Moonflower Meadows: drifts of glowing flowers in long grass.
+  {
+    cell: 3.4,
+    p: (s, sl, x, z) => s.meadow * smooth(1, 4, s.height) * (sl < 0.8 ? 1 : 0) * (0.15 + 0.85 * patch(x, z)) * 0.7,
+    types: [['Moonflowers', 1]],
+    scale: [0.8, 1.3],
+  },
+  {
+    cell: 2.2,
+    p: (s, sl) => s.meadow * smooth(1, 3, s.height) * (sl < 0.9 ? 1 : 0) * 0.6,
+    types: [['MeadowGrass', 1]],
+    scale: [0.8, 1.4],
+  },
+  // ---- Glass Dunes: crystal outcrops and sparse dune grass.
+  {
+    cell: 15,
+    p: (s, sl) => s.dunes * smooth(0.5, 3, s.height) * (sl < 0.9 ? 1 : 0) * 0.28,
+    types: [['CrystalA', 0.55], ['CrystalB', 0.45]],
+    scale: [0.7, 1.6],
+    sink: 0.3,
+  },
+  {
+    cell: 4,
+    p: (s, sl) => s.dunes * smooth(0.6, 2, s.height) * (sl < 0.6 ? 1 : 0) * 0.35,
+    types: [['DuneGrass', 1]],
+    scale: [0.8, 1.3],
   },
 ];
 
@@ -227,7 +295,7 @@ function buildFlora(req: Extract<WorkerRequest, { kind: 'flora' }>): FloraResult
         const s = h.sample(x, z);
         if (s.height < 0.3) continue;
         const slope = Math.abs(h.height(x + 2, z) - h.height(x - 2, z)) / 4 + Math.abs(h.height(x, z + 2) - h.height(x, z - 2)) / 4;
-        const p = rule.p(s.height, slope, s.rock, s.grove, x, z);
+        const p = rule.p(s, slope, x, z);
         if (hash(gx, gz, ri * 7 + 3) > p) continue;
         let pick = hash(gx, gz, ri * 7 + 4);
         let type = rule.types[0][0];
@@ -251,7 +319,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   const req = e.data;
   if (req.kind === 'chunk') {
     const r = buildChunk(req);
-    (self as unknown as Worker).postMessage(r, [r.positions.buffer, r.normals.buffer, r.attrs.buffer, r.indices.buffer]);
+    (self as unknown as Worker).postMessage(r, [r.positions.buffer, r.normals.buffer, r.attrs.buffer, r.biome.buffer, r.indices.buffer]);
   } else {
     const r = buildFlora(req);
     (self as unknown as Worker).postMessage(r, Object.values(r.sets).map((a) => a.buffer));

@@ -55,12 +55,12 @@ function cloud(count: number, span: number, seed: number, kind: 'firefly' | 'ris
 export function createMotes() {
   const group = new THREE.Group();
   group.name = 'motes';
-  const flies = cloud(1800, 70, 21, 'firefly');
-  const rising = cloud(1400, 260, 22, 'rise');
+  const flies = cloud(700, 70, 21, 'firefly');
+  const rising = cloud(240, 260, 22, 'rise');
   group.add(flies, rising);
   const apply = () => {
-    flies.count = Math.round(1800 * QUALITY.motes);
-    rising.count = Math.round(1400 * QUALITY.motes);
+    flies.count = Math.round(700 * QUALITY.motes);
+    rising.count = Math.round(240 * QUALITY.motes);
   };
   apply();
   onQualityChange(apply);

@@ -3,3 +3,4 @@ dist/
 .DS_Store
 *.blend1
 tools/audio/.venv/
+__pycache__/

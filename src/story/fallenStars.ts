@@ -105,6 +105,11 @@ export class FallenStars {
       }
   }
 
+  /** Where the uncollected, not carried stars lie (for the map). */
+  get waiting() {
+    return this.stars.filter((s) => !s.collected && !s.carried).map((s) => s.home);
+  }
+
   /** Nearest uncollected star to the player. */
   nearest(x: number, z: number) {
     let best: Star | null = null;

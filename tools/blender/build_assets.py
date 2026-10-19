@@ -2643,7 +2643,9 @@ def export(name, animations=False):
     print(f"[lapis] exported {name}")
 
 
-for asset, fn in (("flora", export_flora), ("boat", build_boat), ("keeper", build_keeper),
-                  ("props", export_props), ("creatures", export_creatures)):
-    if not ONLY or asset in ONLY:
-        fn()
+# Guarded so sibling scripts (biomes.py, fauna.py) can `import build_assets` for its helpers.
+if __name__ == "__main__":
+    for asset, fn in (("flora", export_flora), ("boat", build_boat), ("keeper", build_keeper),
+                      ("props", export_props), ("creatures", export_creatures)):
+        if not ONLY or asset in ONLY:
+            fn()

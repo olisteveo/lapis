@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
   attribute, color, float, mix, mx_fractal_noise_float, mx_noise_float, normalWorld, positionWorld, smoothstep,
-  texture, vec2, vec3, screenUV, max,
+  texture, vec2, vec3, screenUV, max, sin, time,
 } from 'three/tsl';
 import { PALETTE } from '../config';
 
@@ -47,6 +47,27 @@ export function createTerrainMaterial(reflection: THREE.TextureNode) {
   base = mix(base, granite, max(rock, smoothstep(0.55, 0.8, slope)));
   base = mix(base, sand, sandMask);
 
+  // ---- Regions. Weights arrive per vertex: meadow, lantern, dunes, drowned.
+  const biome = attribute<'vec4'>('biomeAttrs', 'vec4') as any;
+  const speck = mx_noise_float(vec2(p.x.mul(2.3), p.z.mul(2.3)));
+  // Moonflower Meadows: soft blue-green grass, flecked with pale petals.
+  const meadowGrass = mix(color(0x2a544c), color(0x4f7f70), brush.mul(0.5).add(0.5).add(large.mul(0.3)));
+  const petals = smoothstep(0.72, 0.9, speck).mul(smoothstep(0.2, 0.6, brush.add(0.4)));
+  const meadow = mix(meadowGrass, color(0xe6dcf6), petals.mul(0.7));
+  base = mix(base, meadow, biome.x.mul(float(1).sub(sandMask.mul(0.8))).mul(float(1).sub(max(rock, smoothstep(0.55, 0.8, slope)))));
+  // Lantern Wood: deep violet moss with glowing teal spores.
+  const moss = mix(color(0x1a1636), color(0x2e2a5c), brush.mul(0.5).add(0.5));
+  base = mix(base, moss, biome.y.mul(float(1).sub(sandMask)).mul(float(1).sub(rock)));
+  // Glass Dunes: pale lilac sand combed into ripples.
+  const duneRipple = sin(p.x.mul(0.72).add(p.z.mul(0.96)).add(brush.mul(2.2))).mul(0.5).add(0.5);
+  const dune = mix(color(0xb8a8cc), color(0xe2d6ec), duneRipple.mul(0.6).add(fine.mul(0.15)).add(0.2));
+  base = mix(base, dune, biome.z);
+  // Drowned Town: old paving under the shallows.
+  const tile = vec2(p.x, p.z).div(2.6).fract();
+  const grout = max(smoothstep(0.06, 0.0, tile.x), smoothstep(0.06, 0.0, tile.y));
+  const paving = mix(color(0x6a7096), color(0x2a2f4c), grout.add(fine.mul(0.15)));
+  base = mix(base, paving, biome.w.mul(0.85));
+
   // Mirror-wet band at the waterline reuses the water's reflection target (refs 2 and 3).
   const wetMask = smoothstep(0.75, 0.05, h.add(fine.mul(0.08))).mul(sandMask);
   const ripple = vec2(fine.mul(0.004), mx_noise_float(vec2(p.x.mul(0.3), p.z.mul(0.3))).mul(0.004));
@@ -59,6 +80,13 @@ export function createTerrainMaterial(reflection: THREE.TextureNode) {
   const silver = smoothstep(0.35, 0.85, up).mul(smoothstep(120, 520, h)).mul(smoothstep(-0.2, 0.5, brush.add(streak.mul(0.5))));
   mat.colorNode = mix(mat.colorNode, color(0xaab8ec), silver.mul(0.7));
   const rim = smoothstep(0.55, 1.0, up).mul(smoothstep(60, 400, h)).mul(0.03).add(silver.mul(0.05));
-  mat.emissiveNode = vec3(0.3, 0.36, 0.7).mul(rim);
+  // Light that belongs to the regions: spores in the Lantern Wood, starry grains in the dunes,
+  // petals catching the moon in the meadows.
+  const spores = smoothstep(0.78, 0.97, mx_noise_float(vec2(p.x.mul(0.9), p.z.mul(0.9)))).mul(sin(time.mul(1.3).add(p.x.mul(0.05))).mul(0.3).add(0.7));
+  const grains = smoothstep(0.93, 1.0, speck).mul(0.6);
+  const regionGlow = vec3(0.15, 0.85, 0.8).mul(spores).mul(biome.y).mul(0.35)
+    .add(vec3(0.75, 0.7, 1.0).mul(grains).mul(biome.z).mul(0.25))
+    .add(vec3(0.6, 0.55, 0.8).mul(petals).mul(biome.x).mul(0.12));
+  mat.emissiveNode = vec3(0.3, 0.36, 0.7).mul(rim).add(regionGlow);
   return mat;
 }

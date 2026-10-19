@@ -14,6 +14,7 @@ import { createFootprints, createNote, DistantFigure } from './prologue';
 import type { PrologueLayout } from './placement';
 import { Echoes, type EchoDef } from './echoes';
 import type { Landmarks } from '../world/landmarks';
+import type { Wonders } from '../world/wonders';
 import { NightClock, type NightCue } from './night';
 import { settings } from '../settings';
 import type { Wisp, WispCall, WispMood } from '../game/wisp';
@@ -61,6 +62,7 @@ export class Story {
   onWake: ((spot: { x: number; z: number }) => void) | null = null;
   readonly night = new NightClock(20 * 60);
   private landmarks: Landmarks | null = null;
+  private wonders: Wonders | null = null;
   wisp: Wisp | null = null;
   private wispTargetUntil = 0;
   private wispForced: THREE.Vector3 | null = null;
@@ -124,6 +126,24 @@ export class Story {
     for (const i of this.save.lit ?? []) landmarks.lightBeacon(i, true);
   }
 
+  attachWonders(wonders: Wonders) {
+    this.wonders = wonders;
+  }
+
+  /** Wonders found so far, for the HUD and the map. */
+  get wondersFound() {
+    return this.wonders?.list.filter((w) => this.save.seen.includes(`wonder-${w.id}`)) ?? [];
+  }
+
+  get waitingStars() {
+    return this.stars.waiting;
+  }
+
+  /** Has this place been found (a lagoon, a wonder)? */
+  hasSeen(key: string) {
+    return this.save.seen.includes(key);
+  }
+
   /** The companion speaks: a call, its line in the speech box, and it swoops into view. */
   guide(text: string, call: WispCall = 'hey', mood: WispMood = 'calm') {
     if (!this.wisp?.awake) {
@@ -159,9 +179,20 @@ export class Story {
       }
     }
     const star = this.stars.nearest(player.x, player.z);
+    // An unfound wonder nearer than the next star gets a mention: a reason to wander off the path.
+    const wonder = this.wonders?.list
+      .filter((w) => !this.save.seen.includes(`wonder-${w.id}`))
+      .map((w) => ({ w, d: Math.hypot(w.x - player.x, w.z - player.z) }))
+      .sort((a, b) => a.d - b.d)[0];
+    const rumour = wonder && (!star || wonder.d < star.dist) ? ` And something strange is humming ${compass(wonder.w)}...` : '';
     if (star) {
       this.point(star.pos.clone());
-      this.guide(`Look! There's a fallen star ${compass(star.pos)}.`, 'look', 'star');
+      this.guide(`Look! There's a fallen star ${compass(star.pos)}.${rumour}`, 'look', 'star');
+      return;
+    }
+    if (wonder) {
+      this.point(new THREE.Vector3(wonder.w.x, wonder.w.y + 4, wonder.w.z));
+      this.guide(`Hmm? Something strange is humming ${compass(wonder.w)}. Let's go and see!`, 'hmm');
       return;
     }
     this.guide("Hey! The bright one's in the north, past the lake. Follow it.", 'hey');
@@ -335,7 +366,19 @@ export class Story {
     else if (carried) this.bankCarried();
     this.onNight?.(settings.nights ? this.night.progress : 0);
     const found = LAGOONS.filter((_, i) => this.save.seen.includes(`lagoon-${i}`)).length;
-    const extra = [settings.nights ? this.night.phrase : '', found ? `secret lagoons ${found} / ${LAGOONS.length}` : ''].filter(Boolean).join('   ·   ');
+    const wonders = this.wondersFound.length;
+    const extra = [
+      settings.nights ? this.night.phrase : '',
+      found ? `secret lagoons ${found} / ${LAGOONS.length}` : '',
+      wonders ? `wonders ${wonders} / ${this.wonders!.list.length}` : '',
+    ].filter(Boolean).join('   ·   ');
+    const w = this.wonders?.at(player.x, player.z, player.y);
+    if (w && !this.seen(`wonder-${w.id}`)) {
+      this.guide(w.line, w.id === 'bell' ? 'listen' : w.id === 'rocks' ? 'look' : 'oh', 'star');
+      setTimeout(() => this.narrative.say(w.name, 'title'), 4800);
+      this.audio.chime(5);
+      if (w.id === 'bell') this.wonders!.ring();
+    }
     this.narrative.objective(THE_BOAT.name, this.save.collected.length, THE_BOAT.fragments.length, extra, carried);
     LAGOONS.forEach((L, i) => {
       if (Math.hypot(L.x - player.x, L.z - player.z) < L.r - 6 && !this.seen(`lagoon-${i}`)) {

@@ -2,6 +2,8 @@ import * as THREE from 'three/webgpu';
 import { PALETTE, QUALITY, RENDER, SKY, getQualityName, onQualityChange } from './config';
 import { settings, onSettingsChange } from './settings';
 import { PauseMenu } from './ui/menu';
+import { JournalMap } from './ui/map';
+import { LAGOONS } from './world/heightfield';
 import { createHeightfield, findSpawn } from './world/heightfield';
 import { Terrain, WorkerPool } from './world/terrain';
 import { createReflectionProxy, createTerrainMaterial } from './world/terrainMaterial';
@@ -12,6 +14,8 @@ import { createMotes } from './world/motes';
 import { Moonbeams } from './world/moonbeams';
 import { Landmarks, layoutLandmarks, CompositeColliders } from './world/landmarks';
 import { Wildlife } from './world/wildlife';
+import { Fauna } from './world/fauna';
+import { Wonders, layoutWonders } from './world/wonders';
 import { Stones, layoutStones } from './world/stones';
 import { Currents } from './world/currents';
 import { Flora } from './world/flora';
@@ -75,15 +79,22 @@ async function boot() {
   player.platforms = stones;
   const landmarks = new Landmarks(layoutLandmarks(hf, spawn));
   const wildlife = new Wildlife(hf);
-  player.colliders = new CompositeColliders([flora, landmarks]);
-  const CLEAR: Record<string, number> = { Beacon: 14, Lighthouse: 14, Hut: 6, Wreck: 7, Jetty: 4, Swing: 2.5, Cairn: 2, StoneLantern: 1.5 };
-  flora.setClearings(landmarks.placed.map((p) => ({ x: p.x, z: p.z, r: (CLEAR[p.type] ?? 2) * p.scale })));
-  scene.add(landmarks.group, wildlife.group, stones.mesh, currents.group);
+  const fauna = new Fauna(hf);
+  const wonders = new Wonders(layoutWonders(hf));
+  player.colliders = new CompositeColliders([flora, landmarks, fauna, wonders]);
+  const CLEAR: Record<string, number> = { RuinArch: 4, RuinWall: 4, RuinSteps: 3, Beacon: 14, Lighthouse: 14, Hut: 6, Wreck: 7, Jetty: 4, Swing: 2.5, Cairn: 2, StoneLantern: 1.5 };
+  flora.setClearings([
+    ...landmarks.placed.map((p) => ({ x: p.x, z: p.z, r: (CLEAR[p.type] ?? 2) * p.scale })),
+    // Wonders stand in open ground so they can be seen from the edge of their clearing.
+    ...wonders.list.filter((w) => w.id !== 'rocks').map((w) => ({ x: w.x, z: w.z, r: w.id === 'whale' ? 26 : 16 })),
+  ]);
+  scene.add(landmarks.group, wildlife.group, fauna.group, wonders.group, stones.mesh, currents.group);
   player.place(spawn.x, spawn.z, Math.PI);
   player.placeBoat(layout.boat.x, layout.boat.z, layout.boat.heading);
 
   const audio = new Audio();
   const story = new Story(layout, hf, flora, sky.shooting, audio);
+  story.attachWonders(wonders);
   const wisp = new Wisp();
   story.wisp = wisp;
   scene.add(story.group, wisp.group);
@@ -98,6 +109,7 @@ async function boot() {
     motes.visible = !mirror;
     beams.group.visible = !mirror;
     wildlife.setMirror(mirror);
+    fauna.group.visible = !mirror;
     flora.setMirror(mirror);
     proxy.node.value = mirror || settleFrames > 0 ? proxy.dummy : water.reflection.value;
   };
@@ -107,6 +119,7 @@ async function boot() {
       motes.visible = true;
       beams.group.visible = beams.wanted;
       wildlife.setMirror(false);
+      fauna.group.visible = true;
       flora.setMirror(false);
       proxy.node.value = settleFrames > 0 ? proxy.dummy : water.reflection.value;
     }
@@ -143,19 +156,21 @@ async function boot() {
   const optional = (p: Promise<unknown>, what: string) => p.catch((e) => console.warn(`${what} not loaded yet`, e?.message ?? e));
   await Promise.all([
     optional(
-      landmarks.load('/models/props.glb').then((t) => {
+      landmarks.load('/models/props.glb', '/models/biomes.glb').then((t) => {
         story.attachBeacons(landmarks);
         if (debug) console.log('landmarks', t);
       }),
       'props',
     ),
     optional(wildlife.load('/models/creatures.glb').then((t) => debug && console.log('wildlife', t)), 'creatures'),
+    optional(fauna.load('/models/fauna.glb').then((t) => debug && console.log('fauna', t)), 'fauna'),
+    optional(wonders.load('/models/wonders.glb').then((t) => debug && console.log('wonders', t)), 'wonders'),
     avatar.load('/models/keeper.glb', '/models/boat.glb').then(() => {
       if (!avatar.keeperGltf) return;
       story.loadFigure(avatar.keeperGltf);
       story.setupEchoes(avatar.keeperGltf, landmarks);
     }),
-    flora.load('/models/flora.glb').then((types) => debug && console.log('flora types', types)),
+    flora.load('/models/flora.glb', '/models/biomes.glb').then((types) => debug && console.log('flora types', types)),
   ]);
 
   // Polled rather than event-driven: embedded panes and devtools can resize without a reliable event.
@@ -227,7 +242,17 @@ async function boot() {
       else openMenu();
     }
     if (e.code === 'KeyE' && !e.repeat) ePressed = true;
-    if (e.code === 'KeyF' && !e.repeat && state === 'play' && !menu.open) story.askGuide(player);
+    if (e.code === 'KeyF' && !e.repeat && state === 'play' && !menu.open && !chart.open) story.askGuide(player);
+    if (e.code === 'KeyM' && !e.repeat && state === 'play' && !menu.open) {
+      if (chart.open) {
+        chart.hide();
+        audio.setPaused(false);
+      } else {
+        const fwd = camera.getWorldDirection(new THREE.Vector3());
+        chart.show(player, Math.atan2(fwd.x, -fwd.z));
+        audio.setPaused(true);
+      }
+    }
   });
   rig.onStep = (speed) => {
     const h = hf.height(player.x, player.z);
@@ -258,7 +283,7 @@ async function boot() {
     // Console handle for art direction: lapis.view(x, z, yaw, pitch), lapis.player, etc.
     Object.assign(window, {
       lapis: {
-        player, input, camera, hf, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones,
+        player, input, camera, hf, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones, fauna, wonders,
         get post() {
           return post;
         },
@@ -308,6 +333,15 @@ async function boot() {
   applySettings();
 
   const menu = new PauseMenu();
+  const chart = new JournalMap(hf);
+  chart.markers = () => [
+    ...landmarks.beacons.map((b, i) => ({ kind: landmarks.isLit(i) ? 'beaconLit' : 'beacon', x: b.placed.x, z: b.placed.z }) as const),
+    ...LAGOONS.flatMap((L, i) => (story.hasSeen(`lagoon-${i}`) ? [{ kind: 'lagoon' as const, x: L.x, z: L.z, label: 'secret lagoon' }] : [])),
+    ...wonders.list.map((w) =>
+      story.hasSeen(`wonder-${w.id}`) ? { kind: 'wonder' as const, x: w.x, z: w.z, label: w.name } : { kind: 'mystery' as const, x: w.x, z: w.z },
+    ),
+    ...story.waitingStars.map((p) => ({ kind: 'star' as const, x: p.x, z: p.z })),
+  ];
   const openMenu = () => {
     if (menu.open || state !== 'play') return;
     menu.show();
@@ -322,6 +356,7 @@ async function boot() {
   menu.onStartOver = () => {
     try {
       localStorage.removeItem('lapis.save.v1');
+      JournalMap.clear();
     } catch {
       // Nothing saved to clear.
     }
@@ -329,7 +364,13 @@ async function boot() {
   };
   // The browser swallows Escape when it releases pointer lock, so losing the lock opens the menu.
   document.addEventListener('pointerlockchange', () => {
-    if (!document.pointerLockElement && state === 'play' && !menu.open) openMenu();
+    if (!document.pointerLockElement && state === 'play' && !menu.open) {
+      // Escape while the chart is up just puts the chart away.
+      if (chart.open) {
+        chart.hide();
+        audio.setPaused(false);
+      } else openMenu();
+    }
   });
   let forcedDt = 0;
   let paused = false;
@@ -344,7 +385,7 @@ async function boot() {
 
     const pressed = ePressed;
     ePressed = false;
-    if (menu.open) {
+    if (menu.open || chart.open) {
       // Frozen world behind the menu: keep drawing it, but nothing moves or happens.
       camera.updateMatrixWorld();
       if (renderer.domElement.clientWidth > 0 && settleFrames < 3) post.pipeline.render();
@@ -450,6 +491,9 @@ async function boot() {
     beams.update(dt, focus);
     landmarks.update(focus, dt);
     wildlife.update(dt, focus, camera, player.mode === 'boat' || story.audioMix(player).sea > 0.55);
+    fauna.update(dt, focus, player.mode === 'walk' ? player.speed : 0);
+    wonders.update(dt, focus);
+    if (state === 'play') chart.reveal(player.x, player.z, dt);
     water.update(focus);
     camera.updateMatrixWorld();
     // A hidden or collapsed canvas has zero size; rendering then invalidates every target.
@@ -468,7 +512,7 @@ async function boot() {
   // Capped: a 120Hz display would otherwise render twice as many frames for no visible gain.
   // Unfocused windows drop to a trickle so the game doesn't heat the machine in the background.
   renderer.setAnimationLoop((t: number) => {
-    const cap = !document.hasFocus() ? 8 : menu.open ? 30 : QUALITY.fps;
+    const cap = !document.hasFocus() ? 8 : menu.open || chart.open ? 30 : QUALITY.fps;
     if (t - lastRender < 1000 / cap - 2) return;
     lastRender = t;
     frame();

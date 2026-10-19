@@ -57,7 +57,23 @@ export interface TerrainSample {
   rock: number;
   /** 0..1 jungle/grove density hint for vegetation and shading. */
   grove: number;
+  /** Region weights 0..1 (the Coral Shore is wherever these are all low). */
+  meadow: number;
+  lantern: number;
+  dunes: number;
+  drowned: number;
 }
+
+/**
+ * Regions of the dream, each with its own ground, plants, creatures and wonder.
+ * The Coral Shore (south, where you wake) and the Karst Highlands (north) are the defaults.
+ */
+export const BIOMES = {
+  meadow: { x: -1950, z: 250, r: 1250 },
+  lantern: { x: 1850, z: 450, r: 1150 },
+  dunes: { x: 1350, z: -2150, r: 1000 },
+  drowned: { x: -2330, z: 520, r: 240 },
+};
 
 export interface Heightfield {
   seed: number;
@@ -264,9 +280,21 @@ export function createHeightfield(seed = 1337): Heightfield {
     return null;
   }
 
+  /** Soft region weights, with warped borders so regions bleed into each other naturally. */
+  function regions(x: number, z: number) {
+    const wx = x + fbm(nRegion, x / 700 + 3, z / 700, 3) * 380;
+    const wz = z + fbm(nRegion, x / 700, z / 700 - 3, 3) * 380;
+    const w = (b: { x: number; z: number; r: number }) => smoothstep(b.r * 1.15, b.r * 0.5, Math.hypot(wx - b.x, wz - b.z));
+    // The sunken town keeps a crisp edge: it's a place, not a mood.
+    const dr = BIOMES.drowned;
+    const drowned = smoothstep(dr.r, dr.r * 0.6, Math.hypot(x - dr.x, z - dr.z) + fbm(nDetail, x / 60, z / 60, 2) * 40);
+    return { meadow: w(BIOMES.meadow), lantern: w(BIOMES.lantern), dunes: w(BIOMES.dunes), drowned };
+  }
+
   function sample(x: number, z: number): TerrainSample {
     let m = baseMask(x, z);
     m += fbm(nDetail, x / 180, z / 180, 3) * 0.06;
+    const R = regions(x, z);
 
     const inland = smoothstep(0.04, 0.3, m);
     let h: number;
@@ -277,6 +305,13 @@ export function createHeightfield(seed = 1337): Heightfield {
       const hills = Math.pow(smoothstep(0.0, 0.6, fbm(nKarst, x / 300, z / 300, 4) + 0.15), 1.6) * 140;
       const mountains = ridged(x / 1100, z / 1100, 6) * 620;
       h += (hills * smoothstep(0.1, 0.5, rel) + mountains * smoothstep(0.45, 1.0, rel)) * inland;
+      // Meadows: long, soft, rolling hills under a big sky, no crags.
+      const meadowH = m * 48 + (fbm(nHills, x / 560, z / 560, 4) * 0.5 + 0.5) * 42 * inland;
+      h = lerp(h, meadowH, R.meadow);
+      // Dunes: low ground shaped into wind-combed crests.
+      const crest = 1 - Math.abs(Math.sin((x * 0.6 + z * 0.8) / 42 + fbm(nDetail, x / 240, z / 240, 2) * 3.2));
+      const duneH = m * 18 + crest * crest * 9 * inland + 1.2;
+      h = lerp(h, duneH, R.dunes);
     } else {
       h = Math.max(-70, m * 110 - 1.5);
     }
@@ -291,6 +326,8 @@ export function createHeightfield(seed = 1337): Heightfield {
 
     // Domes go on after the sea and lake so they can rise straight out of the water.
     const dm = domes(x, z);
+    // Few domes in the open regions: they'd break the meadow skyline and bury the dunes.
+    dm.h *= 1 - 0.75 * Math.max(R.meadow, R.dunes);
     if (dm.h > 0) {
       const streaks = fbm(nDetail, x / 25, z / 25, 2) * 0.5 + fbm(nDetail, x / 90, z / 90, 2);
       h = Math.max(h, dm.h * (1 + 0.025 * streaks));
@@ -310,14 +347,19 @@ export function createHeightfield(seed = 1337): Heightfield {
       h = lerp(h, -5, smoothstep(w + 70, w, dr) * along);
     }
 
+    // The drowned town: a broad shallow shelf you can wade across among the ruins.
+    if (R.drowned > 0) h = lerp(h, -1.15 + fbm(nDetail, x / 30, z / 30, 2) * 0.35, R.drowned);
+
     // Beaches: compress the band just above sea level into wide, gently sloping sand.
     if (h > 0 && h < 5) h = h * 0.32;
     else if (h >= 5) h = 1.6 + (h - 5);
 
-    const grove = Math.max(0, fbm(nGrove, x / 180, z / 180, 3) + 0.6) * (1 - rock) * smoothstep(0.2, 2.0, h) * smoothstep(120, 30, h);
-    rock = Math.max(rock, smoothstep(140, 260, h) * 0.5);
+    let grove = Math.max(0, fbm(nGrove, x / 180, z / 180, 3) + 0.6) * (1 - rock) * smoothstep(0.2, 2.0, h) * smoothstep(120, 30, h);
+    // Open country: meadows keep only scattered copses, dunes none.
+    grove *= (1 - R.meadow * 0.85) * (1 - R.dunes) * (1 - R.drowned);
+    rock = Math.max(rock, smoothstep(140, 260, h) * 0.5) * (1 - R.dunes);
 
-    return { height: h, rock: Math.min(1, rock), grove: Math.min(1, grove * 1.4) };
+    return { height: h, rock: Math.min(1, rock), grove: Math.min(1, grove * 1.4), ...R };
   }
 
   return { seed, height: (x, z) => sample(x, z).height, sample, riverX, lagoonGaps };

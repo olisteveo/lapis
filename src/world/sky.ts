@@ -38,11 +38,12 @@ function skyDome() {
   const milky = exp(pow(dot(dir, bandN).div(0.2), 2).negate());
   const cell = floor(dir.mul(900));
   const seed = hash(dot(cell, vec3(12.9898, 78.233, 37.719)));
-  const thresh = mix(0.9965, 0.985, milky);
+  // Only a faint grain inside the band; uniform specks across the whole sky read as screen noise.
+  const thresh = mix(1.01, 0.994, milky);
   const twinkle = sin(time.mul(seed.mul(1.2).add(0.4)).add(seed.mul(100))).mul(0.12).add(0.88);
   const tiny = step(thresh, seed).mul(twinkle).mul(smoothstep(0.0, 0.08, el)).mul(cloud.oneMinus());
   const tint = mix(color(PALETTE.starWhite), color(PALETTE.starGold), fract(seed.mul(17)));
-  col = col.add(tint.mul(tiny).mul(0.9));
+  col = col.add(tint.mul(tiny).mul(milky).mul(0.4));
   col = col.add(vec3(0.05, 0.06, 0.16).mul(milky).mul(smoothstep(0.0, 0.2, el)));
 
   mat.colorNode = col;
@@ -64,7 +65,7 @@ function starField(count: number) {
     a[i * 4] = Math.sin(azm) * Math.cos(el);
     a[i * 4 + 1] = Math.sin(el);
     a[i * 4 + 2] = -Math.cos(azm) * Math.cos(el);
-    a[i * 4 + 3] = 0.0016 + 0.0075 * Math.pow(rnd(), 9);
+    a[i * 4 + 3] = 0.0026 + 0.0095 * Math.pow(rnd(), 5);
     const gold = rnd() < 0.55 ? 1 : 0;
     b[i * 4] = gold;
     b[i * 4 + 1] = rnd();
@@ -76,7 +77,8 @@ function starField(count: number) {
 
   const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
   mat.positionNode = cameraPosition.add(dirSize.xyz.mul(STAR_RADIUS));
-  const tw = sin(time.mul(meta.y.mul(1.1).add(0.3)).add(meta.y.mul(40))).mul(0.1).add(0.9);
+  // Each star slowly breathes in and out over 15-40s, so the sky never looks like fixed specks.
+  const tw = sin(time.mul(meta.y.mul(0.25).add(0.15)).add(meta.y.mul(40))).mul(0.4).add(0.6);
   mat.scaleNode = vec2(dirSize.w.mul(STAR_RADIUS));
   const shape = starShape(uv(), dirSize.w.mul(110).min(0.95), float(0));
   const tint = mix(color(PALETTE.starWhite), color(PALETTE.starGold), meta.x);
@@ -190,7 +192,7 @@ export class ShootingStar {
 export function createSky() {
   const group = new THREE.Group();
   group.name = 'skyGroup';
-  group.add(skyDome(), starField(2600), heroStar(), moon());
+  group.add(skyDome(), starField(650), heroStar(), moon());
   const shooting = new ShootingStar();
   group.add(shooting.sprite);
   return { group, shooting };

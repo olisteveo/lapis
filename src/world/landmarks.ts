@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { color, float, hash, positionWorld, sin, time, uniform, uv, vertexColor, normalWorld, saturate, dot, vec3 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE, SKY } from '../config';
-import { LIGHTHOUSE, WORLD_HALF, type Heightfield } from './heightfield';
+import { BIOMES, LIGHTHOUSE, WORLD_HALF, type Heightfield } from './heightfield';
 import type { Colliders } from '../game/player';
 
 export interface Placed {
@@ -129,11 +129,33 @@ export function layoutLandmarks(hf: Heightfield, spawn: { x: number; z: number }
     if (s.height < 3 || s.rock > 0.1 || slope(x, z) > 1.2 || s.grove < 0.4 || !far(x, z, 120)) continue;
     out.push({ type: 'StoneLantern', x, y: s.height - 0.1, z, yaw: rand(k, 23) * 6.28, scale: 0.9 + rand(k, 24) * 0.3 });
   }
+
+  // The Drowned Town: a sunken street grid on the west shelf, ruins standing in the shallows.
+  const D = BIOMES.drowned;
+  const RUINS = ['RuinColumn', 'RuinColumn', 'RuinColumnBroken', 'RuinColumnBroken', 'RuinWall', 'RuinArch', 'RuinSteps'];
+  const streetYaw = 0.35;
+  let k = 0;
+  for (let gz = -D.r; gz <= D.r; gz += 26)
+    for (let gx = -D.r; gx <= D.r; gx += 26) {
+      k++;
+      const jx = gx + (rand(k, 31) - 0.5) * 10;
+      const jz = gz + (rand(k, 32) - 0.5) * 10;
+      if (Math.hypot(jx, jz) > D.r * (0.75 + rand(k, 33) * 0.25) || rand(k, 34) < 0.25) continue;
+      const x = D.x + jx * Math.cos(streetYaw) - jz * Math.sin(streetYaw);
+      const z = D.z + jx * Math.sin(streetYaw) + jz * Math.cos(streetYaw);
+      const y = h(x, z);
+      if (y < -3.5 || y > 2.5) continue;
+      const type = RUINS[Math.floor(rand(k, 35) * RUINS.length)];
+      // Walls and arches follow the old streets; broken pieces lean wherever they fell.
+      const aligned = type === 'RuinWall' || type === 'RuinArch' || type === 'RuinSteps';
+      const yaw = aligned ? -streetYaw + (rand(k, 36) < 0.5 ? 0 : Math.PI / 2) : rand(k, 36) * 6.28;
+      out.push({ type, x, y: y - 0.3, z, yaw, scale: 0.9 + rand(k, 37) * 0.35 });
+    }
   return out;
 }
 
 // Footprint radius per landmark for collision (scaled by placement scale).
-const SOLID: Record<string, number> = { Lighthouse: 4.2, Beacon: 4.2, Hut: 2.2, Cairn: 0.5, StoneLantern: 0.35, Wreck: 0 };
+const SOLID: Record<string, number> = { Lighthouse: 4.2, Beacon: 4.2, Hut: 2.2, Cairn: 0.5, StoneLantern: 0.35, Wreck: 0, RuinColumn: 0.7, RuinColumnBroken: 0.7 };
 /** Lamp-room height of the lighthouse model, before placement scale. */
 const LAMP_Y = 23.5;
 const LIGHTS: Record<string, [number, number, number]> = {
@@ -179,6 +201,7 @@ export class Landmarks implements Colliders {
     const base: Record<string, number> = {
       wood: 0x6b5450, thatch: 0x7a6650, stone: 0x5b6890, rope: 0x8a7a68, sail: 0xe8dfd0,
       lighthouse_white: 0xd9d2c6, lighthouse_band: PALETTE.coral,
+      ruin_stone: 0x8a90b8, ruin_moss: 0x3f6a7a, marble: 0xb8b8d8,
     };
     const tint = color(base[name] ?? 0x34405e);
     // A cool moonlit lift on top faces so built things read against the dark jungle.
@@ -187,12 +210,17 @@ export class Landmarks implements Colliders {
     return mat;
   }
 
-  async load(url: string) {
-    const gltf = await new GLTFLoader().loadAsync(url);
-    gltf.scene.updateMatrixWorld(true);
+  /** Loads templates from each file; a missing file just leaves its props out. */
+  async load(...urls: string[]) {
     const mats = new Map<string, THREE.Material>();
     const templates = new Map<string, THREE.Object3D>();
-    for (const child of gltf.scene.children) templates.set(child.name, child);
+    const loader = new GLTFLoader();
+    for (const url of urls) {
+      const gltf = await loader.loadAsync(url).catch(() => null);
+      if (!gltf) continue;
+      gltf.scene.updateMatrixWorld(true);
+      for (const child of gltf.scene.children) templates.set(child.name, child);
+    }
     for (const p of this.placed) {
       const isLight = p.type === 'Beacon' || p.type === 'Lighthouse';
       const t = templates.get(p.type === 'Beacon' ? 'Lighthouse' : p.type);
