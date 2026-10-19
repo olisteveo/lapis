@@ -411,6 +411,25 @@ async function boot() {
   nightmares.onCatch = () => story.caught();
   nightmares.onSighted = () => story.nightmaresSighted();
   story.onNewNight = () => nightmares.clear();
+  // The ending: fade to black for the last page, then the end card; afterwards you may keep wandering.
+  story.onEndingStart = () => {
+    fade.style.transition = 'opacity 4s ease';
+    fade.style.opacity = '1';
+    nightmares.clear();
+  };
+  story.onEnding = () => {
+    const card = document.createElement('div');
+    card.id = 'endcard';
+    card.innerHTML = `<div class="t">L A P I S</div><div class="s">beyond the sea</div><div class="thanks">thank you for playing</div><div class="go">click to keep wandering</div>`;
+    document.body.appendChild(card);
+    requestAnimationFrame(() => card.classList.add('open'));
+    card.addEventListener('click', () => {
+      card.classList.remove('open');
+      setTimeout(() => card.remove(), 1500);
+      fade.style.opacity = '0';
+      setTimeout(() => (fade.style.transition = ''), 4000);
+    });
+  };
   chart.markers = () => [
     ...landmarks.beacons.map((b, i) => ({ kind: landmarks.isLit(i) ? 'beaconLit' : 'beacon', x: b.placed.x, z: b.placed.z }) as const),
     ...LAGOONS.flatMap((L, i) => (story.hasSeen(`lagoon-${i}`) ? [{ kind: 'lagoon' as const, x: L.x, z: L.z, label: 'secret lagoon' }] : [])),
@@ -572,6 +591,7 @@ async function boot() {
     fauna.update(dt, focus, player.mode === 'walk' ? player.speed : 0);
     wonders.update(dt, focus);
     waterfalls.update(dt, focus);
+    sky.blaze.value += ((story.allLit ? 1 : 0) - sky.blaze.value) * Math.min(1, dt * 0.3);
     if (state === 'play') {
       const lights: LightSource[] = [];
       landmarks.beacons.forEach((b, i) => landmarks.isLit(i) && lights.push({ x: b.placed.x, z: b.placed.z, r: 55 }));

@@ -706,8 +706,12 @@ export class Story {
   /** Fired when the ending finishes, to roll the title. */
   onEnding: (() => void) | null = null;
 
+  /** The ending begins: the world fades before the last page. */
+  onEndingStart: (() => void) | null = null;
+
   private beginEnding() {
     this.ending = true;
+    this.onEndingStart?.();
     this.audio.memory();
     this.narrative.storybook(ENDING, () => this.onEnding?.());
   }

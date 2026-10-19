@@ -92,14 +92,17 @@ function starField(count: number) {
   return sprite;
 }
 
+/** 0..1: the brightest star blazes once her whole sky is lit. */
+const blaze = uniform(0);
+
 function heroStar() {
   const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
   const d = SKY.brightStar;
   mat.positionNode = cameraPosition.add(vec3(d.x, d.y, d.z).mul(STAR_RADIUS));
   const pulse = sin(time.mul(0.7)).mul(0.06).add(1);
-  mat.scaleNode = vec2(float(STAR_RADIUS * 0.11).mul(pulse));
-  const s = starShape(uv(), float(1), float(0.7));
-  mat.colorNode = vec4(mix(color(PALETTE.starWhite), color(PALETTE.starGold), 0.35).mul(s).mul(2.2), 1);
+  mat.scaleNode = vec2(float(STAR_RADIUS * 0.11).mul(pulse).mul(blaze.mul(1.4).add(1)));
+  const s = starShape(uv(), float(1), blaze.mul(0.3).add(0.7));
+  mat.colorNode = vec4(mix(color(PALETTE.starWhite), color(PALETTE.starGold), 0.35).mul(s).mul(blaze.mul(1.8).add(2.2)), 1);
   const sprite = new THREE.Sprite(mat);
   sprite.frustumCulled = false;
   sprite.renderOrder = -8;
@@ -195,5 +198,5 @@ export function createSky() {
   group.add(skyDome(), starField(650), heroStar(), moon());
   const shooting = new ShootingStar();
   group.add(shooting.sprite);
-  return { group, shooting };
+  return { group, shooting, blaze };
 }
