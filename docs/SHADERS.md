@@ -23,7 +23,7 @@ Everything the game draws, written out so it can be rebuilt in HLSL. The source 
 |---|---|---|
 | `mx_noise_float(p)` | MaterialX gradient Perlin, 2D or 3D, output roughly in [-1, 1] | Port `mx_perlin_noise_float` from MaterialX `mx_noise.glsl` (public, ports 1:1) |
 | `mx_fractal_noise_float(p, oct)` | fBm: `oct` octaves, lacunarity 2, diminish 0.5, amplitude 1 | sum of the above |
-| `hash(x)` (`three/src/nodes/math/Hash.js`) | PCG: `uint s = (uint)x; s = s*747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return float((w >> 22u) ^ w) / 4294967296.0;` | **The seed is truncated to uint.** Fractional parts are lost, so `boil*3.7` steps in whole numbers. WGSL saturates negative floats to 0, so on WebGPU every **negative seed hashes to the same value**. This affects world-position seeds (flora `variety`, landmark `variety`, deer and whale star cells). Either reproduce it with `(uint)max(x,0)` or fix it on purpose; plain `(uint)` of a negative float is undefined in HLSL. |
+| `hash(x)` (`three/src/nodes/math/Hash.js`) | PCG: `uint s = (uint)x; s = s*747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return float((w >> 22u) ^ w) / 4294967296.0;` | **The seed is truncated to uint.** Fractional parts are lost, so `boil*3.7` steps in whole numbers. WGSL saturates negative floats to 0, so every world- or body-space seed goes through `src/render/seed.ts`, which folds negatives above 2^20: `hash(x < 0 ? -x + 1048576 : x)`. Port that wrapper too; plain `(uint)` of a negative float is undefined in HLSL. |
 | `luminance(c)` | `dot(c, float3(0.2126, 0.7152, 0.0722))` | Applied to display-encoded values in the post pass, as written. |
 | `color(0xRRGGBB)` | sRGB hex converted to **linear** | Scene materials work in linear. The post pass works in display space, so it re-encodes with `pow(x, 1/2.2)`, except in one place (see 1.5). |
 | `fwidth` | screen-space derivative | `fwidth` |
@@ -206,7 +206,7 @@ float ink = max(smoothstep(0.35,0.9,dEdge), smoothstep(0.16,0.42,tEdge)*0.55*(is
 c = lerp(c, INK, ink*0.6*paint);
 ```
 
-`INK` is `color(0x070b24)`, which three returns as **linear** values, and it is mixed into a display-space image without re-encoding. To match the current look, use the literal `float3(0.0021, 0.0033, 0.0177)`. `log(1/(1-d))` assumes a standard 0..1 perspective depth. With reversed-Z or linear depth, rebuild the same "log of distance-ish" signal, or retune the 0.35/0.9 thresholds.
+`INK` is the literal `float3(0.0021, 0.0033, 0.0177)` (`0x070b24` linearised, kept on purpose though the image is display-space: it is the near-black the look was tuned to). `log(1/(1-d))` assumes a standard 0..1 perspective depth. With reversed-Z or linear depth, rebuild the same "log of distance-ish" signal, or retune the 0.35/0.9 thresholds.
 
 ### 1.7 Stage 7 -- canvas emboss
 
@@ -749,7 +749,7 @@ Unlit, double-sided. `variety = hash(floor(wp.x*.31 + wp.z*.17))`. The lit unifo
 
 Solid tints: wood 6b5450, thatch 7a6650, stone 5b6890, rope 8a7a68, sail e8dfd0, lighthouse_white c9c0b0, lighthouse_band = coral, ruin_stone 8a90b8, ruin_moss 3f6a7a, marble b8b8d8.
 
-**Beam cones** (`makeBeam`): two open cylinders (radius 0.35·scale and 7, length 160·max(.7, scale)) laid horizontally and opposite each other. Additive, fog off, double-sided. `col = C(ffe0a8)*pow(1-uv.y, 1.8)*.22`. Group rotates 0.35 rad/s; scale `min(1, L*1.2)`; visible when `L > .05`. As written, the 7 m radius sits at the lamp end (`uv.y = 0`) and the cone narrows outward. Check that is intended before copying it.
+**Beam cones** (`makeBeam`): two open cylinders (radius 0.35·scale at the lamp spreading to 7 at the far end, length 160·max(.7, scale)) laid horizontally and opposite each other. Additive, fog off, double-sided. `col = C(ffe0a8)*pow(1-uv.y, 1.8)*.22`. Group rotates 0.35 rad/s; scale `min(1, L*1.2)`; visible when `L > .05`.
 
 `Landmarks.lamp` (the shared fallback uniform) is never driven, so it is 0. `RuneRing_0..2` are removed at load.
 
@@ -901,7 +901,7 @@ In s&box, do this with a second camera rendering to a texture and render tags: t
 
 ### 7.6 Suggested porting order
 
-1. **Helpers**: MaterialX Perlin and fBm, PCG hash (decide on the negative-seed behaviour), `starShape`, `drawn.hlsl` (penLines, tones, hatchAt, strokes, drawnSurface), the Y-up metre conversion.
+1. **Helpers**: MaterialX Perlin and fBm, PCG hash with the negative-seed fold, `starShape`, `drawn.hlsl` (penLines, tones, hatchAt, strokes, drawnSurface), the Y-up metre conversion.
 2. **Post chain** (section 1), on a greybox. It defines the look; check it against browser screenshots before tuning any material. Order: stage 1 → tensor → LIC → palette → ink → canvas/dither → vignette/grain, then memory, frost and nightmare.
 3. **Terrain** (2.2), including the region weights and a stub reflection texture.
 4. **Sky**: dome, stars, moon, hero star, shooting star.

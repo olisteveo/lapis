@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { color, float, hash, length, mix, positionLocal, positionWorld, sin, smoothstep, time, uniform, uv, vertexColor, normalWorld, saturate, vec3 } from 'three/tsl';
+import { color, float, length, mix, positionLocal, positionWorld, sin, smoothstep, time, uniform, uv, vertexColor, normalWorld, saturate, vec3 } from 'three/tsl';
+import { hash } from '../render/seed';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE } from '../config';
 import { drawnSurface } from '../render/drawn';
@@ -324,7 +325,8 @@ export class Landmarks implements Colliders {
   private makeBeam(scale: number) {
     const g = new THREE.Group();
     const length = 160 * Math.max(0.7, scale);
-    const geo = new THREE.CylinderGeometry(0.35 * scale, 7, length, 16, 1, true);
+    // Narrow at the lamp (the cylinder's bottom once shifted up), spreading to 7 m far out.
+    const geo = new THREE.CylinderGeometry(7, 0.35 * scale, length, 16, 1, true);
     geo.translate(0, length / 2, 0);
     geo.rotateZ(-Math.PI / 2);
     const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });

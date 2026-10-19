@@ -185,7 +185,9 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const lineNoise = mx_noise_float(vec3(px.mul(0.05), boil.mul(0.61))).mul(0.5).add(0.5);
   // No tonal ink in the sky: it would outline every star and make it jitter.
   const ink = max(smoothstep(0.35, 0.9, dEdge), smoothstep(0.16, 0.42, tEdge).mul(0.55).mul(select(isSky, float(0), float(1)))).mul(lineNoise.mul(0.6).add(0.4));
-  c = mix(c, color(0x070b24), ink.mul(0.6).mul(paint));
+  // The ink is this exact near-black: color(0x070b24) linearised but mixed in display space, kept as
+  // the look the drawing was tuned to.
+  c = mix(c, vec3(0.0021, 0.0033, 0.0177), ink.mul(0.6).mul(paint));
 
   // ---- 7. Canvas: emboss the weave, let pigment pool in the valleys.
   const canvasTex = new THREE.TextureLoader().load('/textures/canvas.png');
