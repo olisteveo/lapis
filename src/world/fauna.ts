@@ -272,11 +272,16 @@ export class Fauna implements Colliders {
       else {
         // Deep-sea blues, inked, with bioluminescent stripes rippling out along the wings.
         const nm = yawed(normalGeometry, heading);
-        const body = drawnSurface(mix(color(0x1a2660), color(0x5a70c0), lambert), nm, positionWorld, { spacing: 1.2, strength: 0.5 });
+        // Seen mostly from below: a pale moonlit belly under a deep blue back, so they read against the sky.
+        const belly = smoothstep(0.15, -0.5, nm.y);
+        const back = drawnSurface(mix(color(0x1a2660), color(0x4a60b0), lambert), nm, positionWorld, { spacing: 1.2, strength: 0.5 });
+        const body = mix(back, color(0x9fb0e8).mul(0.75), belly);
+        // Rows of glowing spots along the wings, a pulse travelling out to the tips.
         const span = abs(lp.z);
-        const stripes = penLines(span.mul(1.1).add(lp.x.mul(0.25)), 1.6).mul(smoothstep(0.9, 1.6, span));
+        const row = penLines(span.mul(0.9).add(lp.x.mul(0.2)), 2.4);
+        const spots = smoothstep(0.35, 0.8, sin(lp.x.mul(5).add(span.mul(2))));
         const ripple = sin(time.mul(2.2).sub(span.mul(1.3)).add(M.y)).mul(0.5).add(0.5);
-        mat.colorNode = body.add(color(0x6ff4ee).mul(stripes.mul(ripple.mul(1.2).add(0.2))));
+        mat.colorNode = body.add(color(0x6ff4ee).mul(row.mul(spots).mul(smoothstep(0.9, 1.6, span)).mul(ripple.mul(1.4).add(0.3))));
       }
       const mesh = new THREE.Mesh(geometry, mat);
       mesh.frustumCulled = false;
@@ -310,7 +315,7 @@ export class Fauna implements Colliders {
   // ---------------------------------------------------------------- moths
 
   private buildMoths() {
-    const count = 500;
+    const count = 240;
     const rnd = mulberry32(31);
     const a = new Float32Array(count * 4);
     for (let i = 0; i < count * 4; i++) a[i] = rnd();
@@ -327,8 +332,9 @@ export class Fauna implements Colliders {
     mat.positionNode = vec3(local.x.add(cam.x), cam.y.add(local.y.mul(0.25)).sub(0.3), local.z.add(cam.z));
     const r = length(uv().sub(0.5)).mul(2);
     const wing = sin(time.mul(30).add(s.w.mul(50))).mul(0.5).add(0.5);
-    mat.scaleNode = vec3(float(0.08).mul(wing.mul(0.5).add(0.6)), 0.06, 1) as N;
-    mat.colorNode = vec4(mix(color(0xc6b8ff), color(0x8ff0e6), s.w).mul(exp(r.mul(-4)).mul(1.6)).mul(this.mothStrength as N), 1);
+    // Big enough to see: moths a hand across, wings beating.
+    mat.scaleNode = vec3(float(0.26).mul(wing.mul(0.6).add(0.5)), 0.18, 1) as N;
+    mat.colorNode = vec4(mix(color(0xc6b8ff), color(0x8ff0e6), s.w).mul(exp(r.mul(-3.2)).mul(1.9)).mul(this.mothStrength as N), 1);
     const sprite = new THREE.Sprite(mat);
     sprite.count = count;
     sprite.frustumCulled = false;
@@ -350,7 +356,8 @@ export class Fauna implements Colliders {
       const vc = vertexColor() as N;
       mat.positionNode = gait(positionLocal, vc, phase as N, 0.9, 0.35);
       const lambert = saturate(dot(normalGeometry, key).mul(0.55).add(0.45));
-      const [dark, light] = name.includes('moss') ? [0x1f4a4a, 0x5fa08a] : name.includes('shell') ? [0x2a3260, 0x6a74a8] : [0x3a3a5e, 0x8f8cb4];
+      // Darker than the pale dunes it walks on, so it reads as a creature from a distance.
+      const [dark, light] = name.includes('moss') ? [0x1a4038, 0x4f9078] : name.includes('shell') ? [0x161c40, 0x48528a] : [0x24223e, 0x6a6890];
       let col: N = drawnSurface(mix(color(dark), color(light), lambert.mul(0.5).add(0.5)).mul(0.9), normalWorld, positionWorld, { spacing: 1.4 });
       if (name.includes('moss')) {
         // A little world of its own on its back: glowing spores drifting in the moss.

@@ -34,7 +34,8 @@ export class Wisp {
     const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const p = uv().sub(0.5).mul(2);
     const r = length(p);
-    const core = exp(r.mul(-9)).mul(2.2).add(exp(r.mul(-3.2)).mul(0.5));
+    // A tight, tinted core: brighter and it blooms into a shapeless white blur, losing its wings.
+    const core = exp(r.mul(-10)).mul(1.4).add(exp(r.mul(-3.5)).mul(0.22));
     // Two tiny wings either side, beating fast.
     const beat = sin(time.mul(38)).mul(0.5).add(0.5);
     const wingShape = (side: number) => {
@@ -42,9 +43,9 @@ export class Wisp {
       return exp(length(q).mul(-5)).mul(0.45);
     };
     const wings = max(wingShape(1), wingShape(-1)).mul(abs(p.x).greaterThan(0.12).select(float(1), float(0)));
-    mat.colorNode = vec4(mix(this.tint, color(0xffffff), core.mul(0.35).min(0.7)).mul(core.add(wings)).mul(this.glow), 1);
+    mat.colorNode = vec4(mix(this.tint, color(0xffffff), core.mul(0.25).min(0.4)).mul(core.add(wings.mul(1.6))).mul(this.glow), 1);
     this.sprite = new THREE.Sprite(mat);
-    this.sprite.scale.setScalar(0.32);
+    this.sprite.scale.setScalar(0.3);
     this.sprite.renderOrder = 6;
     this.group.add(this.sprite, this.light);
     this.group.visible = false;
