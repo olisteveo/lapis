@@ -120,6 +120,64 @@ export class Audio {
     this.music.memory().catch(() => {});
   }
 
+  private voiceChain: AudioNode | null = null;
+
+  /**
+   * Mara's recorded lines (public/audio/voice/<id>.mp3 or .wav), if they exist. Played through
+   * a soft "remembered" chain: a little room, the top end rolled off, a faint tape drift.
+   */
+  async voice(id: string) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    let buf: AudioBuffer | null = null;
+    for (const ext of ['mp3', 'wav']) {
+      try {
+        const res = await fetch(`/audio/voice/${id}.${ext}`);
+        // The dev server answers missing files with the HTML page, so check the type.
+        if (!res.ok || !(res.headers.get('content-type') ?? '').startsWith('audio')) continue;
+        buf = await ctx.decodeAudioData(await res.arrayBuffer());
+        break;
+      } catch {
+        // Try the next extension.
+      }
+    }
+    if (!buf) return;
+    if (!this.voiceChain) {
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 6800;
+      const dry = ctx.createGain();
+      dry.gain.value = 0.85;
+      const wet = ctx.createGain();
+      wet.gain.value = 0.3;
+      const room = ctx.createConvolver();
+      const len = Math.floor(ctx.sampleRate * 1.8);
+      const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let c = 0; c < 2; c++) {
+        const d = ir.getChannelData(c);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp((-i / len) * 5);
+      }
+      room.buffer = ir;
+      lp.connect(dry).connect(this.sfxBus);
+      lp.connect(room).connect(wet).connect(this.sfxBus);
+      this.voiceChain = lp;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    // Slow pitch drift, like an old tape of a memory.
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.35;
+    const depth = ctx.createGain();
+    depth.gain.value = 6;
+    lfo.connect(depth).connect(src.detune);
+    const g = ctx.createGain();
+    g.gain.value = 1.1;
+    src.connect(g).connect(this.voiceChain);
+    lfo.start();
+    src.start(ctx.currentTime + 0.6);
+    src.onended = () => lfo.stop();
+  }
+
   /** Composed score, routed through the music volume. */
   readonly music = new MusicDirector(() => this.ctx, () => this.musicBus ?? null);
 

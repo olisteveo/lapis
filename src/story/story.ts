@@ -143,6 +143,7 @@ export class Story {
       this.seen(def.id);
       this.narrative.say(def.line, 'memory');
       this.audio.memory();
+      this.audio.voice(def.id).catch(() => {});
       this.onMemory?.(6);
     };
     this.group.add(this.echoes.group);
@@ -252,6 +253,7 @@ export class Story {
     this.audio.chime(index);
     this.audio.memory();
     this.narrative.say(fragment.line, 'memory');
+    this.audio.voice(fragment.id).catch(() => {});
     this.onMemory?.(8);
     const n = this.save.collected.length;
     if (n === 1) this.narrative.say(LINES.firstStar);
