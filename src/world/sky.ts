@@ -1,8 +1,6 @@
 import * as THREE from 'three/webgpu';
-import {
-  cameraPosition, color, dot, exp, float, fract, floor, hash, instancedBufferAttribute, length, mix, mx_fractal_noise_float,
-  normalize, positionGeometry, positionLocal, pow, saturate, sin, smoothstep, step, time, uniform, uv, vec2, vec3, vec4, abs, max,
-} from 'three/tsl';
+import { cameraPosition, color, dot, exp, float, fract, floor, instancedBufferAttribute, length, mix, mx_fractal_noise_float, normalize, positionGeometry, positionLocal, pow, saturate, sin, smoothstep, step, time, uniform, uv, vec2, vec3, vec4, abs, max } from 'three/tsl';
+import { hash } from '../render/seed';
 import { PALETTE, SKY } from '../config';
 import { mulberry32 } from '../core/heightfield';
 import { starShape } from '../render/starShape';

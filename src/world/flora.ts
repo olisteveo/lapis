@@ -1,8 +1,6 @@
 import * as THREE from 'three/webgpu';
-import {
-  abs, attribute, cameraPosition, color, cos, dot, float, hash, mix, normalGeometry, positionLocal, saturate, sin, smoothstep,
-  step, time, uniform, vec2, vec3, vertexColor, length, varying, atan, floor,
-} from 'three/tsl';
+import { abs, attribute, cameraPosition, color, cos, dot, float, mix, normalGeometry, positionLocal, saturate, sin, smoothstep, step, time, uniform, vec2, vec3, vertexColor, length, varying, atan, floor } from 'three/tsl';
+import { hash } from '../render/seed';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FLORA, PALETTE, QUALITY, SKY, onQualityChange } from '../config';
 import { drawnSurface, penLines } from '../render/drawn';

@@ -1,8 +1,6 @@
 import * as THREE from 'three/webgpu';
-import {
-  abs, attribute, cameraPosition, color, cos, dot, exp, float, floor, hash, length, mix, normalGeometry, normalView, positionLocal, saturate, sin, smoothstep,
-  time, uniform, uv, vec3, vec4, vertexColor,
-} from 'three/tsl';
+import { abs, attribute, cameraPosition, color, cos, dot, exp, float, floor, length, mix, normalGeometry, normalView, positionLocal, saturate, sin, smoothstep, time, uniform, uv, vec3, vec4, vertexColor } from 'three/tsl';
+import { hash } from '../render/seed';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE, SKY } from '../config';
 import type { Heightfield } from '../core/heightfield';

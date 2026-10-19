@@ -45,7 +45,14 @@ Mara is the only voice in the game. The Keeper never speaks and is never seen. T
 
 <p>
   <img src="docs/showcase/nightmare.jpg" width="49%" alt="A nightmare wraith rising from its thorns">
-  <img src="docs/showcase/lighthouse.jpg" width="49%" alt="A lighthouse with its lamp lit">
+  <img src="docs/showcase/lighthouse.jpg" width="49%" alt="A lighthouse with its lamp lit, its beam sweeping the sky">
+</p>
+
+**The lighthouses are places you go into.** A spiral stair winds up inside each tower, lit in warm pools by wall lanterns and in cold blue by the rune circle on the floor. At the top is the lamp room, where you rest and lift your stars, and a gallery that looks out over the island.
+
+<p>
+  <img src="docs/showcase/lighthouse-stair.jpg" width="49%" alt="The spiral stair inside a lighthouse, lantern-lit">
+  <img src="docs/showcase/lighthouse-gallery.jpg" width="49%" alt="Out on the gallery at the top of the tower">
 </p>
 
 ---
