@@ -80,6 +80,8 @@ export class PlayerController {
   boat: BoatState = { x: 0, z: 0, heading: 0, speed: 0, stroke: 0, rowing: false, bob: 0, current: 0 };
   colliders: Colliders | null = null;
   platforms: Platforms | null = null;
+  /** Moth wings found: hold jump while falling to glide. */
+  canGlide = false;
   onEvent: ((e: PlayerEvent) => void) | null = null;
   /** >0 while sinking after a missed jump; the view fades and you return to safe ground. */
   falling = 0;
@@ -229,6 +231,11 @@ export class PlayerController {
     }
     if (this.airborne) {
       this.vy -= GRAVITY * dt;
+      // Moth wings: holding jump on the way down turns the fall into a long glide.
+      if (this.canGlide && input.jump && this.vy < -1.6) {
+        this.vy = -1.6;
+        this.speed = Math.max(this.speed, 5.5);
+      }
       this.y += this.vy * dt;
       if (this.y <= g && this.vy <= 0) {
         if (g < WADE_DEPTH) {

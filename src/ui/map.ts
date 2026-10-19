@@ -25,6 +25,8 @@ export class JournalMap {
   private saveT = 0;
   open = false;
   markers: () => MapMarker[] = () => [];
+  /** Without the compass you have to place yourself on the chart by its landmarks. */
+  showSelf = false;
 
   constructor(private hf: Heightfield) {
     this.root = document.createElement('div');
@@ -225,6 +227,7 @@ export class JournalMap {
       g.restore();
     }
 
+    if (!this.showSelf) return;
     // You: a small inked arrow pointing where you face.
     const [px, py] = toPx(player.x, player.z);
     g.save();

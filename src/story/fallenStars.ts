@@ -4,6 +4,9 @@ import { PALETTE } from '../config';
 import { starShape } from '../render/starShape';
 import type { P } from './placement';
 
+/** How far an unmarked star's glint can be seen; the paper lantern pushes it out. */
+export const SEE_RANGE = uniform(75);
+
 interface Star {
   id: string;
   index: number;
@@ -50,7 +53,7 @@ export class FallenStars {
       const coreMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
       const tw = sin(time.mul(2.3).add(i * 1.7)).mul(0.15).add(1);
       // Unmarked stars only show themselves when you are close: a glint in the undergrowth, not a beacon.
-      const seen: any = beacon ? float(1) : smoothstep(75, 25, length(positionWorld.sub(cameraPosition)));
+      const seen: any = beacon ? float(1) : smoothstep(SEE_RANGE, SEE_RANGE.mul(0.33), length(positionWorld.sub(cameraPosition)));
       coreMat.colorNode = vec4(mix(color(PALETTE.starWhite), color(PALETTE.starGold), 0.4).mul(starShape(uv(), float(0.9), float(0.5))).mul(tw).mul(beacon ? 2.6 : 1.6).mul(alpha).mul(seen), 1);
       const core = new THREE.Sprite(coreMat);
       core.scale.setScalar(beacon ? 1.3 : 0.9);

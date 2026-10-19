@@ -18,6 +18,8 @@ import type { Landmarks } from '../world/landmarks';
 import type { LighthouseClimb } from '../world/lighthouseClimb';
 import type { Wonders } from '../world/wonders';
 import { NightClock, type NightCue } from './night';
+import { KEEPSAKES, Keepsakes, layoutKeepsakes, type KeepsakeId } from './keepsakes';
+import { SEE_RANGE } from './fallenStars';
 import { settings } from '../settings';
 import type { Wisp, WispCall, WispMood } from '../game/wisp';
 
@@ -31,6 +33,7 @@ interface Save {
   /** Beacons whose lamps you've lit. */
   lit?: number[];
   lastBeacon?: number;
+  keepsakes?: KeepsakeId[];
 }
 
 function loadSave(): Save {
@@ -99,6 +102,9 @@ export class Story {
     );
     this.stars = new FallenStars(entries, h);
     this.figure = new DistantFigure(layout.figureSpots, h);
+    this.keepsakes = new Keepsakes(layoutKeepsakes(hf, layout.spawn), h, (id) => this.hasKeepsake(id));
+    this.applyKeepsakes();
+    this.group.add(this.keepsakes.group);
     this.group.add(...this.skies.map((c) => c.group), this.stars.group, createFootprints(layout, h), createNote(layout.note, h), this.figure.group);
 
     const done = new Set(this.save.collected);
@@ -139,6 +145,45 @@ export class Story {
     };
     this.night.onCue = (cue) => this.nightCue(cue);
   }
+
+  private keepsakes: Keepsakes;
+
+  hasKeepsake(id: KeepsakeId) {
+    return (this.save.keepsakes ?? []).includes(id);
+  }
+
+  private applyKeepsakes() {
+    this.night.length = 20 * 60 * (this.hasKeepsake('ribbon') ? 1.4 : 1);
+    SEE_RANGE.value = this.hasKeepsake('lantern') ? 130 : 75;
+  }
+
+  private takeKeepsake(id: KeepsakeId) {
+    const def = KEEPSAKES.find((k) => k.id === id)!;
+    this.keepsakes.take(id);
+    this.save.keepsakes = [...(this.save.keepsakes ?? []), id];
+    this.persist();
+    this.applyKeepsakes();
+    this.audio.memory();
+    this.audio.chime(5);
+    this.narrative.say(def.memory, 'memory');
+    this.onMemory?.(6);
+    setTimeout(() => this.narrative.say(def.name.toUpperCase(), 'title'), 6500);
+    setTimeout(() => this.guide(`Oh! It's hers! ${def.effect} Press I to look in your satchel.`, 'oh', 'star'), 11000);
+  }
+
+  /** Everything the satchel shows. */
+  satchelState() {
+    const regionName: Record<string, string> = { meadow: 'the meadows', lantern: 'the Lantern Wood', dunes: 'the dunes', drowned: 'the drowned town' };
+    return {
+      carried: this.stars.carriedIds.map((id) => ({ constellation: CONSTELLATIONS[this.starRef.get(id)!.c].name })),
+      keepsakes: this.save.keepsakes ?? [],
+      skies: this.skies.map((c) => ({ name: c.def.name, lit: c.litCount, total: c.def.stars.length, region: c.def.region ? regionName[c.def.region] : 'the coral shore' })),
+      lit: this.save.collected.length,
+      total: TOTAL_STARS,
+    };
+  }
+
+  private conchT = 0;
 
   get litTotal() {
     return this.save.collected.length;
@@ -459,6 +504,7 @@ export class Story {
     if (playing) this.puzzles.update(dt, player);
     if (playing) this.echoes?.update(dt, camera.position);
     this.stars.update(dt, camera);
+    this.keepsakes.update();
     if (this.wisp) {
       this.wisp.target = playing ? this.wispTarget(player) : null;
       this.wisp.update(dt, camera, settings.nights && this.night.progress > 0.75 ? 'warn' : 'calm');
@@ -552,6 +598,25 @@ export class Story {
     if (puzzle) {
       this.prompt = puzzle.prompt;
       this.pendingAction = puzzle.act;
+    }
+
+    // The conch sings faster as a hidden star gets closer.
+    if (this.hasKeepsake('conch')) {
+      const hidden = this.stars.nearest(px, pz);
+      this.conchT -= dt;
+      if (hidden && !hidden.beacon && hidden.dist < 240 && this.conchT <= 0) {
+        const near = 1 - hidden.dist / 240;
+        this.audio.conch(near);
+        this.conchT = 0.5 + (1 - near) * 2.6;
+      }
+    }
+
+    const ks = this.keepsakes.nearest(px, pz);
+    if (ks && ks.dist < 16 && !this.seen(`ks-near-${ks.id}`)) this.guide('Oh! Something glowing. Something of hers!', 'oh', 'star');
+    if (ks && ks.dist < 2.4) {
+      const def = KEEPSAKES.find((k) => k.id === ks.id)!;
+      this.prompt = `E   pick up ${def.name.replace(/^The /, 'the ')}`;
+      this.pendingAction = () => this.takeKeepsake(ks.id);
     }
 
     const star = this.stars.nearest(px, pz);

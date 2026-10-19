@@ -3,6 +3,7 @@ import { PALETTE, QUALITY, RENDER, SKY, getQualityName, onQualityChange } from '
 import { settings, onSettingsChange } from './settings';
 import { PauseMenu } from './ui/menu';
 import { JournalMap } from './ui/map';
+import { Satchel } from './ui/satchel';
 import { LAGOONS } from './world/heightfield';
 import { createHeightfield, findSpawn } from './world/heightfield';
 import { Terrain, WorkerPool } from './world/terrain';
@@ -272,12 +273,23 @@ async function boot() {
         audio.chime(5);
       }
     }
-    if (e.code === 'KeyM' && !e.repeat && state === 'play' && !menu.open) {
+    if ((e.code === 'KeyI' || e.code === 'Tab') && !e.repeat && state === 'play' && !menu.open && !chart.open) {
+      e.preventDefault();
+      if (satchel.open) {
+        satchel.hide();
+        audio.setPaused(false);
+      } else {
+        satchel.show(story.satchelState());
+        audio.setPaused(true);
+      }
+    }
+    if (e.code === 'KeyM' && !e.repeat && state === 'play' && !menu.open && !satchel.open) {
       if (chart.open) {
         chart.hide();
         audio.setPaused(false);
       } else {
         const fwd = camera.getWorldDirection(new THREE.Vector3());
+        chart.showSelf = story.hasKeepsake('compass');
         chart.show(player, Math.atan2(fwd.x, -fwd.z));
         audio.setPaused(true);
       }
@@ -363,6 +375,7 @@ async function boot() {
 
   const menu = new PauseMenu();
   const chart = new JournalMap(hf);
+  const satchel = new Satchel();
   let flareFlash = 0;
   nightmares.onCatch = () => story.caught();
   nightmares.onSighted = () => story.nightmaresSighted();
@@ -399,8 +412,9 @@ async function boot() {
   document.addEventListener('pointerlockchange', () => {
     if (!document.pointerLockElement && state === 'play' && !menu.open) {
       // Escape while the chart is up just puts the chart away.
-      if (chart.open) {
+      if (chart.open || satchel.open) {
         chart.hide();
+        satchel.hide();
         audio.setPaused(false);
       } else openMenu();
     }
@@ -418,7 +432,7 @@ async function boot() {
 
     const pressed = ePressed;
     ePressed = false;
-    if (menu.open || chart.open) {
+    if (menu.open || chart.open || satchel.open) {
       // Frozen world behind the menu: keep drawing it, but nothing moves or happens.
       camera.updateMatrixWorld();
       if (renderer.domElement.clientWidth > 0 && settleFrames < 3) post.pipeline.render();
@@ -532,6 +546,9 @@ async function boot() {
       for (const p of landmarks.placed)
         if (p.type === 'StoneLantern' || p.type === 'Hut' || p.type === 'Cairn') lights.push({ x: p.x, z: p.z, r: p.type === 'Hut' ? 12 : 8 });
       for (const p of puzzleSites) if (story.hasSeen(p.id)) lights.push({ x: p.x, z: p.z, r: 16 });
+      // The paper lantern: a small circle of light that goes where you go.
+      if (story.hasKeepsake('lantern')) lights.push({ x: player.x, z: player.z, r: 6 });
+      player.canGlide = story.hasKeepsake('wings');
       const threat = settings.nights ? Math.min(1, Math.max(0, (story.night.progress - 0.45) / 0.4)) : 0;
       nightmares.update(dt, camera.position, player.mode === 'walk' ? player.speed : 0, player.mode === 'boat' ? 0 : threat, lights);
     }
@@ -556,7 +573,7 @@ async function boot() {
   // Capped: a 120Hz display would otherwise render twice as many frames for no visible gain.
   // Unfocused windows drop to a trickle so the game doesn't heat the machine in the background.
   renderer.setAnimationLoop((t: number) => {
-    const cap = !document.hasFocus() ? 8 : menu.open || chart.open ? 30 : QUALITY.fps;
+    const cap = !document.hasFocus() ? 8 : menu.open || chart.open || satchel.open ? 30 : QUALITY.fps;
     if (t - lastRender < 1000 / cap - 2) return;
     lastRender = t;
     frame();
