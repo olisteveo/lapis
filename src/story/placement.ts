@@ -37,28 +37,65 @@ function search(centre: P, rMin: number, rMax: number, ok: (x: number, z: number
   return best;
 }
 
+/**
+ * Flood-fills boat-deep water from the edges of a window around `from` (which, for a coastal
+ * spawn, reach open sea) and returns the reachable water cell nearest to `from`.
+ */
+function nearestOpenWater(h: (x: number, z: number) => number, from: P): P {
+  const CELL = 8;
+  const HALF = 1400;
+  const N = Math.floor((HALF * 2) / CELL);
+  const x0 = from.x - HALF;
+  const z0 = from.z - HALF;
+  const DEEP = -0.9;
+  const deep = new Uint8Array(N * N);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) deep[j * N + i] = h(x0 + i * CELL, z0 + j * CELL) < DEEP ? 1 : 0;
+  const seen = new Uint8Array(N * N);
+  const queue: number[] = [];
+  // Seeds: deep cells on the window border that are properly open water, not a shallow nook.
+  for (let k = 0; k < N; k++)
+    for (const idx of [k, (N - 1) * N + k, k * N, k * N + N - 1])
+      if (deep[idx] && !seen[idx] && h(x0 + (idx % N) * CELL, z0 + Math.floor(idx / N) * CELL) < -6) {
+        seen[idx] = 1;
+        queue.push(idx);
+      }
+  for (let q = 0; q < queue.length; q++) {
+    const idx = queue[q];
+    const i = idx % N;
+    const j = (idx - i) / N;
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const ni = i + di;
+      const nj = j + dj;
+      if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
+      const n = nj * N + ni;
+      if (deep[n] && !seen[n]) {
+        seen[n] = 1;
+        queue.push(n);
+      }
+    }
+  }
+  let best = { x: from.x, z: from.z + 60 };
+  let bd = Infinity;
+  for (const idx of queue) {
+    const x = x0 + (idx % N) * CELL;
+    const z = z0 + Math.floor(idx / N) * CELL;
+    const d = Math.hypot(x - from.x, z - from.z);
+    if (d < bd) {
+      bd = d;
+      best = { x, z };
+    }
+  }
+  return best;
+}
+
 export function layoutPrologue(hf: Heightfield, spawn: P): PrologueLayout {
   const h = (x: number, z: number) => hf.height(x, z);
   const slope = (x: number, z: number) => Math.abs(h(x + 2, z) - h(x - 2, z)) + Math.abs(h(x, z + 2) - h(x, z - 2));
 
-  // Seaward: toward the nearest water deep enough to float the boat. The beach shelves so
-  // gently that the lowest nearby ground can point along the shore instead of out to sea.
-  let water = { x: spawn.x, z: spawn.z + 40 };
-  let nearest = Infinity;
-  for (let k = 0; k < 96; k++) {
-    const a = (k / 96) * Math.PI * 2;
-    for (let r = 4; r < 260; r += 1) {
-      const x = spawn.x + Math.sin(a) * r;
-      const z = spawn.z + Math.cos(a) * r;
-      if (h(x, z) < -0.6) {
-        if (r < nearest) {
-          nearest = r;
-          water = { x, z };
-        }
-        break;
-      }
-    }
-  }
+  // Seaward: toward the nearest water that actually connects to the open ocean. Inland ponds
+  // and lagoon pools are excluded by flood-filling outward from the sea on a coarse grid.
+  const water = nearestOpenWater(h, spawn);
+  const nearest = Math.hypot(water.x - spawn.x, water.z - spawn.z) || 1;
   const sea = { x: (water.x - spawn.x) / nearest, z: (water.z - spawn.z) / nearest };
   const side = { x: -sea.z, z: sea.x };
 
