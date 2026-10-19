@@ -1,10 +1,11 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, color, cos, dot, float, max, mix, normalGeometry, normalView, positionLocal, saturate, sin, time, uniform, vec3, vertexColor,
+  abs, color, cos, dot, float, instancedBufferAttribute, length, max, mix, mx_noise_float, normalGeometry, normalView, positionLocal, smoothstep, uv, vec2, vec4, saturate, sin, time, uniform, vec3, vertexColor,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SKY } from '../config';
 import type { Heightfield } from './heightfield';
+import { BlobShadows } from '../render/blobShadows';
 
 type N = any;
 type Kind = 'wraith' | 'crawler';
@@ -51,9 +52,67 @@ export class Nightmares {
   /** Called when one first comes into view, for a warning. */
   onSighted: (() => void) | null = null;
   private sighted = false;
+  /** Pools of ink under each nightmare and its thorns. */
+  private pools = new BlobShadows(24, true);
+  /** Ink smoke left behind as they move: x, y, z, age 0..1 (1 = gone). */
+  private smoke: THREE.InstancedBufferAttribute;
+  private smokeNext = 0;
+  private emitT = 0;
+  private static readonly SMOKE = 200;
 
   constructor(private hf: Heightfield) {
     this.group.name = 'nightmares';
+    this.group.add(this.pools.mesh);
+    const n = Nightmares.SMOKE;
+    const a = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) a[i * 4 + 3] = 1;
+    this.smoke = new THREE.InstancedBufferAttribute(a, 4);
+    this.smoke.setUsage(THREE.DynamicDrawUsage);
+    const S = instancedBufferAttribute(this.smoke, 'vec4') as N;
+    const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
+    mat.positionNode = S.xyz;
+    const age = S.w;
+    mat.scaleNode = vec2(age.mul(1.8).add(0.5).mul(age.lessThan(1).select(float(1), float(0))));
+    const r = length(uv().sub(0.5)).mul(2);
+    const edge = mx_noise_float(uv().mul(4).add(age.mul(3)) as N).mul(0.2);
+    const alpha = smoothstep(1, 0.3, r.add(edge)).mul(smoothstep(0, 0.12, age)).mul(float(1).sub(age)).mul(0.55);
+    mat.colorNode = vec4(mix(color(0x030108), color(0x2a0a20), smoothstep(0.4, 1, r)), alpha);
+    const sprite = new THREE.Sprite(mat);
+    sprite.count = n;
+    sprite.frustumCulled = false;
+    sprite.renderOrder = 3;
+    this.group.add(sprite);
+  }
+
+  /** Smoke and pools follow the live nightmares. */
+  private trails(dt: number) {
+    this.emitT += dt;
+    const arr = this.smoke.array as Float32Array;
+    const emit = this.emitT > 0.05;
+    if (emit) this.emitT = 0;
+    let p = 0;
+    for (const n of this.live) {
+      const ground = this.hf.height(n.x, n.z);
+      const pr = Math.max(0, n.presence);
+      if (p < 24) this.pools.set(p++, n.x, ground, n.z, (n.kind === 'wraith' ? 2.6 : 1.9) * pr);
+      if (p < 24) this.pools.set(p++, n.thorns.position.x, n.thorns.position.y, n.thorns.position.z, 2.4 * pr);
+      if (emit && pr > 0.5 && !n.dissolving) {
+        const i = this.smokeNext;
+        this.smokeNext = (this.smokeNext + 1) % Nightmares.SMOKE;
+        const h = n.kind === 'wraith' ? 0.3 + this.rnd() * 2.2 : 0.2 + this.rnd() * 0.5;
+        arr.set([n.x + (this.rnd() - 0.5) * 1.2, ground + h, n.z + (this.rnd() - 0.5) * 1.2, 0], i * 4);
+      }
+    }
+    for (; p < 24; p++) this.pools.hide(p);
+    this.pools.commit();
+    // Smoke rises, drifts and thins over a couple of seconds.
+    for (let i = 0; i < Nightmares.SMOKE; i++) {
+      if (arr[i * 4 + 3] >= 1) continue;
+      arr[i * 4 + 1] += dt * 0.7;
+      arr[i * 4] += Math.sin(i * 1.7 + arr[i * 4 + 1]) * dt * 0.3;
+      arr[i * 4 + 3] = Math.min(1, arr[i * 4 + 3] + dt / 2.2);
+    }
+    this.smoke.needsUpdate = true;
   }
 
   async load(url: string) {
@@ -88,15 +147,27 @@ export class Nightmares {
         const w = sin(time.mul(2.4).add(vc.b.mul(6.28)).add(vc.r.mul(5))).mul(vc.r).mul(vc.g.mul(0.8).add(0.2));
         pos = vec3(lp.x.add(w.mul(0.12)), lp.y.add(w.mul(kind === 'thorns' ? 0.08 : 0.18)), lp.z.add(cos(time.mul(1.9).add(vc.b.mul(6.28))).mul(vc.r).mul(0.1)));
       }
+      // The ink never holds still: the whole surface boils outward and back along its normals.
+      const boil = mx_noise_float(lp.mul(1.6).add(vec3(0, time.mul(0.9), P.mul(0.1))) as N).mul(kind === 'thorns' ? 0.03 : 0.06).mul(vc.r.add(1));
+      pos = pos.add(normalGeometry.mul(boil));
       // Emerging and dissolving: they rise out of (and sink back into) the ground.
       mat.positionNode = vec3(pos.x, pos.y.sub(float(1).sub(F).mul(kind === 'thorns' ? 2.6 : 3.2)), pos.z);
       const lambert = saturate(abs(dot(normalGeometry, key)).mul(0.5).add(0.5));
-      if (name.includes('eye')) mat.colorNode = color(0xff6a2a).mul(float(2.6).add(sin(time.mul(7).add(P)).mul(0.6)));
-      else if (name.includes('edge')) mat.colorNode = mix(color(0x2a0c3a), color(0x7a1a3a), lambert);
+      // Crimson veins crawling slowly under the ink, pulsing like something breathing.
+      const v = abs(mx_noise_float(lp.mul(2.4).add(vec3(0, time.mul(0.25), P.mul(0.05))) as N));
+      const pulse = sin(time.mul(1.7).add(P)).mul(0.35).add(0.75);
+      const veins = smoothstep(0.07, 0.0, v).mul(pulse);
+      if (name.includes('eye')) {
+        // Embers that flare and gutter, bright enough to bloom.
+        const flicker = sin(time.mul(7).add(P)).mul(0.5).add(sin(time.mul(17.3).add(P.mul(2))).mul(0.3));
+        mat.colorNode = color(0xff6a2a).mul(float(3.6).add(flicker));
+      } else if (name.includes('edge')) mat.colorNode = mix(color(0x2a0c3a), color(0x7a1a3a), lambert).add(color(0xb0183a).mul(veins.mul(0.6)));
       else {
         // Glossy ink with a bruised crimson rim, so the silhouette reads against the night.
         const rim = float(1).sub(abs(normalView.z)).pow(3);
-        mat.colorNode = mix(color(0x020108), color(0x1a1430), lambert.mul(lambert)).add(color(0x5a0f2a).mul(rim.mul(0.6)));
+        mat.colorNode = mix(color(0x020108), color(0x1a1430), lambert.mul(lambert))
+          .add(color(0x5a0f2a).mul(rim.mul(0.7)))
+          .add(color(0xc0183a).mul(veins.mul(kind === 'thorns' ? 0.9 : 0.55)));
       }
       m.material = mat;
       m.frustumCulled = false;
@@ -224,6 +295,7 @@ export class Nightmares {
       }
     }
     this.live = this.live.filter((n) => !(n.dissolving && n.presence <= 0));
+    this.trails(dt);
     this.dread += (Math.max(0, dread) - this.dread) * Math.min(1, dt * 1.5);
   }
 }

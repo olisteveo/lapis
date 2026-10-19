@@ -1,10 +1,12 @@
 import * as THREE from 'three/webgpu';
 import {
   abs, attribute, color, cos, dot, exp, float, length, max, mix, normalGeometry, positionLocal, saturate, sin, smoothstep, time,
-  uv, vec3, vec4, vertexColor, instancedBufferAttribute, cameraPosition, mod, uniform,
+  uv, vec3, vec4, vertexColor, instancedBufferAttribute, cameraPosition, mod, uniform, positionWorld, hash, floor, normalWorld,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE, SKY } from '../config';
+import { drawnSurface, penLines } from '../render/drawn';
+import { BlobShadows } from '../render/blobShadows';
 import { BIOMES, mulberry32, type Heightfield } from './heightfield';
 import type { Colliders } from '../game/player';
 
@@ -91,8 +93,12 @@ export class Fauna implements Colliders {
   /** Called when the herd bolts (for a little sound). */
   onFlee: (() => void) | null = null;
 
+  /** Soft shadows under the deer (and one for the tortoise). */
+  private shadows = new BlobShadows(DEER + 1);
+
   constructor(private hf: Heightfield) {
     this.group.name = 'fauna';
+    this.group.add(this.shadows.mesh);
     this.buildMoths();
   }
 
@@ -133,8 +139,16 @@ export class Fauna implements Colliders {
       if (part.mat.includes('glow')) {
         mat.colorNode = color(PALETTE.starWhite).mul(1.9).mul(sin(time.mul(2).add(P.x)).mul(0.2).add(0.9));
       } else {
-        // Pale, moonlit coats with a faint glow along the back.
-        mat.colorNode = mix(color(0x6e6aa0), color(0xcfc6ea), lambert).mul(0.75).add(vec3(0.05, 0.06, 0.12).mul(saturate(n.y)));
+        // Pale moonlit coats, inked like the rest of the world, flecked with a few twinkling stars:
+        // they are dream animals, made of the same light as the sky.
+        const coat = drawnSurface(mix(color(0x8a86c0), color(0xd8d0f2), lambert.mul(0.5).add(0.5)).mul(0.8), n, positionWorld, { spacing: 0.45 });
+        const rest = positionLocal.mul(G.z).mul(7) as N;
+        const cell = floor(rest) as N;
+        const h = hash(cell.x.add(cell.y.mul(57)).add(cell.z.mul(113)));
+        const inCell = smoothstep(0.22, 0.05, length(rest.sub(cell).sub(0.5)));
+        const twinkle = sin(time.mul(h.mul(3).add(1.5)).add(h.mul(40))).mul(0.5).add(0.5);
+        const fleck = smoothstep(0.93, 0.99, h).mul(inCell).mul(twinkle);
+        mat.colorNode = coat.add(vec3(0.05, 0.06, 0.12).mul(saturate(n.y))).add(color(0xe8f0ff).mul(fleck.mul(1.8)));
       }
       const mesh = new THREE.Mesh(geometry, mat);
       mesh.frustumCulled = false;
@@ -171,7 +185,10 @@ export class Fauna implements Colliders {
       if (Math.max(here.meadow, here.lantern) < 0.25 || !this.placeHerd(focus)) {
         this.deerHome.set(1e9, 0, 1e9);
         this.deerAttrs.pose.array.fill(0);
-        for (let i = 0; i < DEER; i++) (this.deerAttrs.pose.array as Float32Array)[i * 4 + 1] = -9999;
+        for (let i = 0; i < DEER; i++) {
+          (this.deerAttrs.pose.array as Float32Array)[i * 4 + 1] = -9999;
+          this.shadows.hide(i);
+        }
         this.deerAttrs.pose.needsUpdate = true;
         return;
       }
@@ -218,6 +235,7 @@ export class Fauna implements Colliders {
       const y = this.hf.height(d.x, d.z);
       // Model faces +X; heading convention faces +Z, so rotate by heading - 90 degrees.
       pose.set([d.x, y, d.z, d.yaw - Math.PI / 2], i * 4);
+      this.shadows.set(i, d.x, y, d.z, 1.2 * d.scale);
       gd.set([d.phase, 0, d.scale, d.state === 'graze' ? 1 : 0], i * 4);
     });
     this.deerAttrs.pose.needsUpdate = true;
@@ -251,7 +269,15 @@ export class Fauna implements Colliders {
       mat.positionNode = yawed(local, heading).add(pos);
       const lambert = saturate(abs(dot(normalGeometry, key)).mul(0.5).add(0.4));
       if (part.mat.includes('glow')) mat.colorNode = color(0x7ff0ff).mul(1.6).mul(sin(time.mul(1.5).add(M.y)).mul(0.25).add(0.85));
-      else mat.colorNode = mix(color(0x0f1a4a), color(0x4a5fb0), lambert);
+      else {
+        // Deep-sea blues, inked, with bioluminescent stripes rippling out along the wings.
+        const nm = yawed(normalGeometry, heading);
+        const body = drawnSurface(mix(color(0x1a2660), color(0x5a70c0), lambert), nm, positionWorld, { spacing: 1.2, strength: 0.5 });
+        const span = abs(lp.z);
+        const stripes = penLines(span.mul(1.1).add(lp.x.mul(0.25)), 1.6).mul(smoothstep(0.9, 1.6, span));
+        const ripple = sin(time.mul(2.2).sub(span.mul(1.3)).add(M.y)).mul(0.5).add(0.5);
+        mat.colorNode = body.add(color(0x6ff4ee).mul(stripes.mul(ripple.mul(1.2).add(0.2))));
+      }
       const mesh = new THREE.Mesh(geometry, mat);
       mesh.frustumCulled = false;
       this.group.add(mesh);
@@ -325,7 +351,16 @@ export class Fauna implements Colliders {
       mat.positionNode = gait(positionLocal, vc, phase as N, 0.9, 0.35);
       const lambert = saturate(dot(normalGeometry, key).mul(0.55).add(0.45));
       const [dark, light] = name.includes('moss') ? [0x1f4a4a, 0x5fa08a] : name.includes('shell') ? [0x2a3260, 0x6a74a8] : [0x3a3a5e, 0x8f8cb4];
-      mat.colorNode = mix(color(dark), color(light), lambert).mul(0.9);
+      let col: N = drawnSurface(mix(color(dark), color(light), lambert.mul(0.5).add(0.5)).mul(0.9), normalWorld, positionWorld, { spacing: 1.4 });
+      if (name.includes('moss')) {
+        // A little world of its own on its back: glowing spores drifting in the moss.
+        const sp = positionLocal.mul(2.2) as N;
+        const cell = floor(sp) as N;
+        const h = hash(cell.x.add(cell.y.mul(31)).add(cell.z.mul(97)));
+        const dotOn = smoothstep(0.9, 0.98, h).mul(smoothstep(0.3, 0.08, length(sp.sub(cell).sub(0.5))));
+        col = col.add(color(0x9ff0c8).mul(dotOn.mul(sin(time.mul(1.3).add(h.mul(30))).mul(0.4).add(0.9))));
+      }
+      mat.colorNode = col;
       m.material = mat;
       m.frustumCulled = false;
     });
@@ -346,6 +381,7 @@ export class Fauna implements Colliders {
     const nz = D.z + Math.sin(a + 0.01) * 260;
     t.position.set(x, this.hf.height(x, z) - 0.2, z);
     t.rotation.y = Math.atan2(-(nz - z), nx - x);
+    this.shadows.set(DEER, x, t.position.y + 0.2, z, 7.5);
     this.tortoisePhase.value += dt * 0.9;
   }
 
@@ -356,6 +392,7 @@ export class Fauna implements Colliders {
 
   update(dt: number, focus: THREE.Vector3, playerSpeed: number) {
     this.updateDeer(dt, focus, playerSpeed);
+    this.shadows.commit();
     this.updateMantas(focus);
     this.updateTortoise(dt);
     const lantern = this.hf.sample(focus.x, focus.z).lantern;
