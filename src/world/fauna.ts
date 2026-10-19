@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
   abs, attribute, color, cos, dot, exp, float, length, max, mix, normalGeometry, positionLocal, saturate, sin, smoothstep, time,
-  uv, vec3, vec4, vertexColor, instancedBufferAttribute, cameraPosition, mod,
+  uv, vec3, vec4, vertexColor, instancedBufferAttribute, cameraPosition, mod, uniform,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE, SKY } from '../config';
@@ -83,10 +83,10 @@ export class Fauna implements Colliders {
   private mantaAttrs: Record<string, THREE.InstancedBufferAttribute> | null = null;
   private mantaHome = new THREE.Vector3(1e9, 0, 1e9);
   private tortoise: THREE.Object3D | null = null;
-  private tortoisePhase = { value: 0 };
+  private tortoisePhase = uniform(0);
   private tortoiseT = 0;
   private moths: THREE.Sprite | null = null;
-  private mothStrength = { value: 0 };
+  private mothStrength = uniform(0);
   private rnd = mulberry32(77);
   /** Called when the herd bolts (for a little sound). */
   onFlee: (() => void) | null = null;
@@ -243,7 +243,9 @@ export class Fauna implements Colliders {
       // Slow, deep wingbeats rolling out to the tips.
       const beat = sin(time.mul(0.9).add(M.y).sub(vc.r.mul(1.4))).mul(vc.r).mul(vc.g).mul(abs(lp.z).mul(0.35).add(0.3));
       const local = vec3(lp.x, lp.y.add(beat), lp.z);
-      const heading = cos(a).atan(sin(a).negate()).add(M.x.sign().mul(Math.PI / 2));
+      // Nose along the orbit's tangent: velocity is (-sin a, cos a) times the orbit's direction.
+      const dir = M.x.sign();
+      const heading = cos(a).mul(dir).negate().atan(sin(a).mul(dir).negate());
       const pos = vec3(O.x.add(cos(a).mul(O.w)), O.y.add(sin(time.mul(0.25).add(M.y)).mul(M.w)), O.z.add(sin(a).mul(O.w)));
       const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, fog: true });
       mat.positionNode = yawed(local, heading).add(pos);
@@ -268,8 +270,11 @@ export class Fauna implements Colliders {
       const d = 150 + this.rnd() * 450;
       const x = focus.x + Math.sin(a) * d;
       const z = focus.z + Math.cos(a) * d;
-      const ground = Math.max(this.hf.height(x, z), 0);
-      o.set([x, ground + 55 + this.rnd() * 60, z, 60 + this.rnd() * 120], i * 4);
+      const radius = 60 + this.rnd() * 120;
+      // Clear the highest ground anywhere on the circle, not just under its centre.
+      let ground = Math.max(this.hf.height(x, z), 0);
+      for (let k = 0; k < 12; k++) ground = Math.max(ground, this.hf.height(x + Math.cos(k * 0.5236) * radius, z + Math.sin(k * 0.5236) * radius));
+      o.set([x, ground + 45 + this.rnd() * 50, z, radius], i * 4);
       m.set([(0.025 + this.rnd() * 0.02) * (this.rnd() > 0.5 ? 1 : -1), this.rnd() * 6.28, 0.9 + this.rnd() * 0.5, 4 + this.rnd() * 6], i * 4);
     }
     this.mantaAttrs.orbit.needsUpdate = true;
@@ -319,7 +324,8 @@ export class Fauna implements Colliders {
       const vc = vertexColor() as N;
       mat.positionNode = gait(positionLocal, vc, phase as N, 0.9, 0.35);
       const lambert = saturate(dot(normalGeometry, key).mul(0.55).add(0.45));
-      mat.colorNode = (name.includes('shell') ? mix(color(0x2a3260), color(0x6a74a8), lambert) : mix(color(0x3a3a5e), color(0x8f8cb4), lambert)).mul(0.9);
+      const [dark, light] = name.includes('moss') ? [0x1f4a4a, 0x5fa08a] : name.includes('shell') ? [0x2a3260, 0x6a74a8] : [0x3a3a5e, 0x8f8cb4];
+      mat.colorNode = mix(color(dark), color(light), lambert).mul(0.9);
       m.material = mat;
       m.frustumCulled = false;
     });

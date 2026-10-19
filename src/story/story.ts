@@ -195,7 +195,7 @@ export class Story {
       this.guide(`Hmm? Something strange is humming ${compass(wonder.w)}. Let's go and see!`, 'hmm');
       return;
     }
-    this.guide("Hey! The bright one's in the north, past the lake. Follow it.", 'hey');
+    this.guide("Hey! The brightest star's in the north, past the lake. Follow it.", 'hey');
   }
 
   private point(at: THREE.Vector3) {
@@ -287,7 +287,7 @@ export class Story {
       const x = L.spawn.x + side.x * d;
       const z = L.spawn.z + side.z * d;
       if (h(x, z) > 0.2 && h(x, z) < 1.4) {
-        defs.push({ id: 'echo-point', line: "Which one's the bright one? That one? That one?", x, y: h(x, z), z,
+        defs.push({ id: 'echo-point', line: "Which one's the brightest star? That one? That one?", x, y: h(x, z), z,
           yaw: Math.atan2(L.seaward.x, L.seaward.z), adult: 'point', child: 'lookUp', childOffset: [0.75, 0.25] });
         break;
       }
@@ -377,7 +377,6 @@ export class Story {
       this.guide(w.line, w.id === 'bell' ? 'listen' : w.id === 'rocks' ? 'look' : 'oh', 'star');
       setTimeout(() => this.narrative.say(w.name, 'title'), 4800);
       this.audio.chime(5);
-      if (w.id === 'bell') this.wonders!.ring();
     }
     this.narrative.objective(THE_BOAT.name, this.save.collected.length, THE_BOAT.fragments.length, extra, carried);
     LAGOONS.forEach((L, i) => {

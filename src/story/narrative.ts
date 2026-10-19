@@ -59,6 +59,14 @@ export class Narrative {
   storybook(lines: string[], done: () => void) {
     const el = document.createElement('div');
     el.id = 'storybook';
+    // Lay every line out up front, invisible, so the page never reflows as lines appear.
+    lines.forEach((line, i) => {
+      const p = document.createElement('p');
+      p.textContent = line;
+      // The last line is the rule; set it apart.
+      if (i === lines.length - 1) p.className = 'rule';
+      el.appendChild(p);
+    });
     document.body.appendChild(el);
     this.book = { el, lines, shown: 0, t: 0.6, done, closing: -1 };
   }
@@ -77,13 +85,7 @@ export class Narrative {
     b.t += dt;
     if (b.closing < 0) {
       if (b.shown < b.lines.length && b.t > 2.7) {
-        const p = document.createElement('p');
-        p.textContent = b.lines[b.shown];
-        // The last line is the rule; set it apart.
-        if (b.shown === b.lines.length - 1) p.className = 'rule';
-        b.el.appendChild(p);
-        void p.offsetWidth;
-        p.style.opacity = '1';
+        (b.el.children[b.shown] as HTMLElement).style.opacity = '1';
         b.shown++;
         b.t = 0;
       } else if (b.shown === b.lines.length && b.t > 3.6) {

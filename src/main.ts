@@ -86,7 +86,7 @@ async function boot() {
   flora.setClearings([
     ...landmarks.placed.map((p) => ({ x: p.x, z: p.z, r: (CLEAR[p.type] ?? 2) * p.scale })),
     // Wonders stand in open ground so they can be seen from the edge of their clearing.
-    ...wonders.list.filter((w) => w.id !== 'rocks').map((w) => ({ x: w.x, z: w.z, r: w.id === 'whale' ? 26 : 16 })),
+    ...wonders.list.filter((w) => w.id !== 'rocks').map((w) => ({ x: w.x, z: w.z, r: { whale: 26, ring: 30, moontree: 24, bell: 12 }[w.id] ?? 16 })),
   ]);
   scene.add(landmarks.group, wildlife.group, fauna.group, wonders.group, stones.mesh, currents.group);
   player.place(spawn.x, spawn.z, Math.PI);

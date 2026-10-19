@@ -43,7 +43,7 @@ a gentle little girl, about six years old, soft and slightly breathy, quiet bedt
 
 | File | Line | Direction |
 |---|---|---|
-| `echo-point.mp3` | Which one's the bright one? That one? That one? | Pointing at the sky, impatient, delighted. |
+| `echo-point.mp3` | Which one's the brightest star? That one? That one? | Pointing at the sky, impatient, delighted. |
 | `echo-jetty.mp3` | Can we stay out till the lamp comes on? | Legs dangling off the jetty, bargaining for more time. |
 | `echo-cairn.mp3` | One more stone. For luck. For you. | Careful, serious, placing a stone; the last two words are a gift. |
 

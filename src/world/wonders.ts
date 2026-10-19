@@ -46,7 +46,7 @@ export function layoutWonders(hf: Heightfield): Wonder[] {
   const M = settle(BIOMES.meadow.x, BIOMES.meadow.z, 500);
   out.push({ id: 'moontree', name: 'The Moon Tree', line: 'Oh! A tree made of moonlight. It hums when you get close!', x: M.x, y: hf.height(M.x, M.z), z: M.z, yaw: 0.4, scale: 1, r: 3, reach: 30 });
   const L = settle(BIOMES.lantern.x, BIOMES.lantern.z, 500);
-  out.push({ id: 'ring', name: 'The Mushroom Ring', line: 'Oh! A fairy ring. Something danced here once...', x: L.x, y: hf.height(L.x, L.z), z: L.z, yaw: 0, scale: 1.2, r: 0, reach: 18 });
+  out.push({ id: 'ring', name: 'The Mushroom Ring', line: 'Oh! A fairy ring. Something danced here once...', x: L.x, y: hf.height(L.x, L.z), z: L.z, yaw: 0, scale: 1, r: 0, reach: 20 });
   const W = settle(BIOMES.dunes.x, BIOMES.dunes.z, 450);
   out.push({ id: 'whale', name: 'The Sleeping Whale', line: 'Oh! The bones of a whale. Was the sea up here once?', x: W.x, y: hf.height(W.x, W.z) - 0.6, z: W.z, yaw: 1.1, scale: 1, r: 0, reach: 35 });
   // The bell tower stands in the drowned square itself, up to its knees in the sea.
@@ -76,7 +76,6 @@ export class Wonders implements Colliders {
   readonly group = new THREE.Group();
   private objs = new Map<string, THREE.Object3D>();
   private rocks: { obj: THREE.Object3D; base: THREE.Vector3; phase: number }[] = [];
-  private bellSwing = 0;
   private near1 = uniform(0);
 
   constructor(readonly list: Wonder[]) {
@@ -133,20 +132,11 @@ export class Wonders implements Colliders {
     return this.list.find((w) => Math.hypot(w.x - x, w.z - z, w.id === 'rocks' ? (w.y - 22 - y) * 0.3 : 0) < w.reach) ?? null;
   }
 
-  ring() {
-    this.bellSwing = 1;
-  }
-
   update(dt: number, focus: THREE.Vector3) {
     const t = performance.now() / 1000;
     for (const r of this.rocks) {
       r.obj.position.set(r.base.x, r.base.y + Math.sin(t * 0.4 + r.phase) * 1.4, r.base.z);
       r.obj.rotation.y += dt * 0.03 * (1 + (r.phase % 1));
-    }
-    const bell = this.objs.get('bell')?.getObjectByName('Bell');
-    if (bell) {
-      this.bellSwing = Math.max(0, this.bellSwing - dt * 0.15);
-      bell.rotation.z = Math.sin(t * 2.2) * 0.25 * this.bellSwing + Math.sin(t * 0.6) * 0.02;
     }
     let close = 0;
     for (const w of this.list) close = Math.max(close, 1 - Math.min(1, Math.hypot(w.x - focus.x, w.z - focus.z) / (w.reach * 2)));

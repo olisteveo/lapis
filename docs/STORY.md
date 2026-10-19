@@ -27,9 +27,9 @@ A silent figure wakes on a moonless beach in a world where the stars are falling
 - The only voice in the game. All memory lines are hers, at the age of the memory.
 - Present in the world as **the distant figure**: seen on far beaches, she vanishes when approached.
 
-### The bright one
+### The brightest star
 - The large four-point star visible from everywhere in the world.
-- The Keeper's rule: *"If you're ever lost, find the bright one. Don't lose the bright one, and you'll always get home."*
+- The Keeper's rule: *"If you're ever lost, find the brightest star. Don't lose the brightest star, and you'll always get home."*
 - In the real world, it is the star Mara is drifting under.
 
 ---
@@ -38,7 +38,7 @@ A silent figure wakes on a moonless beach in a world where the stars are falling
 
 1. The Keeper rows Mara to the mainland: she is finally leaving home.
 2. A storm hits mid-crossing. The boat capsizes.
-3. The Keeper gets Mara into the boat's tender, pushes it clear, shouts *"Find the bright one!"*, and goes under.
+3. The Keeper gets Mara into the boat's tender, pushes it clear, shouts *"Find the brightest star!"*, and goes under.
 4. Mara drifts alone for three nights. Hypothermic, drifting in and out of consciousness, giving up.
 5. **The game world is Mara's mind**: the bedtime-story archipelago, rebuilt from memory.
 6. Falling stars are her letting go. When the last one falls, she does not wake.
@@ -58,7 +58,7 @@ A silent figure wakes on a moonless beach in a world where the stars are falling
 | Lighthouses (1 per biome) | Home; the Keeper's duty | Save points, fast travel |
 | Dark Water | Her despair | Spreading starless water; fog; islands sink |
 | Waking on the first beach | The Keeper pulling her back again | Failure/respawn state |
-| No minimap | Navigation by stars | Players steer by constellations and the bright one |
+| No minimap | Navigation by stars | Players steer by constellations and the brightest star |
 
 ### Dark Water
 - Black, starless, reflectionless water that spreads across the sea over time.
@@ -74,7 +74,7 @@ These clues are non-negotiable. The twist only works if a second playthrough rev
 
 1. **No reflection.** Everything reflects in the wet sand and water except the player. Reflection appears only after the Act 3 reveal, and it is Mara.
 2. **Small footprints.** First beach: a line of footprints, smaller than the player's, walking straight into the sea.
-3. **The note.** "Don't lose the bright one." In handwriting imitating the Keeper's, the way a child copies a parent.
+3. **The note.** "Don't lose the brightest star." In handwriting imitating the Keeper's, the way a child copies a parent.
 4. **Memory viewpoint.** Every memory is seen from outside the Keeper, at Mara's eye height, which rises as she ages through the game.
 5. **The distant figure.** Seen on far beaches, vanishes when approached.
 6. **No cold.** The player walks out of the sea soaked and nothing happens. Late game: frost forms on the inside of the boat, not on the player.
@@ -87,7 +87,7 @@ These clues are non-negotiable. The twist only works if a second playthrough rev
 Memory age progression: Coral Shore (age 5-8) -> Sparkling Lake (9-12) -> Karst Peaks (13-17) -> River of Light (the storm night).
 
 ### Prologue -- the beach
-- Storybook on black, lines accumulating like a page: "Every night, she asked for the same story. / The one about the islands where the stars fall into the sea, / and the palms glow pink from drinking their light. / It always ended the same way. / If you're ever lost, find the bright one."
+- Storybook on black, lines accumulating like a page: "Every night, she asked for the same story. / The one about the islands where the stars fall into the sea, / and the palms glow pink from drinking their light. / It always ended the same way. / If you're ever lost, find the brightest star."
 - First person: on your back in the surf, looking straight up. A star falls and lands on the sand in front of you; its light rises.
 - You sit up facing the sea: the fallen star, the footprints, the boat's lantern, The Boat faint overhead.
 - Discover: the boat with the carved seat, the note, the small footprints into the sea.
@@ -113,9 +113,9 @@ Memory age progression: Coral Shore (age 5-8) -> Sparkling Lake (9-12) -> Karst 
 - **The reveal**: the capsizing memory, seen through Mara's eyes. The player looks down into the water and has a reflection for the first time. It is Mara.
 
 ### Act 4 -- The River of Light (ref 1)
-- The Milky Way, as a river of fallen stars flowing between the peaks toward the bright one.
+- The Milky Way, as a river of fallen stars flowing between the peaks toward the brightest star.
 - No longer trying to get home: taking her home.
-- Constellations: **The Hand**, **The Bright One**.
+- Constellations: **The Hand**, **The Brightest Star**.
 
 ### Ending -- the choice, by action
 - The river ends at a shore of light. The boat will not move with the Keeper in it.
@@ -165,11 +165,11 @@ Six per constellation. Lines are Mara's voice at the age of the memory. "Scene" 
 ### 4. The Oar -- Sparkling Lake -- age 11-12
 | # | Line | Scene |
 |---|---|---|
-| 19 | "Find the bright one. Then what?" | Lying on the boat floor looking up |
+| 19 | "Find the brightest star. Then what?" | Lying on the boat floor looking up |
 | 20 | "Keep it over my left shoulder. I know, I know." | Rowing at night, the bright star above |
 | 21 | "I got us home. I actually got us home." | The lighthouse growing closer across black water |
 | 22 | "You let me do it. You didn't help at all." | The Keeper's hands resting in their lap |
-| 23 | "Don't lose the bright one." | Copying the phrase onto a scrap of paper, careful letters |
+| 23 | "Don't lose the brightest star." | Copying the phrase onto a scrap of paper, careful letters |
 | 24 | "I'm keeping this forever." | Folding the note into a tin |
 
 ### 5. The Gull -- Karst Peaks -- age 13-16
@@ -188,7 +188,7 @@ Six per constellation. Lines are Mara's voice at the age of the memory. "Scene" 
 | 31 | "You don't have to row me. I could take the ferry." | Bags loaded into the boat |
 | 32 | "Look back. It looks so small." | The lighthouse shrinking behind |
 | 33 | "Is that cloud?" | A dark wall across the stars |
-| 34 | "I can't see the bright one." | The sky gone, rain starting |
+| 34 | "I can't see the brightest star." | The sky gone, rain starting |
 | 35 | "Hold on! Hold on to me!" | Water over the side, chaos |
 | 36 | "Where are you? WHERE ARE YOU?" | Black water, lightning, an empty sea |
 
@@ -198,18 +198,18 @@ Six per constellation. Lines are Mara's voice at the age of the memory. "Scene" 
 | 37 | "I've got the rope, I've got it." | The tender, half-swamped, rope in her fists |
 | 38 | "Get in. Get in, please, there's room." | A hand on the tender's side, pushing it away |
 | 39 | "No. No, no, no." | The gap between them widening |
-| 40 | "...find the bright one..." | A voice from the water, then nothing |
+| 40 | "...find the brightest star..." | A voice from the water, then nothing |
 | 41 | "I'm so cold. I'm so cold." | Dawn that never comes; the tender alone |
 | 42 | "I'll just close my eyes for a bit." | Stars blurring |
 
-### 8. The Bright One -- River of Light -- the choice
+### 8. The Brightest Star -- River of Light -- the choice
 | # | Line | Scene |
 |---|---|---|
 | 43 | "You came back." | The distant figure, finally close, never quite in focus |
 | 44 | "Every time I start to go, you come back." | The first beach, seen from the sea |
 | 45 | "I don't want to go without you." | Two seats in the boat |
-| 46 | "I can see it. I can see the bright one." | The star overhead, steady |
-| 47 | "Don't lose the bright one." | Her handwriting on the note, now in her own hand |
+| 46 | "I can see it. I can see the brightest star." | The star overhead, steady |
+| 47 | "Don't lose the brightest star." | Her handwriting on the note, now in her own hand |
 | 48 | "I'll keep the light on." | A lighthouse lamp igniting |
 
 ---
@@ -228,4 +228,4 @@ Six per constellation. Lines are Mara's voice at the age of the memory. "Scene" 
 
 - **Voice**: one actor (or age-matched actors) for Mara, ~60-80 lines including set pieces.
 - **Twist integrity**: never show the Keeper's face, never show the Keeper's reflection before Act 3, never name the Keeper before the epilogue.
-- **World layout**: constellation stars cluster by biome; the bright one sits above the far end of the River of Light and is visible from every point in the world.
+- **World layout**: constellation stars cluster by biome; the brightest star sits above the far end of the River of Light and is visible from every point in the world.
