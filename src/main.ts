@@ -16,7 +16,7 @@ import { CameraRig } from './game/cameraRig';
 import { Audio } from './audio/audio';
 import { Story } from './story/story';
 import { layoutPrologue } from './story/placement';
-import { LINES } from './story/content';
+import { LINES, STORYBOOK } from './story/content';
 
 const SEED = 1337;
 const $ = (id: string) => document.getElementById(id)!;
@@ -109,17 +109,18 @@ async function boot() {
     settleFrames = 3;
   };
 
-  // Intro timeline (seconds after the first click):
-  //   0-6   black; a whisper.   6-8 fade up, on your back staring at the sky.
-  //   8.6   a star falls.        10-14.5 the title over the sky.   15-19.5 you sit up.
-  const INTRO_DARK = 6;
-  const INTRO_END = 19.5;
+  // Intro: the storybook is told on black; once it finishes the clock below starts.
+  //   0-2   fade up, on your back staring at the sky.   2.6 a star falls.
+  //   4-8.5 the title over the sky.   9-13.5 you sit up, facing the sea.
+  let INTRO_DARK = 999;
+  const WAKE_LEN = 13.5;
+  let INTRO_END = 999;
   let state: 'title' | 'intro' | 'play' = debug && location.hash === '#play' ? 'play' : 'title';
   let introT = 0;
   let shot = false;
   let titleShown = false;
-  // Wake facing north: the bright one is the first thing you see when you sit up.
-  input.yaw = 0;
+  // Wake facing the sea: the boat, the footprints, the first star, The Boat overhead.
+  input.yaw = story.wakeYaw;
   input.pitch = -0.04;
   const fade = $('fade');
   input.onFirstGesture = () => {
@@ -130,9 +131,11 @@ async function boot() {
     $('title').style.opacity = '0';
     fade.style.transitionDuration = '0.8s';
     fade.style.opacity = '1';
-    setTimeout(() => story.narrative.say(LINES.wake, 'whisper'), 1200);
+    setTimeout(() => STORYBOOK.forEach((line) => story.narrative.say(line, 'whisper')), 1200);
   };
   const skipIntro = () => {
+    INTRO_DARK = Math.min(INTRO_DARK, introT);
+    INTRO_END = INTRO_DARK + WAKE_LEN;
     introT = INTRO_END;
     fade.style.opacity = '0';
   };
@@ -189,24 +192,29 @@ async function boot() {
       if (state === 'intro') introT += dt;
       rig.intro(Math.max(0, introT - INTRO_DARK), player, input);
       if (state === 'intro') {
-        if (introT > INTRO_DARK - 0.5 && introT < INTRO_DARK) {
-          fade.style.transitionDuration = '2.5s';
-          fade.style.opacity = '0';
+        if (INTRO_DARK > 900 && introT > 3 && !story.narrative.busy) {
+          INTRO_DARK = introT + 0.8;
+          INTRO_END = INTRO_DARK + WAKE_LEN;
+          setTimeout(() => {
+            fade.style.transitionDuration = '2.5s';
+            fade.style.opacity = '0';
+          }, 600);
         }
         if (!shot && introT > INTRO_DARK + 2.6) {
           shot = true;
           sky.shooting.fire(new THREE.Vector3(-0.55, 0.85, -0.6), new THREE.Vector3(0.25, 0.08, -1));
           audio.starFall();
         }
-        if (!titleShown && introT > 10) {
+        if (!titleShown && introT > INTRO_DARK + 4) {
           titleShown = true;
           $('title').style.opacity = '1';
         }
-        if (introT > 14.5) $('title').style.opacity = '0';
+        if (introT > INTRO_DARK + 8.5) $('title').style.opacity = '0';
         if (introT >= INTRO_END) {
           state = 'play';
           $('title').style.opacity = '0';
-          story.narrative.say('WASD  walk      mouse  look      shift  run', 'hint', 7);
+          story.narrative.say('WASD  walk      mouse  look      shift  run      E  use', 'hint', 7);
+          story.narrative.say(LINES.stakes);
         }
       }
     } else {
@@ -234,7 +242,7 @@ async function boot() {
     promptEl.textContent = prompt;
     promptEl.style.opacity = prompt && state === 'play' ? '1' : '0';
 
-    avatar.update(dt, player);
+    avatar.update(dt, player, camera);
     sky.shooting.update(dt);
     focus.copy(camera.position);
     terrain.update(focus);

@@ -133,45 +133,94 @@ def write(name, x, peak_db=-1.0):
 
 
 # ---------------------------------------------------------------- footsteps
+# A footfall is two pressure events, heel then the roll onto the toe. Each event drives a
+# cloud of tiny grains (sand crunching, leaves crackling) plus a soft body thump; nothing is
+# a raw noise burst, which is what made the first pass sound like static.
+
+def pressure(n, heel_at, toe_at, heel_w=0.035, toe_w=0.06, toe_gain=0.6):
+    t = np.arange(n) / SR
+    heel = np.exp(-((t - heel_at) / heel_w) ** 2)
+    toe = np.exp(-((t - toe_at) / toe_w) ** 2) * toe_gain
+    return heel + toe
+
+
+def grain_cloud(n, density_curve, grain_ms, lo, hi, peak_rate):
+    """Poisson grains whose rate follows density_curve (0..1 per sample)."""
+    out = np.zeros(n)
+    gl = max(6, int(grain_ms * SR / 1000))
+    probs = density_curve * peak_rate / SR
+    hits = np.nonzero(rng.random(n) < probs)[0]
+    win = np.hanning(gl)
+    for p in hits:
+        if p + gl >= n:
+            continue
+        out[p:p + gl] += rng.standard_normal(gl) * win * rng.uniform(0.2, 1.0)
+    spec = np.fft.rfft(out)
+    f = np.fft.rfftfreq(n, 1 / SR)
+    return np.fft.irfft(spec * band(lo, hi, 1.2)(f), n)
+
+
+def thump(n, at, freq=90, dur=0.07):
+    t = np.arange(n) / SR - at
+    body = np.sin(2 * np.pi * freq * np.maximum(t, 0)) * np.exp(-np.maximum(t, 0) / (dur / 4)) * (t >= 0)
+    soft = shaped_noise(n, band(40, 260)) * np.exp(-np.maximum(t, 0) / (dur / 3)) * (t >= 0)
+    return body * 0.6 + soft * 0.5
+
+
+def soften(x, ms=12):
+    # Gentle lowpass via moving average: takes the edge off grain transients.
+    k = max(1, int(ms * SR / 1000 / 6))
+    return np.convolve(x, np.ones(k) / k, mode='same')
+
 
 def step_sand(i):
-    n = int(0.32 * SR)
-    heel = shaped_noise(n, band(70, 260)) * env_ad(n, 0.004, 0.05, 5)
-    shuffle = shaped_noise(n, band(500, 4200)) * env_ad(n, 0.012, 0.16 + 0.04 * rng.random(), 4)
-    crunch = grains(n, 900 + 400 * rng.random(), 1.2, 1800, 9000) * env_ad(n, 0.01, 0.14, 4)
-    return fade_edges(heel * 0.9 + shuffle * 0.45 + crunch * 0.6)
+    n = int(0.42 * SR)
+    heel_at = 0.03 + rng.uniform(-0.005, 0.01)
+    toe_at = heel_at + rng.uniform(0.09, 0.13)
+    pr = pressure(n, heel_at, toe_at)
+    crunch = grain_cloud(n, pr, rng.uniform(0.25, 0.45), 900, 5200, 5200)
+    hush = shaped_noise(n, band(300, 2400)) * pr * 0.06
+    out = crunch * 0.55 + hush + thump(n, heel_at, rng.uniform(70, 95)) * 0.35
+    return fade_edges(soften(out, 3))
 
 
 def step_wet(i):
-    n = int(0.36 * SR)
-    heel = shaped_noise(n, band(60, 220)) * env_ad(n, 0.003, 0.06, 5)
-    squelch = shaped_noise(n, band(250, 1600)) * env_ad(n, 0.02, 0.2, 3.5)
-    # A short sucking resonance as the foot lifts out of wet sand.
-    t = t_axis(0.36)
-    suck = np.sin(2 * np.pi * np.cumsum(420 - 250 * t / 0.36) / SR) * env_ad(n, 0.08, 0.12, 6) * 0.25
-    return fade_edges(heel * 0.8 + squelch * 0.55 + np.roll(suck, int(0.1 * SR)))
+    n = int(0.46 * SR)
+    heel_at = 0.03
+    toe_at = heel_at + rng.uniform(0.1, 0.14)
+    pr = pressure(n, heel_at, toe_at, toe_gain=0.45)
+    pack = grain_cloud(n, pr, 0.9, 250, 1800, 2600)
+    film = shaped_noise(n, band(500, 3000)) * pressure(n, toe_at + 0.05, toe_at + 0.12, 0.04, 0.06, 0.5) * 0.08
+    out = pack * 0.6 + film + thump(n, heel_at, 65, 0.09) * 0.5
+    return fade_edges(soften(out, 6))
 
 
 def step_water(i):
-    n = int(0.7 * SR)
-    splash = shaped_noise(n, band(400, 6500)) * env_ad(n, 0.01, 0.28, 3.5)
-    body = shaped_noise(n, band(90, 500)) * env_ad(n, 0.006, 0.12, 4)
-    out = splash * 0.7 + body * 0.6
-    for _ in range(rng.integers(6, 14)):
-        place(out, droplet(rng.uniform(900, 2600)) * rng.uniform(0.1, 0.35), int(rng.uniform(0.08, 0.55) * SR))
-    return fade_edges(out)
+    n = int(0.75 * SR)
+    t = np.arange(n) / SR
+    entry = 0.03
+    slosh_env = np.exp(-np.maximum(t - entry, 0) / 0.12) * (t >= entry) * np.clip((t - entry) / 0.02, 0, 1)
+    slosh = shaped_noise(n, mul_shape(tilt(0.8), band(150, 2200))) * slosh_env
+    swirl = shaped_noise(n, band(400, 1600)) * np.exp(-np.maximum(t - 0.15, 0) / 0.18) * (t >= 0.12) * 0.25
+    out = slosh * 0.7 + swirl
+    for _ in range(rng.integers(3, 7)):
+        place(out, droplet(rng.uniform(700, 1600), 0.05) * rng.uniform(0.05, 0.14), int(rng.uniform(0.15, 0.55) * SR))
+    return fade_edges(soften(out, 4))
 
 
 def step_jungle(i):
-    n = int(0.4 * SR)
-    thump = shaped_noise(n, band(60, 240)) * env_ad(n, 0.004, 0.07, 5)
-    crackle = grains(n, 1600 + 900 * rng.random(), 2.0, 1500, 8000) * env_ad(n, 0.015, 0.22, 3.5)
-    rustle = shaped_noise(n, band(1200, 7000)) * env_ad(n, 0.03, 0.25, 3)
-    out = thump * 0.9 + crackle * 0.8 + rustle * 0.25
-    if rng.random() < 0.35:
-        snap = shaped_noise(int(0.03 * SR), band(1500, 6000)) * env_ad(int(0.03 * SR), 0.0005, 0.01, 6)
-        place(out, snap * 0.9, int(rng.uniform(0.02, 0.12) * SR))
-    return fade_edges(out)
+    n = int(0.48 * SR)
+    heel_at = 0.03
+    toe_at = heel_at + rng.uniform(0.1, 0.15)
+    pr = pressure(n, heel_at, toe_at, 0.04, 0.07, 0.7)
+    leaves = grain_cloud(n, pr, rng.uniform(1.2, 2.2), 700, 4500, 1800)
+    litter = grain_cloud(n, pr, 0.35, 1500, 6000, 1500) * 0.4
+    out = leaves * 0.6 + litter + thump(n, heel_at, 60, 0.1) * 0.55
+    if rng.random() < 0.25:
+        snap_n = int(0.02 * SR)
+        snap = shaped_noise(snap_n, band(900, 4000)) * np.exp(-np.arange(snap_n) / (0.003 * SR))
+        place(out, snap * 0.35, int((toe_at + rng.uniform(-0.02, 0.03)) * SR))
+    return fade_edges(soften(out, 4))
 
 
 # ---------------------------------------------------------------- boat

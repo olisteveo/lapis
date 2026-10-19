@@ -44,7 +44,7 @@ export const RENDER = {
   fov: 48,
   near: 0.25,
   far: 24000,
-  fogDensity: 0.0005,
+  fogDensity: 0.00034,
 };
 
 export const TERRAIN = {

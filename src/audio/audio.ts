@@ -74,7 +74,7 @@ export class Audio {
   step(surface: Surface, speed: number) {
     const i = Math.floor(Math.random() * 6);
     const loud = Math.min(1, 0.35 + speed / 7);
-    this.one(`step_${surface}_${i}`, loud * (surface === 'water' ? 0.8 : 0.6), 0.94 + Math.random() * 0.12);
+    this.one(`step_${surface}_${i}`, loud * (surface === 'water' ? 0.45 : 0.32), 0.95 + Math.random() * 0.1);
   }
 
   oarDip() {

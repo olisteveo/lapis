@@ -41,17 +41,25 @@ export function layoutPrologue(hf: Heightfield, spawn: P): PrologueLayout {
   const h = (x: number, z: number) => hf.height(x, z);
   const slope = (x: number, z: number) => Math.abs(h(x + 2, z) - h(x - 2, z)) + Math.abs(h(x, z + 2) - h(x, z - 2));
 
-  // Seaward: the direction around the spawn where the ground falls lowest.
-  let sea = { x: 0, z: 1 };
-  let lowest = Infinity;
-  for (let k = 0; k < 32; k++) {
-    const a = (k / 32) * Math.PI * 2;
-    const v = h(spawn.x + Math.sin(a) * 30, spawn.z + Math.cos(a) * 30);
-    if (v < lowest) {
-      lowest = v;
-      sea = { x: Math.sin(a), z: Math.cos(a) };
+  // Seaward: toward the nearest water deep enough to float the boat. The beach shelves so
+  // gently that the lowest nearby ground can point along the shore instead of out to sea.
+  let water = { x: spawn.x, z: spawn.z + 40 };
+  let nearest = Infinity;
+  for (let k = 0; k < 96; k++) {
+    const a = (k / 96) * Math.PI * 2;
+    for (let r = 4; r < 260; r += 1) {
+      const x = spawn.x + Math.sin(a) * r;
+      const z = spawn.z + Math.cos(a) * r;
+      if (h(x, z) < -0.6) {
+        if (r < nearest) {
+          nearest = r;
+          water = { x, z };
+        }
+        break;
+      }
     }
   }
+  const sea = { x: (water.x - spawn.x) / nearest, z: (water.z - spawn.z) / nearest };
   const side = { x: -sea.z, z: sea.x };
 
   // Footprints: from beside where you wake, straight down the beach and into the water.
@@ -59,7 +67,7 @@ export function layoutPrologue(hf: Heightfield, spawn: P): PrologueLayout {
   let px = spawn.x + side.x * 1.6 + sea.x * 1.5;
   let pz = spawn.z + side.z * 1.6 + sea.z * 1.5;
   let underwater = 0;
-  for (let i = 0; i < 70 && underwater < 5; i++) {
+  for (let i = 0; i < 120 && underwater < 5; i++) {
     const left = i % 2 === 0;
     const off = left ? 0.1 : -0.1;
     footprints.push({ x: px + side.x * off, z: pz + side.z * off, yaw: Math.atan2(sea.x, sea.z), left });
@@ -68,10 +76,8 @@ export function layoutPrologue(hf: Heightfield, spawn: P): PrologueLayout {
     if (h(px, pz) < 0.05) underwater++;
   }
 
-  // Boat beached in the shallows a little along the shore.
-  const boatBase = search({ x: spawn.x + side.x * 7, z: spawn.z + side.z * 7 }, 4, 40,
-    (x, z) => h(x, z) < -0.75 && h(x, z) > -2.5, (x, z) => -dist({ x, z }, spawn)) ?? { x: spawn.x + sea.x * 20, z: spawn.z + sea.z * 20 };
-  const boat = { ...boatBase, heading: Math.atan2(side.x, side.z) };
+  // Boat afloat at that nearest deep water, lying along the shore, lantern lit.
+  const boat = { x: water.x + sea.x * 2.5, z: water.z + sea.z * 2.5, heading: Math.atan2(side.x, side.z) };
 
   // The note: on dry sand between where you wake and the boat, pinned by a stone.
   const note = search({ x: (spawn.x + boat.x) / 2, z: (spawn.z + boat.z) / 2 }, 0, 10,

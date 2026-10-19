@@ -52,7 +52,7 @@ export class CameraRig {
     }
     this.wasBoat = false;
     const moving = Math.min(1, p.speed / 3.2);
-    this.stepPhase += dt * (5.2 + p.speed * 0.9) * (moving > 0.05 ? 1 : 0);
+    this.stepPhase += dt * (3.2 + p.speed * 0.9) * (moving > 0.05 ? 1 : 0);
     const bob = Math.sin(this.stepPhase * 2) * 0.035 * moving;
     const step = Math.floor((this.stepPhase * 2 + Math.PI / 2) / (Math.PI * 2));
     if (step !== this.lastStep && moving > 0.1) this.onStep?.(p.speed);

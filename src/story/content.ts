@@ -51,8 +51,20 @@ export const THE_BOAT: ConstellationDef = {
   ],
 };
 
+// Told on black before you wake: the bedtime story this world is built from.
+export const STORYBOOK = [
+  'Every night, she asked for the same story.',
+  'The one about the islands where the stars fall into the sea,',
+  'and the palms glow pink from drinking their light.',
+  'It always ended the same way.',
+  "If you're ever lost, find the bright one.",
+];
+
 export const LINES = {
   wake: '...find the bright one...',
+  stakes: 'The stars are falling. Gather them before the sky goes dark.',
+  warm: 'A fallen star. It is still warm.',
+  atSea: 'Some have fallen out at sea. The boat is waiting.',
   footprints: "Small footprints. They walk into the sea, and they don't come back.",
   note: "Don't lose the bright one.",
   seat: 'Two sets of initials are carved into the seat. One of them was cut by a child.',

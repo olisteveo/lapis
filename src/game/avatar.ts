@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { color, exp, length, uv, vec4 } from 'three/tsl';
 import type { Anim, PlayerController } from './player';
 
 // Boat-local seat for the rower (three.js axes, bow toward +X), tuned against the mesh.
@@ -13,6 +14,7 @@ export class Avatar {
   private actions = new Map<Anim, THREE.AnimationAction>();
   private current: Anim | null = null;
   private oars: THREE.Object3D[] = [];
+  private beaconSprite: THREE.Sprite | null = null;
   private lantern: THREE.PointLight;
   /** Lying-down blend for the opening shot: 1 = on the sand, 0 = standing. */
   lying = 0;
@@ -20,7 +22,7 @@ export class Avatar {
   constructor() {
     this.keeper.name = 'keeper';
     this.boat.name = 'boat';
-    this.lantern = new THREE.PointLight(0xffa060, 1.2, 9, 2);
+    this.lantern = new THREE.PointLight(0xffa060, 2.2, 16, 1.8);
   }
 
   async load(keeperUrl: string, boatUrl: string) {
@@ -44,7 +46,7 @@ export class Avatar {
       if (/^Oar[LR]/.test(o.name)) this.oars.push(o);
       if (o.name === 'Lantern') {
         this.lantern.position.set(0.12, 0.3, 0);
-        o.add(this.lantern);
+        o.add(this.lantern, this.beacon());
       }
       const m = o as THREE.Mesh;
       const std = m.material as THREE.MeshStandardMaterial | undefined;
@@ -81,6 +83,18 @@ export class Avatar {
     return mask;
   }
 
+  /** A soft warm halo on the lantern so the boat can be found from down the beach. */
+  private beacon() {
+    const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const r = length(uv().sub(0.5)).mul(2);
+    mat.colorNode = vec4(color(0xffa45c).mul(exp(r.mul(-5)).mul(1.4).add(exp(r.mul(-16)).mul(2.5))), 1);
+    const s = new THREE.Sprite(mat);
+    s.scale.setScalar(4.5);
+    s.position.set(0.12, 0.3, 0);
+    this.beaconSprite = s;
+    return s;
+  }
+
   private play(anim: Anim, rate: number, dt: number) {
     if (this.current !== anim) this.current = anim;
     for (const [name, a] of this.actions) {
@@ -92,7 +106,13 @@ export class Avatar {
     if (a) a.timeScale = rate;
   }
 
-  update(dt: number, p: PlayerController) {
+  update(dt: number, p: PlayerController, camera?: THREE.Camera) {
+    // The beacon is for finding the boat from afar; up close (or aboard) it would blind you.
+    if (this.beaconSprite && camera) {
+      const d = camera.position.distanceTo(this.boat.position);
+      this.beaconSprite.visible = p.mode !== 'boat';
+      this.beaconSprite.scale.setScalar(THREE.MathUtils.clamp(d * 0.05, 0.5, 4.5));
+    }
     const b = p.boat;
     this.boat.position.set(b.x, b.bob, b.z);
     this.boat.rotation.set(0, b.heading - Math.PI / 2, Math.sin(b.bob * 20) * 0.02);
@@ -123,6 +143,6 @@ export class Avatar {
       oar.rotation.x = (-0.12 - inWater * 0.18 + (1 - inWater) * 0.06) * side;
       oar.rotation.z = (1 - inWater) * 0.0 + inWater * (Math.PI / 2) * side;
     }
-    this.lantern.intensity = 1.1 + Math.sin(performance.now() * 0.011) * 0.08 + Math.sin(performance.now() * 0.023) * 0.06;
+    this.lantern.intensity = 2.1 + Math.sin(performance.now() * 0.011) * 0.12 + Math.sin(performance.now() * 0.023) * 0.08;
   }
 }

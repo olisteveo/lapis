@@ -1,6 +1,8 @@
 // On-screen words. Kept sparse on purpose: the story is told by the world, these are the
 // few lines the world can't say for itself.
 
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
 export type LineKind = 'memory' | 'whisper' | 'title' | 'observation' | 'hint';
 
 interface Line {
@@ -17,8 +19,8 @@ interface Channel {
   phase: 'idle' | 'in' | 'hold' | 'out';
 }
 
-const FADE = { memory: 1.6, whisper: 2.2, title: 2.5, observation: 1.0, hint: 0.8 } as const;
-const HOLD = { memory: 5.5, whisper: 3.5, title: 4, observation: 4.5, hint: 6 } as const;
+const FADE = { memory: 1.6, whisper: 1.4, title: 2.5, observation: 1.0, hint: 0.8 } as const;
+const HOLD = { memory: 5.5, whisper: 2.6, title: 4, observation: 4.5, hint: 6 } as const;
 
 export class Narrative {
   private center: Channel;
@@ -46,6 +48,19 @@ export class Narrative {
 
   get busy() {
     return this.center.phase !== 'idle' || this.center.queue.length > 0;
+  }
+
+  /** Quiet objective in the corner of the screen. */
+  objective(title: string, done: number, total: number) {
+    let el = document.getElementById('objective');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'objective';
+      document.body.appendChild(el);
+    }
+    const dots = Array.from({ length: total }, (_, i) => `<i class="${i < done ? 'lit' : ''}"></i>`).join('');
+    el.innerHTML = `<div class="obj-title">${escapeHtml(title)}</div><div class="obj-line">fallen stars gathered <span class="dots">${dots}</span></div>`;
+    el.style.opacity = '1';
   }
 
   note(text: string) {
@@ -83,7 +98,9 @@ export class Narrative {
       if (!next) return;
       ch.current = next;
       ch.el.className = `line ${next.kind}`;
-      ch.el.textContent = next.text;
+      // Memories are her voice; say so, quietly, so they never read as the player's thoughts.
+      if (next.kind === 'memory') ch.el.innerHTML = `<span class="caption">her voice</span>${escapeHtml(next.text)}`;
+      else ch.el.textContent = next.text;
       ch.el.style.transitionDuration = `${FADE[next.kind]}s`;
       // Force a style flush so the fade-in transition runs from zero.
       void ch.el.offsetWidth;

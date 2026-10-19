@@ -53,7 +53,9 @@ export class Story {
   ) {
     this.group.name = 'story';
     const h = (x: number, z: number) => hf.height(x, z);
-    this.boat = new Constellation(THE_BOAT);
+    // Hang The Boat over the open sea as seen from where you wake.
+    const seaAz = THREE.MathUtils.radToDeg(Math.atan2(layout.seaward.x, -layout.seaward.z));
+    this.boat = new Constellation({ ...THE_BOAT, azimuth: seaAz });
     this.stars = new FallenStars(THE_BOAT.fragments.map((f) => f.id), layout.stars, h);
     this.figure = new DistantFigure(layout.figureSpots, h);
     this.group.add(this.boat.group, this.stars.group, createFootprints(layout, h), createNote(layout.note, h), this.figure.group);
@@ -68,6 +70,11 @@ export class Story {
       this.boat.light(i);
       if (this.boat.isComplete) this.onConstellationComplete();
     };
+  }
+
+  /** Yaw that faces the sea from the spawn: the boat, the footprints and The Boat overhead. */
+  get wakeYaw() {
+    return Math.atan2(-this.layout.seaward.x, -this.layout.seaward.z);
   }
 
   loadFigure(keeper: GLTF) {
@@ -111,6 +118,7 @@ export class Story {
     this.prompt = '';
     this.pendingAction = null;
     if (!playing) return;
+    this.narrative.objective(THE_BOAT.name, this.save.collected.length, THE_BOAT.fragments.length);
 
     const px = player.x;
     const pz = player.z;
@@ -139,6 +147,7 @@ export class Story {
     }
 
     const star = this.stars.nearest(px, pz);
+    if (star && this.save.collected.length === 0 && star.dist < 18 && !this.seen('warm')) this.narrative.say(LINES.warm);
     if (star && star.dist < (walking ? 2.6 : 4.2)) {
       this.prompt = 'E   gather the fallen star';
       this.pendingAction = () => this.gather(star.id, star.index);
@@ -166,6 +175,7 @@ export class Story {
     this.narrative.say(fragment.line, 'memory');
     const n = this.save.collected.length;
     if (n === 1) this.narrative.say(LINES.firstStar);
+    if (n === 3) this.narrative.say(LINES.atSea);
     if (n === 2 || n === 4) this.figure.advance();
   }
 

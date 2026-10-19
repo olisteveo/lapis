@@ -47,6 +47,15 @@
       }
       #note.open { opacity: 1; transform: translate(-50%, -50%) rotate(-2deg); }
       #note p { margin: 0; }
+      .line .caption { display: block; font-size: 0.42em; letter-spacing: 0.45em; text-transform: lowercase; opacity: 0.55; margin-bottom: 0.6em; font-style: normal; }
+      #objective {
+        position: fixed; top: 22px; left: 26px; color: rgba(243, 230, 218, 0.78); font-family: 'Cormorant Garamond', serif; pointer-events: none;
+        opacity: 0; transition: opacity 2s ease; text-shadow: 0 0 18px rgba(5, 8, 30, 0.9);
+      }
+      #objective .obj-title { font-size: 20px; letter-spacing: 0.35em; text-transform: uppercase; font-weight: 300; }
+      #objective .obj-line { font-size: 15px; font-style: italic; letter-spacing: 0.06em; margin-top: 6px; opacity: 0.8; }
+      #objective .dots i { display: inline-block; width: 7px; height: 7px; margin-left: 7px; border-radius: 50%; border: 1px solid rgba(243, 230, 218, 0.6); vertical-align: middle; }
+      #objective .dots i.lit { background: #ffb065; border-color: #ffb065; box-shadow: 0 0 10px #ffb065; }
       #stats { position: fixed; top: 8px; left: 8px; color: rgba(243,230,218,0.6); font: 11px monospace; pointer-events: none; display: none; }
     </style>
   </head>

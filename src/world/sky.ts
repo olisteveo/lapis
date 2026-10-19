@@ -118,7 +118,7 @@ function moon() {
   const halo = exp(r.mul(-5.5)).mul(0.1);
   // Painted texture on the disc so it reads as the orange rising moon of ref 1, not a flat circle.
   const mottling = mx_fractal_noise_float(vec3(q.mul(6), 1.0), 3).mul(0.15).add(0.92);
-  mat.colorNode = vec4(color(PALETTE.moon).mul(crescent.mul(mottling).mul(2.2).add(halo)), 1);
+  mat.colorNode = vec4(color(PALETTE.moon).mul(crescent.mul(mottling).mul(1.1).add(halo)), 1);
   const sprite = new THREE.Sprite(mat);
   sprite.frustumCulled = false;
   sprite.renderOrder = -8;
