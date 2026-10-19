@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, attribute, cameraPosition, color, cos, dot, exp, float, floor, hash, length, mix, normalGeometry, positionLocal, saturate, sin, smoothstep,
+  abs, attribute, cameraPosition, color, cos, dot, exp, float, floor, hash, length, mix, normalGeometry, normalView, positionLocal, saturate, sin, smoothstep,
   time, uniform, uv, vec3, vec4, vertexColor,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -347,12 +347,20 @@ export class Wildlife {
     const p = positionLocal as N;
     const key = vec3(SKY.keyLight.x, SKY.keyLight.y, SKY.keyLight.z);
     // A whale made of the night sky: deep blue body, scattered with its own stars.
-    const cell = floor(p.mul(2.2)) as N;
+    // Stars big enough to read from a few hundred metres: a soft disc in one cell in eight.
+    const sp = p.mul(0.9) as N;
+    const cell = floor(sp) as N;
     const h = hash(cell.x.add(cell.y.mul(57)).add(cell.z.mul(113)));
-    const stars = smoothstep(0.965, 1.0, h).mul(sin(time.mul(3).add(h.mul(50))).mul(0.3).add(0.9));
+    const disc = smoothstep(0.32, 0.08, length(sp.sub(cell).sub(0.5)));
+    const stars = smoothstep(0.86, 0.95, h).mul(disc).mul(sin(time.mul(3).add(h.mul(50))).mul(0.3).add(0.9));
     const lambert = saturate(dot(normalGeometry, key).mul(0.5).add(0.5));
-    const rim = float(1).sub(abs(normalGeometry.z)).pow(3);
-    mat.colorNode = color(0x14205a).mul(lambert.mul(0.8).add(0.3)).add(color(0x8fa8ff).mul(rim).mul(0.25)).add(color(PALETTE.starWhite).mul(stars).mul(2.2));
+    const rim = float(1).sub(abs(normalView.z)).pow(2.5);
+    // A pale, luminous belly, like the Milky Way along its underside.
+    const belly = smoothstep(0.2, -0.6, normalGeometry.y);
+    mat.colorNode = color(0x14205a).mul(lambert.mul(0.8).add(0.3))
+      .add(color(0x8fa8ff).mul(rim).mul(0.45))
+      .add(color(0x9fb8ff).mul(belly.mul(0.35)))
+      .add(color(PALETTE.starWhite).mul(stars).mul(2.4));
     const whale = new THREE.Mesh(geo, mat);
     whale.visible = false;
     whale.frustumCulled = false;

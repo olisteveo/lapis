@@ -72,11 +72,12 @@ export class Nightmares {
     const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
     mat.positionNode = S.xyz;
     const age = S.w;
-    mat.scaleNode = vec2(age.mul(1.8).add(0.5).mul(age.lessThan(1).select(float(1), float(0))));
+    mat.scaleNode = vec2(age.mul(2.4).add(0.6).mul(age.lessThan(1).select(float(1), float(0))));
     const r = length(uv().sub(0.5)).mul(2);
     const edge = mx_noise_float(uv().mul(4).add(age.mul(3)) as N).mul(0.2);
-    const alpha = smoothstep(1, 0.3, r.add(edge)).mul(smoothstep(0, 0.12, age)).mul(float(1).sub(age)).mul(0.55);
-    mat.colorNode = vec4(mix(color(0x030108), color(0x2a0a20), smoothstep(0.4, 1, r)), alpha);
+    const alpha = smoothstep(1, 0.3, r.add(edge)).mul(smoothstep(0, 0.12, age)).mul(float(1).sub(age)).mul(0.85);
+    // A bruised crimson fringe, so the smoke reads against the dark as well as the sand.
+    mat.colorNode = vec4(mix(color(0x030108), color(0x5a1030), smoothstep(0.35, 0.95, r)), alpha);
     const sprite = new THREE.Sprite(mat);
     sprite.count = n;
     sprite.frustumCulled = false;
