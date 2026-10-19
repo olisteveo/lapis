@@ -8,6 +8,19 @@ export const SEA_LEVEL = 0;
 
 // Story layout (+Z is south, the bright star sits due north at -Z).
 export const LAKE = { x: 0, z: -250, r: 720 };
+/**
+ * Secret lagoons: rock-ringed pools on the coast, reached only across stepping stones
+ * through a flooded cleft. The first sits near where you wake and teaches the jump.
+ */
+export const LAGOONS = [
+  { x: -720, z: 2080, r: 58 },
+  { x: 240, z: 2720, r: 64 },
+  { x: -1720, z: 2560, r: 60 },
+  { x: 800, z: 1480, r: 56 },
+];
+
+/** The Keeper's home lighthouse stands on the islet at the lake's centre. */
+export const LIGHTHOUSE = { x: LAKE.x, z: LAKE.z };
 export const RIVER = { zStart: -600, zEnd: -4000 };
 
 export function mulberry32(seed: number): () => number {
@@ -51,6 +64,8 @@ export interface Heightfield {
   height(x: number, z: number): number;
   sample(x: number, z: number): TerrainSample;
   riverX(z: number): number;
+  /** Angle (atan2(dx, dz) convention) of each lagoon's cleft, in LAGOONS order. */
+  lagoonGaps: number[];
 }
 
 export function createHeightfield(seed = 1337): Heightfield {
@@ -204,6 +219,51 @@ export function createHeightfield(seed = 1337): Heightfield {
     return { h: best, rock };
   }
 
+  // Each lagoon's cleft faces the land, so the stepping-stone path starts on a beach.
+  const lagoonGaps = LAGOONS.map((L) => {
+    let best = 0;
+    let high = -Infinity;
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI * 2;
+      const v = baseMask(L.x + Math.sin(a) * (L.r + 60), L.z + Math.cos(a) * (L.r + 60));
+      if (v > high) {
+        high = v;
+        best = a;
+      }
+    }
+    return best;
+  });
+
+  /** Returns the carved height for lagoons (or null when outside every lagoon's reach). */
+  function lagoon(x: number, z: number, h: number): { h: number; rock: number } | null {
+    for (let i = 0; i < LAGOONS.length; i++) {
+      const L = LAGOONS[i];
+      const dx = x - L.x;
+      const dz = z - L.z;
+      const d = Math.hypot(dx, dz);
+      if (d > L.r + 45) continue;
+      const ang = Math.atan2(dx, dz);
+      let da = Math.abs(ang - lagoonGaps[i]);
+      da = Math.min(da, Math.PI * 2 - da);
+      const gapHalf = 10 / (L.r + 10); // ~10m half-width cleft
+      const inGap = smoothstep(gapHalf * 1.4, gapHalf * 0.8, da);
+      const n = fbm(nDetail, x / 18, z / 18, 3);
+      const wallH = 24 + n * 10 + fbm(nKarst, x / 50, z / 50, 2) * 8;
+      const wall = smoothstep(L.r + 34, L.r + 12, d) * smoothstep(L.r - 6, L.r + 6, d);
+      let out = h;
+      // Interior: a still pool with a sandy inner beach.
+      if (d < L.r + 2) out = lerp(-2.6, 0.55 + n * 0.15, smoothstep(L.r - 22, L.r - 8, d));
+      // The ring of rock, broken by the flooded cleft.
+      out = lerp(out, Math.max(out, wallH), wall * (1 - inGap));
+      out = lerp(out, -2.4 + n * 0.3, wall * inGap);
+      // A short flooded run beyond the cleft, so the stones start from the outside beach.
+      const outside = smoothstep(L.r + 40, L.r + 22, d) * smoothstep(L.r + 8, L.r + 20, d) * inGap;
+      out = lerp(out, -2.4, outside);
+      return { h: out, rock: wall * (1 - inGap) };
+    }
+    return null;
+  }
+
   function sample(x: number, z: number): TerrainSample {
     let m = baseMask(x, z);
     m += fbm(nDetail, x / 180, z / 180, 3) * 0.06;
@@ -225,6 +285,9 @@ export function createHeightfield(seed = 1337): Heightfield {
     const dLake = Math.hypot(x - LAKE.x, z - LAKE.z);
     const lakeR = LAKE.r + fbm(nShape, x / 300, z / 300, 2) * 120;
     h = lerp(h, -16, smoothstep(lakeR, lakeR - 220, dLake));
+    // The home lighthouse's islet: a rocky knoll in the middle of the lake.
+    const isle = smoothstep(70, 18, dLake + fbm(nDetail, x / 25, z / 25, 2) * 8);
+    h = Math.max(h, lerp(-16, 9 + fbm(nDetail, x / 12, z / 12, 2) * 2.5, isle));
 
     // Domes go on after the sea and lake so they can rise straight out of the water.
     const dm = domes(x, z);
@@ -233,6 +296,11 @@ export function createHeightfield(seed = 1337): Heightfield {
       h = Math.max(h, dm.h * (1 + 0.025 * streaks));
     }
     let rock = dm.rock;
+    const lg = lagoon(x, z, h);
+    if (lg) {
+      h = lg.h;
+      rock = Math.max(rock, lg.rock);
+    }
 
     // River of Light: a channel snaking north from the lake to the far sea.
     if (z < RIVER.zStart + 200) {
@@ -252,7 +320,7 @@ export function createHeightfield(seed = 1337): Heightfield {
     return { height: h, rock: Math.min(1, rock), grove: Math.min(1, grove * 1.4) };
   }
 
-  return { seed, height: (x, z) => sample(x, z).height, sample, riverX };
+  return { seed, height: (x, z) => sample(x, z).height, sample, riverX, lagoonGaps };
 }
 
 /** Finds a gently sloping beach on the south coast for the opening scene. */

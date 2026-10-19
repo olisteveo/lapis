@@ -12,7 +12,10 @@ import { starShape } from '../render/starShape';
  * Each sprite has a random facet normal that re-rolls a few times a second; it lights up
  * when that facet mirrors the bright star, so the glints gather into a path pointing home.
  */
-function layer(count: number, span: number, seed: number, sizeScale: number) {
+// Where the glitter path points: the bright one by default, your next goal when at sea.
+const guide = uniform(new THREE.Vector3(SKY.brightStar.x, SKY.brightStar.y, SKY.brightStar.z));
+
+function layer(count: number, span: number, seed: number, sizeScale: number, near: number) {
   const rnd = mulberry32(seed);
   const a = new Float32Array(count * 4);
   for (let i = 0; i < count; i++) {
@@ -40,17 +43,17 @@ function layer(count: number, span: number, seed: number, sizeScale: number) {
   const h2 = hash(tick.add(s.y.mul(5711)));
   const facet = normalize(vec3(h1.sub(0.5).mul(0.9), 1, h2.sub(0.5).mul(0.9)));
   const v = normalize(cameraPosition.sub(pos));
-  const sd = vec3(SKY.brightStar.x, SKY.brightStar.y, SKY.brightStar.z);
-  const glint = pow(saturate(dot(reflect(v.negate(), facet), sd)), 9);
+  const glint = pow(saturate(dot(reflect(v.negate(), facet), normalize(guide))), 9);
   // A second, sparser population twinkles anywhere so open water never goes dead.
   const ambient = pow(hash(tick.add(s.z.mul(3001))), 14).mul(0.7);
   const envelope = sin(phase.mul(Math.PI));
   const d = length(xz.sub(cam));
   const edgeFade = smoothstep(half, half.mul(0.75), d);
-  const nearFade = smoothstep(1.5, 6, d);
+  // Keep glints off the camera: up close a single sprite would fill the view with rays.
+  const nearFade = smoothstep(float(near), float(near * 3), d);
   const bright = glint.mul(1.6).add(ambient).mul(envelope).mul(edgeFade).mul(nearFade).mul(intensity);
 
-  const size = float(0.4).add(d.mul(0.0045)).mul(bright.mul(0.8).add(0.25)).mul(sizeScale);
+  const size = float(0.4).add(d.mul(0.0045)).mul(bright.min(1.6).mul(0.8).add(0.25)).mul(sizeScale);
   mat.scaleNode = vec2(size.mul(bright.greaterThan(0.02).select(float(1), float(0))) as any);
   const shape = starShape(uv(), bright.mul(0.5).add(0.45).min(1), float(0));
   const warm = smoothstep(0.55, 0.85, s.w);
@@ -65,14 +68,25 @@ function layer(count: number, span: number, seed: number, sizeScale: number) {
 }
 
 export function createSparkles() {
-  const near = layer(22000, 240, 7, 1.1);
-  const mid = layer(22000, 900, 9, 1.4);
-  const far = layer(18000, 2600, 8, 2.0);
+  // Each layer keeps its glints far enough out that none can swell across the view.
+  const near = layer(22000, 240, 7, 1.1, 5);
+  const mid = layer(22000, 900, 9, 1.4, 40);
+  const far = layer(18000, 2600, 8, 2.0, 160);
   const group = new THREE.Group();
   group.name = 'sparkles';
   group.add(near.sprite, mid.sprite, far.sprite);
   return {
     group,
+    /** Point the glitter path toward a world position (or back to the bright one with null). */
+    guideTo(from: THREE.Vector3 | null, to: THREE.Vector3 | null, dt: number) {
+      const want = new THREE.Vector3(SKY.brightStar.x, SKY.brightStar.y, SKY.brightStar.z);
+      if (from && to) {
+        const d = new THREE.Vector3(to.x - from.x, 0, to.z - from.z).normalize();
+        // Keep it low in the sky so the path runs long across the water toward the goal.
+        want.set(d.x, 0.32, d.z).normalize();
+      }
+      guide.value.lerp(want, Math.min(1, dt * 0.8)).normalize();
+    },
     setIntensity(v: number) {
       near.intensity.value = v;
       mid.intensity.value = v;

@@ -12,7 +12,6 @@ export class Avatar {
   private mixer!: THREE.AnimationMixer;
   keeperGltf: GLTF | null = null;
   private actions = new Map<Anim, THREE.AnimationAction>();
-  private current: Anim | null = null;
   private oars: THREE.Object3D[] = [];
   private beaconSprite: THREE.Sprite | null = null;
   private lantern: THREE.PointLight;
@@ -22,7 +21,7 @@ export class Avatar {
   constructor() {
     this.keeper.name = 'keeper';
     this.boat.name = 'boat';
-    this.lantern = new THREE.PointLight(0xffa060, 2.2, 16, 1.8);
+    this.lantern = new THREE.PointLight(0xffa060, 1.4, 14, 1.8);
   }
 
   async load(keeperUrl: string, boatUrl: string) {
@@ -51,7 +50,7 @@ export class Avatar {
       const m = o as THREE.Mesh;
       const std = m.material as THREE.MeshStandardMaterial | undefined;
       // Night scene: Blender base colours are daylight values, so pull the boat down to match.
-      if (m.isMesh && std?.color && std.name !== 'lantern_glow') std.color.multiplyScalar(0.45);
+      if (m.isMesh && std?.color && std.name !== 'lantern_glow') std.color.multiplyScalar(0.28);
       if (m.isMesh && m.material && (m.material as THREE.Material).name === 'lantern_glow') {
         const mat = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(0xffb070).multiplyScalar(1.6) });
         m.material = mat;
@@ -77,7 +76,8 @@ export class Avatar {
     geo.rotateX(-Math.PI / 2);
     const mat = new THREE.MeshBasicNodeMaterial({ colorWrite: false, side: THREE.DoubleSide });
     const mask = new THREE.Mesh(geo, mat);
-    mask.position.y = 0.03;
+    // High enough that the hull's bob never dips it under the sea surface.
+    mask.position.y = 0.14;
     mask.renderOrder = 0.9;
     mask.name = 'boatWaterMask';
     return mask;
@@ -95,17 +95,6 @@ export class Avatar {
     return s;
   }
 
-  private play(anim: Anim, rate: number, dt: number) {
-    if (this.current !== anim) this.current = anim;
-    for (const [name, a] of this.actions) {
-      const w = a.getEffectiveWeight();
-      const target = name === anim ? 1 : 0;
-      a.setEffectiveWeight(w + (target - w) * Math.min(1, dt * 6));
-    }
-    const a = this.actions.get(anim);
-    if (a) a.timeScale = rate;
-  }
-
   update(dt: number, p: PlayerController, camera?: THREE.Camera) {
     // The beacon is for finding the boat from afar; up close (or aboard) it would blind you.
     if (this.beaconSprite && camera) {
@@ -117,20 +106,9 @@ export class Avatar {
     this.boat.position.set(b.x, b.bob, b.z);
     this.boat.rotation.set(0, b.heading - Math.PI / 2, Math.sin(b.bob * 20) * 0.02);
 
-    if (p.mode === 'boat') {
-      if (this.keeper.parent !== this.boat) this.boat.add(this.keeper);
-      this.keeper.position.copy(SEAT);
-      // Rowers face the stern; the boat's bow is local +X, so face local -X.
-      this.keeper.rotation.set(0, -Math.PI / 2, 0);
-      const row = this.actions.get('row');
-      if (row && p.anim === 'row') row.time = b.stroke * row.getClip().duration;
-    } else {
-      if (this.keeper.parent === this.boat) this.boat.parent?.add(this.keeper);
-      this.keeper.position.set(p.x, p.y + this.lying * 0.12, p.z);
-      this.keeper.rotation.set(-Math.PI / 2 * this.lying, p.heading, 0, 'YXZ');
-    }
-    this.play(p.anim, p.animRate, dt);
-    this.mixer?.update(dt);
+    // First person: the Keeper's body is never placed in the world (not even in the boat).
+    void SEAT;
+    void dt;
 
     // Oars: sweep fore-aft with the stroke, blade buried on the drive, feathered on recovery.
     const ph = b.stroke * Math.PI * 2;
@@ -143,6 +121,6 @@ export class Avatar {
       oar.rotation.x = (-0.12 - inWater * 0.18 + (1 - inWater) * 0.06) * side;
       oar.rotation.z = (1 - inWater) * 0.0 + inWater * (Math.PI / 2) * side;
     }
-    this.lantern.intensity = 2.1 + Math.sin(performance.now() * 0.011) * 0.12 + Math.sin(performance.now() * 0.023) * 0.08;
+    this.lantern.intensity = (p.mode === 'boat' ? 0.8 : 1.4) + Math.sin(performance.now() * 0.011) * 0.08 + Math.sin(performance.now() * 0.023) * 0.05;
   }
 }

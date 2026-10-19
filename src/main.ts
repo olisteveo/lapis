@@ -8,6 +8,10 @@ import { createSky } from './world/sky';
 import { createSparkles } from './world/sparkles';
 import { createMotes } from './world/motes';
 import { Moonbeams } from './world/moonbeams';
+import { Landmarks, layoutLandmarks, CompositeColliders } from './world/landmarks';
+import { Wildlife } from './world/wildlife';
+import { Stones, layoutStones } from './world/stones';
+import { Currents } from './world/currents';
 import { Flora } from './world/flora';
 import { createPost } from './render/post';
 import { PlayerController } from './game/player';
@@ -45,6 +49,8 @@ async function boot() {
   scene.add(key, moonFill, new THREE.HemisphereLight(0x3550c0, 0x0a0d1c, 0.85));
 
   const hf = createHeightfield(SEED);
+  const currents = new Currents(hf);
+  const world = { height: (x: number, z: number) => hf.height(x, z), flow: (x: number, z: number) => currents.flow(x, z) };
   const pool = new WorkerPool(Math.max(2, Math.min(6, (navigator.hardwareConcurrency || 4) - 2)));
 
   const water = createWater();
@@ -61,8 +67,15 @@ async function boot() {
 
   const spawn = findSpawn(hf);
   const layout = layoutPrologue(hf, spawn);
-  const player = new PlayerController(hf);
-  player.colliders = flora;
+  const player = new PlayerController(world);
+  const stones = new Stones(layoutStones(hf));
+  player.platforms = stones;
+  const landmarks = new Landmarks(layoutLandmarks(hf, spawn));
+  const wildlife = new Wildlife(hf);
+  player.colliders = new CompositeColliders([flora, landmarks]);
+  const CLEAR: Record<string, number> = { Lighthouse: 14, Hut: 6, Wreck: 7, Jetty: 4, Swing: 2.5, Cairn: 2, StoneLantern: 1.5 };
+  flora.setClearings(landmarks.placed.map((p) => ({ x: p.x, z: p.z, r: (CLEAR[p.type] ?? 2) * p.scale })));
+  scene.add(landmarks.group, wildlife.group, stones.mesh, currents.group);
   player.place(spawn.x, spawn.z, Math.PI);
   player.placeBoat(layout.boat.x, layout.boat.z, layout.boat.heading);
 
@@ -79,6 +92,7 @@ async function boot() {
     sparkles.group.visible = !mirror;
     motes.visible = !mirror;
     beams.group.visible = !mirror;
+    wildlife.setMirror(mirror);
     flora.setMirror(mirror);
     proxy.node.value = mirror || settleFrames > 0 ? proxy.dummy : water.reflection.value;
   };
@@ -86,7 +100,8 @@ async function boot() {
     if (cam !== camera) {
       sparkles.group.visible = true;
       motes.visible = true;
-      beams.group.visible = true;
+      beams.group.visible = beams.wanted;
+      wildlife.setMirror(false);
       flora.setMirror(false);
       proxy.node.value = settleFrames > 0 ? proxy.dummy : water.reflection.value;
     }
@@ -98,8 +113,20 @@ async function boot() {
   let memoryUntil = 0;
   story.onMemory = (seconds) => (memoryUntil = performance.now() / 1000 + seconds);
 
+  wildlife.onEvent = (kind, at) => {
+    const d = camera.position.distanceTo(at);
+    if (kind === 'whale') audio.whale(d);
+    else audio.splash(d, kind === 'bigSplash');
+  };
+  const optional = (p: Promise<unknown>, what: string) => p.catch((e) => console.warn(`${what} not loaded yet`, e?.message ?? e));
   await Promise.all([
-    avatar.load('/models/keeper.glb', '/models/boat.glb').then(() => avatar.keeperGltf && story.loadFigure(avatar.keeperGltf)),
+    optional(landmarks.load('/models/props.glb').then((t) => debug && console.log('landmarks', t)), 'props'),
+    optional(wildlife.load('/models/creatures.glb').then((t) => debug && console.log('wildlife', t)), 'creatures'),
+    avatar.load('/models/keeper.glb', '/models/boat.glb').then(() => {
+      if (!avatar.keeperGltf) return;
+      story.loadFigure(avatar.keeperGltf);
+      story.setupEchoes(avatar.keeperGltf, landmarks);
+    }),
     flora.load('/models/flora.glb').then((types) => debug && console.log('flora types', types)),
   ]);
 
@@ -168,12 +195,28 @@ async function boot() {
     audio.step(surface, speed);
   };
   let lastStroke = 0;
+  player.onEvent = (e) => {
+    if (e === 'jump') audio.jump();
+    else if (e === 'land') audio.land(hf.height(player.x, player.z) < 0);
+    else if (e === 'fall') {
+      audio.splash(2);
+      fade.style.transitionDuration = '1s';
+      fade.style.opacity = '0.85';
+      if (!story.narrative.busy) story.narrative.say(LINES.fell);
+    } else if (e === 'respawn') {
+      fade.style.transitionDuration = '1.4s';
+      fade.style.opacity = '0';
+    } else if (e === 'powerStroke') audio.powerStroke();
+    else if (e === 'callBoat') audio.oarDrip();
+  };
+  let currentHinted = false;
+  let strokeHinted = false;
 
   if (debug) {
     // Console handle for art direction: lapis.view(x, z, yaw, pitch), lapis.player, etc.
     Object.assign(window, {
       lapis: {
-        player, input, camera, hf, post, flora, sparkles, story, layout, audio,
+        player, input, camera, hf, post, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones,
         view(x: number, z: number, yaw = input.yaw, pitch = input.pitch) {
           state = 'play';
           player.mode = 'walk';
@@ -197,12 +240,15 @@ async function boot() {
   const focus = new THREE.Vector3();
 
   let lastFrame = 0;
+  let forcedDt = 0;
+  let paused = false;
   const frame = () => {
     lastFrame = performance.now();
     if (settleFrames > 0) settleFrames--;
     fitCanvas();
     clock.update();
-    const dt = Math.min(clock.getDelta(), 1 / 20);
+    const rawDt = forcedDt || Math.min(clock.getDelta(), 1 / 20);
+    const dt = paused && !forcedDt ? 1e-6 : rawDt;
     const now = clock.getElapsed();
 
     const pressed = ePressed;
@@ -214,11 +260,14 @@ async function boot() {
         if (!shot && introT > INTRO_DARK + 2.6) {
           shot = true;
           // The star you watch fall comes down onto the beach in front of you.
+          // It streaks across the sky from one side to the other while you lie watching,
+          // arcing down toward the beach in front of you where it lands.
           const land = story.firstStarPosition;
-          const to = land ? land.clone().sub(camera.position).normalize() : new THREE.Vector3(0.25, 0.08, -1);
-          to.y = Math.max(to.y, 0.02);
-          const from = to.clone().multiplyScalar(-0.35).add(new THREE.Vector3(0, 1, 0)).normalize();
-          sky.shooting.fire(from, to);
+          const fwd = land ? land.clone().sub(camera.position).setY(0).normalize() : new THREE.Vector3(0, 0, -1);
+          const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
+          const from = side.clone().multiplyScalar(-0.75).addScaledVector(fwd, 0.35).add(new THREE.Vector3(0, 1.25, 0)).normalize();
+          const to = side.clone().multiplyScalar(0.55).addScaledVector(fwd, 0.85).add(new THREE.Vector3(0, 0.45, 0)).normalize();
+          sky.shooting.fire(from, to, 2.2);
           audio.starFall();
           setTimeout(() => story.landFirstStar(), 1500);
         }
@@ -242,10 +291,23 @@ async function boot() {
         moveX: story.narrative.reading ? 0 : input.moveX,
         moveY: story.narrative.reading ? 0 : input.moveY,
         sprint: input.down('ShiftLeft', 'ShiftRight'),
-        interact: pressed && !storyUsed,
+        interact: (pressed && !storyUsed) || (input.down('KeyE') && !story.currentPrompt),
+        jump: input.down('Space'),
         cameraYaw: input.yaw,
       });
       rig.follow(dt, player, input, avatar.boat);
+      // At sea the glitter on the water gathers into a path toward the next fallen star.
+      sparkles.guideTo(player.mode === 'boat' ? camera.position : null, player.mode === 'boat' ? story.guideTarget(player) : null, dt);
+      if (player.mode === 'boat') {
+        if (!strokeHinted) {
+          strokeHinted = true;
+          story.narrative.say(LINES.strokeHint, 'hint', 6);
+        }
+        if (!currentHinted && player.boat.current > 0.4) {
+          currentHinted = true;
+          story.narrative.say(LINES.currentHint);
+        }
+      }
       if (player.mode === 'boat' && player.boat.rowing) {
         const st = player.boat.stroke;
         if (lastStroke < 0.05 && st >= 0.05) audio.oarDip();
@@ -263,11 +325,13 @@ async function boot() {
     promptEl.style.opacity = prompt && state === 'play' ? '1' : '0';
 
     avatar.update(dt, player, camera);
-    sky.shooting.update(dt);
+    sky.shooting.update(dt, camera);
     focus.copy(camera.position);
     terrain.update(focus);
     flora.update(focus, now);
     beams.update(dt, focus);
+    landmarks.update(focus);
+    wildlife.update(dt, focus, camera, player.mode === 'boat' || story.audioMix(player).sea > 0.55);
     water.update(focus);
     camera.updateMatrixWorld();
     // A hidden or collapsed canvas has zero size; rendering then invalidates every target.
@@ -284,6 +348,15 @@ async function boot() {
     }
   };
   renderer.setAnimationLoop(frame);
+  if (debug) {
+    // Deterministic stepping for tests: advance game time regardless of display throttling.
+    (window as unknown as { lapis: Record<string, unknown> }).lapis.advance = (seconds: number, step = 1 / 60) => {
+      forcedDt = step;
+      for (let t = 0; t < seconds; t += step) frame();
+      forcedDt = 0;
+    };
+    (window as unknown as { lapis: Record<string, unknown> }).lapis.pause = (on: boolean) => (paused = on);
+  }
   // Debug only: hidden or occluded windows stop getting animation frames; keep ticking so
   // tooling can still watch the game.
   if (debug) setInterval(() => performance.now() - lastFrame > 120 && frame(), 33);

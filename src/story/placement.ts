@@ -1,6 +1,6 @@
 // Deterministic placement of the prologue around the spawn beach, read from the heightfield
 // so it survives any retune of the world generator.
-import type { Heightfield } from '../world/heightfield';
+import { LAGOONS, type Heightfield } from '../world/heightfield';
 
 export interface P {
   x: number;
@@ -96,9 +96,12 @@ export function layoutPrologue(hf: Heightfield, spawn: P): PrologueLayout {
   // 3: along the beach.
   pushStar(search(spawn, 110, 220, (x, z) => h(x, z) > 0.15 && h(x, z) < 1.4 && used(x, z),
     (x, z) => Math.abs((x - spawn.x) * side.x + (z - spawn.z) * side.z)), { x: spawn.x + side.x * 150, z: spawn.z + side.z * 150 });
-  // 4: in the grove, under the glowing palms.
-  pushStar(search(spawn, 80, 170, (x, z) => { const s = hf.sample(x, z); return s.grove > 0.45 && s.height > 3 && s.height < 30 && slope(x, z) < 2 && used(x, z); },
-    (x, z) => hf.sample(x, z).grove), { x: spawn.x - sea.x * 120, z: spawn.z - sea.z * 120 });
+  // 4: hidden in the first secret lagoon, on its inner beach across from the cleft.
+  {
+    const L = LAGOONS[0];
+    const g = hf.lagoonGaps[0];
+    stars.push({ x: L.x - Math.sin(g) * (L.r - 13), z: L.z - Math.cos(g) * (L.r - 13) });
+  }
   // 5: across the water, on a far shore. Walk around or row.
   pushStar(search(spawn, 260, 480, (x, z) => {
     if (h(x, z) < 0.2 || h(x, z) > 1.6 || !used(x, z)) return false;

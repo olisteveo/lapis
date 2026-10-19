@@ -6,11 +6,17 @@ import { createHeightfield, findSpawn, WORLD_HALF } from '../src/world/heightfie
 
 const out = process.argv[2] ?? 'map.png';
 const N = Number(process.argv[3] ?? 768);
+// Optional crop: node tools/map.ts out.png 512 <centreX> <centreZ> <spanMetres>
+const cx = Number(process.argv[4] ?? 0);
+const cz = Number(process.argv[5] ?? 0);
+const span = Number(process.argv[6] ?? WORLD_HALF * 2);
 const hf = createHeightfield();
-const step = (WORLD_HALF * 2) / N;
+const step = span / N;
+const x0 = cx - span / 2;
+const z0 = cz - span / 2;
 const heights = new Float32Array(N * N);
 for (let j = 0; j < N; j++)
-  for (let i = 0; i < N; i++) heights[j * N + i] = hf.height(-WORLD_HALF + i * step, -WORLD_HALF + j * step);
+  for (let i = 0; i < N; i++) heights[j * N + i] = hf.height(x0 + i * step, z0 + j * step);
 
 const spawn = findSpawn(hf);
 const px = Buffer.alloc(N * (N * 3 + 1));
@@ -27,7 +33,7 @@ for (let j = 0; j < N; j++) {
     else if (h < 60) c = [40, 70, 45];
     else c = [90 + Math.min(120, h / 5), 100 + Math.min(110, h / 5), 140 + Math.min(100, h / 6)];
     const o = j * (N * 3 + 1) + 1 + i * 3;
-    const isSpawn = Math.hypot(-WORLD_HALF + i * step - spawn.x, -WORLD_HALF + j * step - spawn.z) < 40;
+    const isSpawn = Math.hypot(x0 + i * step - spawn.x, z0 + j * step - spawn.z) < Math.max(4, span / 160);
     px[o] = isSpawn ? 255 : Math.max(0, Math.min(255, c[0] * shade));
     px[o + 1] = isSpawn ? 40 : Math.max(0, Math.min(255, c[1] * shade));
     px[o + 2] = isSpawn ? 40 : Math.max(0, Math.min(255, c[2] * shade));

@@ -4,6 +4,7 @@ import {
   positionView, positionWorld, pow, reflect, reflector, saturate, sin, smoothstep, time, vec2, vec3, viewportDepthTexture,
 } from 'three/tsl';
 import { PALETTE, SKY } from '../config';
+import { LAGOONS } from './heightfield';
 
 export function createWater() {
   const reflection = reflector({ resolutionScale: 0.5 });
@@ -51,6 +52,13 @@ export function createWater() {
   const foam = saturate(max(lip, rolling.mul(0.85)));
   col = mix(col, color(PALETTE.foam).mul(1.1), foam);
 
+  // Secret lagoons: still, luminous turquoise water, lit from below.
+  let lagoon: any = float(0);
+  for (const L of LAGOONS) lagoon = max(lagoon, smoothstep(L.r - 4, L.r - 18, positionWorld.xz.sub(vec2(L.x, L.z)).length()));
+  const glowBand = sin(depth.mul(1.6).sub(t.mul(0.6)).add(fn.mul(2))).mul(0.5).add(0.5);
+  // Bright enough to bloom: the light comes up through the water, strongest in the shallows.
+  const lagoonCol = mix(color(0x0d4f66), color(0x6ff4ee), smoothstep(2.8, 0.1, depth).mul(0.55).add(glowBand.mul(0.45))).mul(1.7);
+  col = mix(col, mix(lagoonCol, reflected, fresnel.mul(0.35)), lagoon.mul(0.9));
   mat.colorNode = col;
   mat.opacityNode = max(smoothstep(0.0, 0.5, depth), foam).mul(0.97);
 

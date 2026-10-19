@@ -37,7 +37,7 @@ export class Audio {
       ...['sand', 'wet', 'water', 'jungle'].flatMap((s) => [0, 1, 2, 3, 4, 5].map((i) => `step_${s}_${i}`)),
       'oar_dip_0', 'oar_dip_1', 'oar_dip_2', 'oar_drip_0', 'oar_drip_1',
       ...[0, 1, 2, 3, 4, 5].map((i) => `chime_${i}`),
-      'memory_swell', 'star_fall',
+      'memory_swell', 'star_fall', 'splash_small_0', 'splash_small_1', 'splash_small_2', 'splash_big', 'whale_song',
     ];
     await Promise.all(
       names.map(async (n) => {
@@ -85,6 +85,19 @@ export class Audio {
     this.one(`oar_drip_${Math.floor(Math.random() * 2)}`, 0.3);
   }
 
+  jump() {
+    this.one(`step_sand_${Math.floor(Math.random() * 6)}`, 0.22, 1.15);
+  }
+
+  land(onWater: boolean) {
+    this.one(onWater ? `splash_small_${Math.floor(Math.random() * 3)}` : `step_wet_${Math.floor(Math.random() * 6)}`, onWater ? 0.4 : 0.38, 0.85);
+  }
+
+  powerStroke() {
+    this.one(`oar_dip_${Math.floor(Math.random() * 3)}`, 0.7, 0.85);
+    this.one(`chime_${Math.floor(Math.random() * 3)}`, 0.18, 1.5);
+  }
+
   chime(index: number) {
     this.one(`chime_${index % 6}`, 0.7);
   }
@@ -92,6 +105,18 @@ export class Audio {
   memory() {
     this.one('memory_swell', 0.55);
     this.duck(10);
+  }
+
+  /** Distance-attenuated one-shots for the wildlife. */
+  splash(distance: number, big = false) {
+    const g = Math.max(0, 1 - distance / (big ? 700 : 140));
+    if (g <= 0.02) return;
+    if (big) this.one('splash_big', 0.9 * g, 0.9);
+    else this.one(`splash_small_${Math.floor(Math.random() * 3)}`, 0.5 * g, 0.9 + Math.random() * 0.25);
+  }
+
+  whale(distance: number) {
+    this.one('whale_song', Math.max(0.25, 1 - distance / 900) * 0.8);
   }
 
   starFall() {

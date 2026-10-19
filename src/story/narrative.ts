@@ -101,7 +101,7 @@ export class Narrative {
   }
 
   /** Quiet objective in the corner of the screen. */
-  objective(title: string, done: number, total: number) {
+  objective(title: string, done: number, total: number, extra = '') {
     let el = document.getElementById('objective');
     if (!el) {
       el = document.createElement('div');
@@ -109,7 +109,7 @@ export class Narrative {
       document.body.appendChild(el);
     }
     const dots = Array.from({ length: total }, (_, i) => `<i class="${i < done ? 'lit' : ''}"></i>`).join('');
-    el.innerHTML = `<div class="obj-title">${escapeHtml(title)}</div><div class="obj-line">fallen stars gathered <span class="dots">${dots}</span></div>`;
+    el.innerHTML = `<div class="obj-title">${escapeHtml(title)}</div><div class="obj-line">fallen stars gathered <span class="dots">${dots}</span></div>${extra ? `<div class="obj-line">${escapeHtml(extra)}</div>` : ''}`;
     el.style.opacity = '1';
   }
 

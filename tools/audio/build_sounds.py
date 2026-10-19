@@ -288,6 +288,45 @@ def star_fall(i):
     return reverb(whistle * 0.35 + hiss, 0.5, 3.0)
 
 
+def splash_small(i):
+    n = int(0.9 * SR)
+    t = np.arange(n) / SR
+    body = shaped_noise(n, mul_shape(tilt(0.6), band(250, 4000))) * np.exp(-t / 0.12) * np.clip(t / 0.01, 0, 1)
+    out = body * 0.7
+    for _ in range(rng.integers(4, 9)):
+        place(out, droplet(rng.uniform(900, 2400), 0.05) * rng.uniform(0.08, 0.2), int(rng.uniform(0.05, 0.6) * SR))
+    return fade_edges(reverb(out, 0.25, 1.4)[:n])
+
+
+def splash_big(i):
+    n = int(3.5 * SR)
+    t = np.arange(n) / SR
+    boom = shaped_noise(n, mul_shape(tilt(1.0), band(30, 600))) * np.exp(-t / 0.5) * np.clip(t / 0.03, 0, 1)
+    wash = shaped_noise(n, band(400, 7000)) * np.exp(-t / 0.9) * np.clip(t / 0.08, 0, 1)
+    rain = grains(n, 900, 0.8, 1200, 6000) * np.exp(-np.abs(t - 0.8) / 0.6)
+    return fade_edges(reverb(boom * 0.9 + wash * 0.5 + rain * 0.4, 0.35, 2.5)[:n])
+
+
+def whale_song(i):
+    # Long gliding moans with a vocal formant, distant and reverberant.
+    dur = 9.0
+    t = t_axis(dur)
+    out = np.zeros_like(t)
+    for start, f0, f1, length in ((0.2, 140, 95, 3.2), (3.0, 110, 180, 2.6), (5.4, 190, 120, 3.2)):
+        m = (t >= start) & (t < start + length)
+        tt = (t[m] - start) / length
+        f = f0 + (f1 - f0) * (0.5 - 0.5 * np.cos(np.pi * tt))
+        ph = 2 * np.pi * np.cumsum(f) / SR
+        env = np.sin(np.pi * tt) ** 1.5
+        tone = np.sin(ph) + 0.5 * np.sin(2 * ph + 0.3) + 0.25 * np.sin(3 * ph)
+        out[m] += tone * env * (1 + 0.15 * np.sin(2 * np.pi * 5.5 * t[m]))
+    spec = np.fft.rfft(out)
+    f = np.fft.rfftfreq(len(out), 1 / SR)
+    formant = np.exp(-((f - 700) / 350) ** 2) * 0.9 + np.exp(-((f - 250) / 200) ** 2)
+    out = np.fft.irfft(spec * formant, len(out))
+    return reverb(out, 0.6, 5.0, damp=1.4)
+
+
 # ---------------------------------------------------------------- ambience loops
 
 def loop_surf(seconds=24.0):
@@ -405,6 +444,10 @@ def main():
     for i in range(6):
         write(f"chime_{i}", chime(i), -2)
     write("memory_swell", memory_swell(0), -6)
+    for i in range(3):
+        write(f"splash_small_{i}", splash_small(i), -5)
+    write("splash_big", splash_big(0), -3)
+    write("whale_song", whale_song(0), -4)
     write("star_fall", star_fall(0), -4)
     write("loop_surf", loop_surf(), -3)
     write("loop_lapping", loop_lapping(), -3)

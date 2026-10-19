@@ -5,7 +5,7 @@ import type { Input } from './input';
 const ease = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const EYE = 1.62;
 // Seated eye point in boat-local space (bow toward +X), just aft of the oarlocks.
-const BOAT_EYE = new THREE.Vector3(-0.15, 0.68, 0);
+const BOAT_EYE = new THREE.Vector3(-0.55, 0.9, 0);
 
 /**
  * First person. The Keeper is never seen: no body, no reflection, no face. Only the world

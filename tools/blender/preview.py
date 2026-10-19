@@ -1,7 +1,7 @@
 """Renders a preview of an exported asset for visual review.
 
 blender -b --factory-startup --python tools/blender/preview.py -- <in.glb> <out.png> \
-    [dist] [height] [target_z] [name_filter] [action:frame,action:frame...]
+    [dist] [height] [target_z] [name_filter] [action:frame,action:frame...|-] [azimuth] [spacing] [cull] [target_x]
 
 name_filter keeps only root objects whose name contains it (use '*' for all).
 Poses are laid out side by side by duplicating the rig per action:frame.
@@ -70,11 +70,26 @@ for i, o in enumerate(roots):
     o.location.x = math.cos(_az) * k
     o.location.y = math.sin(_az) * k
 
+# Workbench MATERIAL mode reads the viewport colour, which the glTF importer leaves white.
+for mat in bpy.data.materials:
+    bsdf = mat.node_tree.nodes.get("Principled BSDF") if mat.node_tree else None
+    if bsdf:
+        sock = bsdf.inputs["Base Color"]
+        col = sock.default_value
+        # With vertex colours present the factor sits in a Mix node in front of the BSDF.
+        if sock.links:
+            for inp in sock.links[0].from_node.inputs:
+                if inp.type == "RGBA" and not inp.links:
+                    col = inp.default_value
+                    break
+        mat.diffuse_color = col
+
 scene.render.engine = "BLENDER_WORKBENCH"
 scene.display.shading.light = "STUDIO"
 scene.display.shading.color_type = "MATERIAL"
 scene.display.shading.show_cavity = True
 scene.display.shading.show_shadows = False
+scene.display.shading.show_backface_culling = len(args) > 9 and args[9] == "cull"
 scene.render.resolution_x = 1600
 scene.render.resolution_y = 900
 scene.render.filepath = out
@@ -85,7 +100,8 @@ cam_data.lens = 35
 cam = bpy.data.objects.new("cam", cam_data)
 scene.collection.objects.link(cam)
 az = math.radians(azimuth)
-cam.location = (math.sin(az) * dist, -math.cos(az) * dist, height)
-cam.rotation_euler = (Vector((0, 0, target_z)) - cam.location).to_track_quat("-Z", "Y").to_euler()
+target_x = float(args[10]) if len(args) > 10 else 0.0
+cam.location = (target_x + math.sin(az) * dist, -math.cos(az) * dist, height)
+cam.rotation_euler = (Vector((target_x, 0, target_z)) - cam.location).to_track_quat("-Z", "Y").to_euler()
 scene.camera = cam
 bpy.ops.render.render(write_still=True)

@@ -7,14 +7,20 @@ Vertex colour convention (COLOR_0), read by the game's shaders:
   R  gradient along the part, 0 at its root -> 1 at its tip (glow ramp, sway weight)
   G  part id: 0 trunk / hull, 1 frond / foliage, 0.5 fruit / detail
   B  per-part random, for desynchronising wind sway
+
+creatures.glb uses its own encoding (animated in the vertex shader):
+  R  position along the body, head / root 0 -> tail / tip 1
+  G  1 on wings, fins and tentacles (the parts that flap or trail), 0 on the body
+  B  per-part random
 """
+import bisect
 import math
 import os
 import random
 import sys
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = os.path.abspath(ARGS[0] if ARGS else "public/models")
@@ -326,14 +332,16 @@ def ptube(mb, path, radii, segments=8, mat=0, col_fn=None, cap_start=False, cap_
             r = radii[i] * (radial_fn(t, a) if radial_fn else 1.0)
             ring.append(mb.v(path[i] + (nrm * math.cos(a) + bi * math.sin(a)) * r, col))
         rings.append(ring)
+    # This frame (normal, tangent x normal) has the opposite handedness to tube()'s, so the
+    # winding is mirrored to keep faces pointing outward.
     for ra, rb in zip(rings, rings[1:]):
         for s in range(segments):
             s2 = (s + 1) % segments
-            mb.f((ra[s], rb[s], rb[s2], ra[s2]), mat)
+            mb.f((ra[s], ra[s2], rb[s2], rb[s]), mat)
     if cap_start:
-        mb.f(rings[0], mat)
+        mb.f(list(reversed(rings[0])), mat)
     if cap_end:
-        mb.f(list(reversed(rings[-1])), mat)
+        mb.f(rings[-1], mat)
     return rings
 
 
@@ -1443,6 +1451,1172 @@ def bake_keeper_actions(rig):
                                 "forearm.L": (-50, 0, 0), "forearm.R": (-50, 0, 0), "head": (4, 0, 0)}), -0.42, 0.0)])
 
 
+# ---------------------------------------------------------------- landmark / creature helpers
+
+def xform(mb, start, fn):
+    """Applies fn(Vector) -> Vector to every vertex added since index start (rotating a door, tilting a wreck)."""
+    for i in range(start, len(mb.verts)):
+        mb.verts[i] = tuple(fn(Vector(mb.verts[i])))
+
+
+def ramp_r(mb, start, z0, z1, skip_g=(0.5, 1.0)):
+    """Rewrites R as height through the object for solid parts; glow and cloth keep their own gradients."""
+    for i in range(start, len(mb.verts)):
+        r, g, b, a = mb.cols[i]
+        if g in skip_g:
+            continue
+        mb.cols[i] = (max(0.0, min(1.0, (mb.verts[i][2] - z0) / (z1 - z0))), g, b, a)
+
+
+def rings_loft(mb, rings, mat=0, cap_start=True, cap_end=True):
+    """Skins rings of vertex ids (a 1-id ring is a pole). Ring handedness is measured from the geometry and
+    flipped if needed, so sections can be built in any convenient frame and still face outward."""
+    P = lambda i: Vector(mb.verts[i])
+    cent = [sum((P(i) for i in r), Vector()) / len(r) for r in rings]
+    k = max(range(len(rings) - 1), key=lambda j: (cent[j + 1] - cent[j]).length)
+    j = k if len(rings[k]) > 2 else k + 1
+    area = Vector()
+    for s in range(len(rings[j])):
+        area += (P(rings[j][s]) - cent[j]).cross(P(rings[j][(s + 1) % len(rings[j])]) - cent[j])
+    if area.dot(cent[k + 1] - cent[k]) > 0:
+        rings = [list(reversed(r)) for r in rings]
+    for ra, rb in zip(rings, rings[1:]):
+        if len(ra) > 1 and len(rb) > 1:
+            n = len(ra)
+            for s in range(n):
+                mb.f((ra[s], rb[s], rb[(s + 1) % n], ra[(s + 1) % n]), mat)
+        elif len(ra) == 1:
+            for s in range(len(rb)):
+                mb.f((ra[0], rb[s], rb[(s + 1) % len(rb)]), mat)
+        elif len(rb) == 1:
+            for s in range(len(ra)):
+                mb.f((ra[s], rb[0], ra[(s + 1) % len(ra)]), mat)
+    if cap_start and len(rings[0]) > 2:
+        mb.f(rings[0], mat)
+    if cap_end and len(rings[-1]) > 2:
+        mb.f(list(reversed(rings[-1])), mat)
+    return rings
+
+
+def limb(mb, path, radii, segments=6, mat=0, col_fn=None, cap_start=True, cap_end=True, radial_fn=None, jag=None,
+         closed=False):
+    """Rotation-minimising tube skinned through rings_loft. jag=(rnd, depth) splinters the end into a ragged
+    ring closed by a pole, for snapped posts and broken ribs. closed=True loops the path (rails, rope wraps)."""
+    path = [Vector(p) for p in path]
+    n = len(path)
+    if closed:
+        tans = [(path[(i + 1) % n] - path[(i - 1) % n]).normalized() for i in range(n)]
+    else:
+        tans = [(path[min(i + 1, n - 1)] - path[max(i - 1, 0)]).normalized() for i in range(n)]
+    ref = Vector((1, 0, 0)) if abs(tans[0].x) < 0.9 else Vector((0, 1, 0))
+    nrm = (ref - tans[0] * ref.dot(tans[0])).normalized()
+    rings = []
+    for i in range(n):
+        if i:
+            nrm = tans[i - 1].rotation_difference(tans[i]) @ nrm
+            nrm = (nrm - tans[i] * nrm.dot(tans[i])).normalized()
+        bi = tans[i].cross(nrm)
+        t = i / max(1, n - 1)
+        col = col_fn(t) if col_fn else (t, 0.0, 0.0)
+        ring = []
+        for s in range(segments):
+            a = 2 * math.pi * s / segments
+            r = radii[i] * (radial_fn(t, a) if radial_fn else 1.0)
+            off = tans[i] * (jag[0].uniform(-0.35, 1.0) * jag[1]) if jag and i == n - 1 else Vector()
+            ring.append(mb.v(path[i] + (nrm * math.cos(a) + bi * math.sin(a)) * r + off, col))
+        rings.append(ring)
+    if closed:
+        rings.append(rings[0])
+        cap_start = cap_end = False
+    if jag:
+        rings.append([mb.v(path[-1] + tans[-1] * jag[1] * 0.1, col_fn(1.0) if col_fn else (1.0, 0.0, 0.0))])
+    return rings_loft(mb, rings, mat, cap_start, cap_end)
+
+
+def lathe(mb, profile, sides, mat=0, col_fn=None, center=(0, 0, 0), rot=0.0, radial_fn=None, z_fn=None,
+          mat_fn=None, cap_bottom=True, cap_top=True):
+    """Surface of revolution about +Z. Profile [(r, z)] runs counter-clockwise in the r-z half plane (up the
+    outside, in across the top); r=0 collapses to a pole. radial_fn / z_fn(t, angle) shape it per vertex."""
+    c = Vector(center)
+    n = len(profile)
+    rings = []
+    for i, (r, z) in enumerate(profile):
+        t = i / max(1, n - 1)
+        col = col_fn(t) if col_fn else (t, 0.0, 0.0)
+        if r < 1e-6:
+            rings.append([mb.v(c + Vector((0, 0, z)), col)])
+            continue
+        ring = []
+        for s in range(sides):
+            a = rot + 2 * math.pi * s / sides
+            rr = r * (radial_fn(t, a) if radial_fn else 1.0)
+            dz = z_fn(t, a) if z_fn else 0.0
+            ring.append(mb.v(c + Vector((math.cos(a) * rr, math.sin(a) * rr, z + dz)), col))
+        rings.append(ring)
+    for i, (ra, rb) in enumerate(zip(rings, rings[1:])):
+        m = mat_fn(i) if mat_fn else mat
+        if len(ra) > 1 and len(rb) > 1:
+            for s in range(sides):
+                s2 = (s + 1) % sides
+                mb.f((ra[s], ra[s2], rb[s2], rb[s]), m)
+        elif len(ra) == 1 and len(rb) > 1:
+            for s in range(sides):
+                mb.f((ra[0], rb[(s + 1) % sides], rb[s]), m)
+        elif len(rb) == 1 and len(ra) > 1:
+            for s in range(sides):
+                mb.f((ra[s], ra[(s + 1) % sides], rb[0]), m)
+    if cap_bottom and len(rings[0]) > 1:
+        mb.f(list(reversed(rings[0])), mat_fn(0) if mat_fn else mat)
+    if cap_top and len(rings[-1]) > 1:
+        mb.f(rings[-1], mat_fn(n - 2) if mat_fn else mat)
+    return rings
+
+
+def obox(mb, c, ax, ay, hx, hy, hz, mat=0, col=(0, 0, 0)):
+    """Oriented box: centre, two axes (the third is ax x ay) and half extents."""
+    ax = Vector(ax).normalized()
+    ay = Vector(ay)
+    ay = (ay - ax * ay.dot(ax)).normalized()
+    az = ax.cross(ay)
+    c = Vector(c)
+    vs = [mb.v(c + ax * (sx * hx) + ay * (sy * hy) + az * (sz * hz), col)
+          for sz in (-1, 1) for sy in (-1, 1) for sx in (-1, 1)]
+    for f in ((0, 2, 3, 1), (4, 5, 7, 6), (0, 1, 5, 4), (2, 6, 7, 3), (0, 4, 6, 2), (1, 3, 7, 5)):
+        mb.f([vs[i] for i in f], mat)
+    return vs
+
+
+def plank(mb, a, b, width, thick, up=(0, 0, 1), mat=0, col=(0, 0, 0)):
+    """Board from a to b; thickness runs along `up` (projected off the length), width across both."""
+    a, b, up = Vector(a), Vector(b), Vector(up)
+    ax = (b - a).normalized()
+    side = up.cross(ax)
+    if side.length < 1e-6:
+        side = Vector((0, 1, 0)).cross(ax)
+    return obox(mb, (a + b) / 2, ax, side, (b - a).length / 2, width / 2, thick / 2, mat, col)
+
+
+def extrude(mb, poly, origin, u, v, d, depth, mat=0, col=(0, 0, 0)):
+    """Extrudes a convex polygon given in (u, v) plane coordinates along d by depth (gable walls, plinths)."""
+    o, u, v, d = Vector(origin), Vector(u), Vector(v), Vector(d).normalized()
+    m = len(poly)
+    area = sum(poly[i][0] * poly[(i + 1) % m][1] - poly[(i + 1) % m][0] * poly[i][1] for i in range(m))
+    if (area > 0) != (u.cross(v).dot(d) > 0):
+        poly = list(reversed(poly))
+    a = [mb.v(o + u * p[0] + v * p[1], col) for p in poly]
+    b = [mb.v(o + u * p[0] + v * p[1] + d * depth, col) for p in poly]
+    mb.f(list(reversed(a)), mat)
+    mb.f(b, mat)
+    for i in range(m):
+        j = (i + 1) % m
+        mb.f((a[i], a[j], b[j], b[i]), mat)
+
+
+def lumps(rnd, amp, n=5):
+    """Smooth deterministic noise on the unit sphere: a few random plane waves."""
+    waves = []
+    for k in range(n):
+        d = Vector((rnd.gauss(0, 1), rnd.gauss(0, 1), rnd.gauss(0, 1))).normalized()
+        f = rnd.uniform(1.2, 2.2) * (1 + 0.6 * k)
+        waves.append((d * f, rnd.uniform(0, 6.28), amp / (1 + 0.6 * k)))
+    return lambda p: 1.0 + sum(a * math.sin(w.dot(p) + ph) for w, ph, a in waves)
+
+
+def blob(mb, center, size, rnd, u=12, v=8, mat=0, col=(0, 0, 0), rough=0.1, flat=0.0, rot=None):
+    """Noisy ellipsoid for stones and boulders. flat squashes the underside so stones sit rather than balance."""
+    c = Vector(center)
+    noise = lumps(rnd, rough)
+    rings = []
+    for j in range(v + 1):
+        phi = math.pi * j / v
+        z = math.cos(phi)
+        pts = [(0.0, 0.0)] if j in (0, v) else [(math.sin(phi) * math.cos(2 * math.pi * i / u),
+                                                   math.sin(phi) * math.sin(2 * math.pi * i / u)) for i in range(u)]
+        ring = []
+        for x, y in pts:
+            k = noise(Vector((x, y, z)))
+            p = Vector((x * size[0] * k, y * size[1] * k, z * size[2] * k * ((1 - flat) if z < 0 else 1.0)))
+            if rot:
+                p = rot @ p
+            ring.append(mb.v(c + p, col))
+        rings.append(ring)
+    rings_loft(mb, rings, mat, False, False)
+
+
+def catmull(ctrl, u):
+    """Catmull-Rom through rows (u, a, b, ...): smooth body profiles from a short table."""
+    us = [p[0] for p in ctrl]
+    i = max(0, min(len(ctrl) - 2, bisect.bisect_right(us, u) - 1))
+    t = max(0.0, min(1.0, (u - us[i]) / (us[i + 1] - us[i])))
+    p0, p1, p2, p3 = ctrl[max(i - 1, 0)], ctrl[i], ctrl[i + 1], ctrl[min(i + 2, len(ctrl) - 1)]
+    return [0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t ** 3)
+            for a, b, c, d in zip(p0[1:], p1[1:], p2[1:], p3[1:])]
+
+
+def blade_loft(mb, stations, mat=0, cap_start=False, cap_end=True):
+    """Thin closed blade (wing, fin, fluke) from stations (lead, trail, normal, half_thickness, col).
+    Diamond section with its thickest point 30% back from the leading edge. col is a tuple or col(point)."""
+    rings = []
+    for lead, trail, nrm, th, col in stations:
+        lead, trail, nrm = Vector(lead), Vector(trail), Vector(nrm).normalized()
+        cf = col if callable(col) else (lambda p, c=col: c)
+        if (lead - trail).length < 1e-5:
+            rings.append([mb.v(lead, cf(lead))])
+            continue
+        mid = lead.lerp(trail, 0.3)
+        pts = [lead, mid + nrm * th, trail, mid - nrm * th]
+        rings.append([mb.v(p, cf(p)) for p in pts])
+    return rings_loft(mb, rings, mat, cap_start, cap_end)
+
+
+# ---------------------------------------------------------------- landmarks
+
+PROP_MATS = {
+    "wood": lambda: material("wood", (0.34, 0.27, 0.21)),
+    "thatch": lambda: material("thatch", (0.52, 0.42, 0.28), True),
+    "lamp_glow": lambda: material("lamp_glow", (1.0, 0.72, 0.38), emission=(1.0, 0.6, 0.25)),
+    "candle_glow": lambda: material("candle_glow", (1.0, 0.84, 0.55), emission=(1.0, 0.7, 0.35)),
+    "stone": lambda: material("stone", (0.45, 0.45, 0.48)),
+    "lighthouse_white": lambda: material("lighthouse_white", (0.9, 0.88, 0.82)),
+    "lighthouse_band": lambda: material("lighthouse_band", (0.58, 0.1, 0.08)),
+    "lamp_glass": lambda: material("lamp_glass", (0.24, 0.3, 0.34)),
+    "rope": lambda: material("rope", (0.62, 0.52, 0.36)),
+    "sail": lambda: material("sail", (0.88, 0.82, 0.7), True),
+}
+
+
+def prop_mats(*names):
+    return [PROP_MATS[n]() for n in names]
+
+
+JETTY_LEN, JETTY_DECK = 18.0, 1.2
+
+
+def build_jetty():
+    """Landward end at the origin, running out along +X for 18 m; deck top ~1.2 m, piles down to z=-2.5,
+    with a few snapped piles carrying on past the end where the pier used to be longer."""
+    rnd = random.Random(201)
+    mb = MeshBuilder()
+    L = JETTY_LEN
+
+    def top(x):
+        # Sags mid-length and droops at the seaward end where the piles have scoured out.
+        return JETTY_DECK - 0.12 * math.sin(math.pi * min(x, L) / L) - 0.12 * smoothstep(0.65, 1.0, x / L)
+
+    def post(x, y, z1, r=0.13, lean=(0.0, 0.0), jag=False):
+        ph, b = rnd.uniform(0, 6.28), rnd.random()
+        st = 6
+        path = [Vector((x + lean[0] * (i / st) ** 1.5, y + lean[1] * (i / st) ** 1.5, -2.5 + (z1 + 2.5) * i / st))
+                for i in range(st + 1)]
+        knot = lambda t, a: 1.0 + 0.07 * math.sin(a * 2 + ph) + 0.04 * math.sin(a * 5 + t * 7 + ph)
+        limb(mb, path, [r * (1.06 - 0.1 * i / st) for i in range(st + 1)], segments=7,
+             col_fn=lambda t: (t, 0.0, b), cap_start=False, radial_fn=knot, jag=(rnd, 0.24) if jag else None)
+
+    bents = [0.35 + i * (L - 0.7) / 7 for i in range(8)]
+    for bi, x in enumerate(bents):
+        last = bi == len(bents) - 1
+        for side in (-1, 1):
+            if (bi, side) == (5, -1):
+                post(x, -1.0, 0.3, lean=(0.06, -0.14), jag=True)  # snapped below the deck; stringers still carry it
+            else:
+                post(x, side * 1.0, top(x) + (0.6 if last else -0.3),
+                     lean=(rnd.uniform(-0.07, 0.07), rnd.uniform(-0.05, 0.05)))
+        tilt = rnd.uniform(-0.03, 0.03)
+        plank(mb, (x, -1.3, top(x) - 0.33 - tilt), (x, 1.3, top(x) - 0.33 + tilt), 0.18, 0.2, col=(0, 0, rnd.random()))
+        if bi in (1, 3, 6):
+            for s in (-1, 1):
+                plank(mb, (x + s * 0.15, -s * 1.0, -1.7), (x + s * 0.15, s * 1.0, top(x) - 0.45), 0.14, 0.05,
+                      up=(1, 0, 0), col=(0, 0, rnd.random()))
+
+    joints = [0.0] + bents[1:-1] + [L]
+    for y in (-0.85, 0.0, 0.85):
+        for xa, xb in zip(joints, joints[1:]):
+            plank(mb, (xa, y, top(xa) - 0.14), (xb, y, top(xb) - 0.14), 0.12, 0.18, col=(0, 0, rnd.random()))
+
+    n = int(L / 0.25)
+    gone = {i for i in range(n) if rnd.random() < 0.05} | {41, 42, 57, 66, 67, 69}
+    for i in range(n):
+        if i in gone:
+            continue
+        x = 0.125 + i * 0.25 + rnd.uniform(-0.015, 0.015)
+        yaw = rnd.uniform(-0.012, 0.012)
+        y0, y1 = -1.2 + rnd.uniform(-0.08, 0.06), 1.2 + rnd.uniform(-0.06, 0.08)
+        if rnd.random() < 0.12:
+            if rnd.random() < 0.5:
+                y0 += rnd.uniform(0.5, 1.0)
+            else:
+                y1 -= rnd.uniform(0.5, 1.0)
+        z, dz = top(x) - 0.025, rnd.uniform(-0.015, 0.015)
+        plank(mb, (x + y0 * yaw, y0, z - dz), (x + y1 * yaw, y1, z + dz), rnd.uniform(0.19, 0.215), 0.05,
+              col=(0, 0, rnd.random()))
+
+    # Ladder down into the water off the end.
+    xe = L + 0.08
+    for y in (0.3, 0.75):
+        limb(mb, [(xe, y, -1.8), (xe, y, top(L) + 0.75)], [0.045, 0.04], segments=5, cap_start=False)
+    for k in range(7):
+        if k != 4:
+            z = -1.3 + k * 0.38
+            limb(mb, [(xe, 0.28, z), (xe, 0.77, z)], [0.03, 0.03], segments=4)
+
+    for x, y, z1, lean in ((L + 1.9, -1.0, 0.85, (0.1, -0.05)), (L + 1.9, 1.0, -0.15, (0.0, 0.05)),
+                           (L + 4.1, -0.95, 0.35, (0.25, -0.15)), (L + 4.1, 1.05, 1.5, (0.55, 0.35))):
+        post(x, y, z1, lean=lean, jag=True)
+    plank(mb, (L + 1.95, -0.95, 0.7), (L + 3.6, 1.0, -0.45), 0.18, 0.2, col=(0, 0, rnd.random()))
+    ramp_r(mb, 0, -2.5, JETTY_DECK + 0.6)
+    return mb.build("Jetty", prop_mats("wood"), smooth=False)
+
+
+def build_wreck():
+    """Ribs and keel of a ~9 m boat, rolled onto its side and sunk to the bilge; bow toward +X, origin on the
+    sand under the keel's middle."""
+    rnd = random.Random(301)
+    mb = MeshBuilder()
+    Lw = 9.0
+
+    def hull(u, v):
+        x = (u - 0.5) * Lw
+        b = 1.5 * math.sin(math.pi * (0.04 + 0.92 * u)) ** 0.55
+        sheer = 1.35 + 0.9 * (2 * u - 1) ** 4 + 0.25 * u
+        a = abs(v) * math.pi / 2
+        return Vector((x, math.copysign(b * math.sin(a) ** 0.7, v), sheer * (1 - math.cos(a)) ** 1.15))
+
+    def outward(u, v):
+        e = 0.01
+        n = (hull(u, v + e) - hull(u, v - e)).cross(hull(u + e, v) - hull(u - e, v)).normalized()
+        p = hull(u, v)
+        return n if n.dot(p - Vector((p.x, 0, 1.2))) > 0 else -n
+
+    limb(mb, [(-4.6 + 9.2 * i / 8, 0, -0.05 + 0.08 * math.sin(math.pi * i / 8)) for i in range(9)], [0.17] * 9,
+         segments=6, col_fn=lambda t: (0, 0, 0.1))
+    limb(mb, [(4.5 + 0.8 * math.sin(th), 0, 2.0 * (1 - math.cos(th))) for th in (math.pi / 2 * k / 7 for k in range(8))],
+         [0.16 - 0.04 * k / 7 for k in range(8)], segments=6, cap_start=False, jag=(rnd, 0.3))
+    limb(mb, [(-4.5, 0, 0), (-4.68, 0, 0.9), (-4.85, 0, 1.75)], [0.15, 0.14, 0.13], segments=6, cap_start=False,
+         jag=(rnd, 0.25))
+
+    ribs = [0.07 + 0.86 * k / 13 for k in range(14)]
+    for u in ribs:
+        for side in (-1, 1):
+            if rnd.random() < 0.08:
+                continue
+            vmax, jag = 1.08, None
+            if rnd.random() < (0.5 if side > 0 else 0.25):
+                vmax, jag = rnd.uniform(0.35, 0.85), (rnd, 0.12)
+            st = 9
+            path = [hull(u, side * (0.03 + (vmax - 0.03) * i / st)) for i in range(st + 1)]
+            limb(mb, path, [0.095 - 0.03 * i / st for i in range(st + 1)], segments=5, jag=jag)
+
+    for side, vs, keep in ((-1, (0.16, 0.3, 0.44, 0.58), 0.75), (1, (0.16, 0.3), 0.45)):
+        for v in vs:
+            for ua, ub in zip(ribs, ribs[1:]):
+                if rnd.random() > keep:
+                    continue
+                um = (ua + ub) / 2
+                n = outward(um, side * v)
+                plank(mb, hull(ua - 0.012, side * v) + n * 0.1, hull(ub + 0.012, side * v) + n * 0.1, 0.2, 0.045,
+                      up=n, col=(0, 0, rnd.random()))
+    um = 0.58
+    xm = (um - 0.5) * Lw
+    limb(mb, [(xm, 0, 0), (xm + 0.05, 0.03, 1.3), (xm + 0.1, 0.05, 2.6)], [0.16, 0.14, 0.12], segments=7,
+         jag=(rnd, 0.35))
+    yb = hull(um, 0.45)
+    plank(mb, (xm + 0.25, -yb.y, yb.z), (xm + 0.25, yb.y * 0.4, yb.z), 0.26, 0.08, col=(0, 0, rnd.random()))
+
+    R = Matrix.Rotation(math.radians(-6), 3, "Y") @ Matrix.Rotation(math.radians(23), 3, "X")
+    xform(mb, 0, lambda p: R @ p + Vector((0, 0, -0.75)))
+    ramp_r(mb, 0, -0.9, 2.8)
+    return mb.build("Wreck", prop_mats("wood"), smooth=False)
+
+
+def build_hut():
+    """Fisherman's stilt hut, door and porch facing +Y; origin on the ground under the middle of the floor."""
+    rnd = random.Random(401)
+    mb = MeshBuilder()
+    WOOD, THATCH, GLOW = 0, 1, 2
+    F, X0, X1, Y0, Y1 = 0.7, -1.6, 1.6, -1.1, 1.1
+    slope = 0.45 / (Y1 - Y0)
+
+    def eave(y):
+        return 3.2 - (y - Y0) * slope
+
+    def c():
+        return (0.0, 0.0, rnd.random())
+
+    for x in (-1.5, 0.0, 1.5):
+        for y in (-1.0, 1.0, 2.0):
+            z1 = eave(y) + 0.02 if (y == 2.0 and x != 0.0) else F - 0.1
+            cc = c()
+            limb(mb, [(x, y, -0.4), (x + rnd.uniform(-0.03, 0.03), y, z1)], [0.09, 0.08], segments=6,
+                 col_fn=lambda t, cc=cc: cc, cap_start=False)
+    for y in (-1.0, 1.0):
+        for xa, xb in ((-1.5, 0.0), (1.5, 0.0)):
+            plank(mb, (xa, y + 0.1, -0.2), (xb, y + 0.1, F - 0.22), 0.1, 0.04, up=(0, 1, 0), col=c())
+    for y in (-1.0, 1.0, 2.0):
+        plank(mb, (X0 - 0.12, y, F - 0.13), (X1 + 0.12, y, F - 0.13), 0.14, 0.16, col=c())
+    for k in range(13):
+        y = -1.12 + k * 0.27
+        j = rnd.uniform(-0.05, 0.05)
+        xa, xb = X0 - 0.05 + j, X1 + 0.05 + j
+        if k == 10:
+            xb -= 1.1
+        plank(mb, (xa, y, F - 0.025), (xb, y + (0.04 if k == 11 else 0.0), F - 0.025), 0.25, 0.05, col=c())
+
+    door = (-1.25, -0.45, F + 1.85)
+    win = (0.3, 1.05, F + 0.95, F + 1.6)
+
+    def wall_x(y, normal_y):
+        """Planks standing along a wall of constant y."""
+        x = X0 + 0.06
+        while x < X1 - 0.05:
+            w = rnd.uniform(0.19, 0.25)
+            xc = x + w / 2
+            topz = eave(y) + rnd.uniform(-0.04, 0.0)
+            lean = rnd.uniform(-0.015, 0.015)
+            spans = [(F, topz)]
+            if normal_y > 0 and door[0] - 0.05 < xc < door[1] + 0.05:
+                spans = [(door[2] + 0.06, topz)]
+            elif normal_y > 0 and win[0] - 0.05 < xc < win[1] + 0.05:
+                spans = [(F, win[2] - 0.02), (win[3] + 0.02, topz)]
+            for z0, z1 in spans:
+                plank(mb, (xc, y, z0), (xc + lean, y, z1), w - 0.015, 0.04, up=(0, 1, 0), col=c())
+            x += w
+
+    def wall_y(x):
+        y = Y0 + 0.06
+        while y < Y1 - 0.05:
+            w = rnd.uniform(0.19, 0.25)
+            yc = y + w / 2
+            plank(mb, (x, yc, F), (x, yc + rnd.uniform(-0.015, 0.015), eave(yc) + rnd.uniform(-0.04, 0.0)), w - 0.015,
+                  0.04, up=(1, 0, 0), col=c())
+            y += w
+
+    wall_x(Y0, -1)
+    wall_x(Y1, 1)
+    wall_y(X0)
+    wall_y(X1)
+    for x in (X0, X1):
+        for y in (Y0, Y1):
+            plank(mb, (x, y, F), (x, y, eave(y)), 0.12, 0.12, up=(0, 1, 0), col=c())
+
+    # Door frame and a door hanging ajar.
+    for x in (door[0] - 0.03, door[1] + 0.03):
+        plank(mb, (x, Y1 + 0.03, F), (x, Y1 + 0.03, door[2] + 0.05), 0.07, 0.07, up=(0, 1, 0), col=c())
+    plank(mb, (door[0] - 0.1, Y1 + 0.04, door[2] + 0.07), (door[1] + 0.1, Y1 + 0.04, door[2] + 0.07), 0.08, 0.1,
+          up=(0, 1, 0), col=c())
+    s0 = len(mb.verts)
+    for k in range(4):
+        xc = door[0] + 0.1 + k * 0.2
+        plank(mb, (xc, Y1 + 0.06, F + 0.03), (xc, Y1 + 0.06, door[2] - 0.02), 0.19, 0.035, up=(0, 1, 0), col=c())
+    for z in (F + 0.3, door[2] - 0.3):
+        plank(mb, (door[0] + 0.06, Y1 + 0.09, z), (door[1] - 0.06, Y1 + 0.09, z), 0.1, 0.03, up=(0, 1, 0), col=c())
+    plank(mb, (door[0] + 0.1, Y1 + 0.09, F + 0.35), (door[1] - 0.1, Y1 + 0.09, door[2] - 0.35), 0.08, 0.03,
+          up=(0, 1, 0), col=c())
+    hinge = Vector((door[0], Y1 + 0.06, 0))
+    rz = Matrix.Rotation(math.radians(38), 3, "Z")
+    xform(mb, s0, lambda p: rz @ (p - hinge) + hinge)
+
+    # Window frame, cross bar, and a shutter swung right open.
+    for x in (win[0], win[1]):
+        plank(mb, (x, Y1 + 0.04, win[2] - 0.03), (x, Y1 + 0.04, win[3] + 0.03), 0.06, 0.06, up=(0, 1, 0), col=c())
+    for z, w in ((win[2] - 0.03, 0.12), (win[3] + 0.03, 0.08)):
+        plank(mb, (win[0] - 0.08, Y1 + 0.05, z), (win[1] + 0.08, Y1 + 0.05, z), w, 0.05, col=c())
+    xm, zm = (win[0] + win[1]) / 2, (win[2] + win[3]) / 2
+    plank(mb, (xm, Y1 + 0.04, win[2]), (xm, Y1 + 0.04, win[3]), 0.035, 0.035, up=(0, 1, 0), col=c())
+    plank(mb, (win[0], Y1 + 0.04, zm), (win[1], Y1 + 0.04, zm), 0.035, 0.035, up=(0, 1, 0), col=c())
+    s0 = len(mb.verts)
+    for k in range(3):
+        xc = win[0] + 0.125 + k * 0.25
+        plank(mb, (xc, Y1 + 0.07, win[2]), (xc, Y1 + 0.07, win[3]), 0.24, 0.03, up=(0, 1, 0), col=c())
+    for z in (win[2] + 0.12, win[3] - 0.12):
+        plank(mb, (win[0] + 0.05, Y1 + 0.095, z), (win[1] - 0.05, Y1 + 0.095, z), 0.07, 0.025, up=(0, 1, 0), col=c())
+    hinge = Vector((win[1] + 0.03, Y1 + 0.07, zm))
+    rs = Matrix.Rotation(math.radians(-158), 3, "Z") @ Matrix.Rotation(math.radians(7), 3, "Y")
+    xform(mb, s0, lambda p: rs @ (p - hinge) + hinge)
+
+    # Shelf inside the window with the lamp on it.
+    plank(mb, (win[0] + 0.02, Y1 - 0.16, win[2] - 0.05), (win[1] - 0.02, Y1 - 0.16, win[2] - 0.05), 0.22, 0.03, col=c())
+    lc = (xm + 0.04, Y1 - 0.18, win[2] - 0.035)
+    lb = rnd.random()
+    lathe(mb, [(0, 0), (0.075, 0), (0.075, 0.03), (0, 0.03)], 8, WOOD, center=lc, col_fn=lambda t: (0, 0, lb))
+    lathe(mb, [(0, 0.03), (0.055, 0.03), (0.07, 0.1), (0.055, 0.18), (0, 0.18)], 10, GLOW, center=lc,
+          col_fn=lambda t: (t, 0.5, lb))
+    lathe(mb, [(0, 0.18), (0.075, 0.18), (0.03, 0.23), (0.012, 0.26), (0, 0.27)], 8, WOOD, center=lc,
+          col_fn=lambda t: (0, 0, lb))
+
+    # Roof: rafters, boards, then ragged thatch.
+    for x in (-1.68, -0.56, 0.56, 1.68):
+        plank(mb, (x, -1.5, eave(-1.5) + 0.07), (x, 2.4, eave(2.4) + 0.07), 0.08, 0.14, col=c())
+    n_roof = Vector((0, slope, 1)).normalized()
+    for k in range(14):
+        if k == 9:
+            continue
+        y = -1.45 + k * 0.29
+        z = eave(y) + 0.16
+        plank(mb, (-1.92 + rnd.uniform(0, 0.12), y, z), (1.92 - rnd.uniform(0, 0.12), y, z), 0.28, 0.03, up=n_roof,
+              col=c())
+
+    def roof_z(y):
+        return eave(y) + 0.19
+
+    rows = [(-1.75, -1.42, -0.32)] + [(-1.6 + k * 0.34, -1.6 + k * 0.34 + 0.62, 0.0) for k in range(12)]
+    for k, (ya, yb, drop) in enumerate(rows):
+        ph = rnd.random()
+        last = k == len(rows) - 1
+        ncol = 19
+        tops, mids, bots = [], [], []
+        for j in range(ncol):
+            x = 2.0 - 4.0 * j / (ncol - 1) + rnd.uniform(-0.04, 0.04)
+            if j in (0, ncol - 1):
+                x += math.copysign(rnd.uniform(-0.12, 0.05), x)
+            # Alternate long and short tufts so the hem reads as bundled straw, not a cut sheet.
+            y1 = yb + rnd.uniform(-0.04, 0.1) + (0.12 if j % 2 else -0.02) + (0.12 if last else 0.0)
+            z1 = roof_z(y1) + 0.09 - (0.16 + rnd.uniform(0, 0.1) if last else 0.0) + drop
+            if k == 0:
+                # Back fringe hangs off the high edge instead of lying on the roof.
+                y1 = yb - rnd.uniform(0.25, 0.4)
+                z1 = roof_z(-1.5) - rnd.uniform(0.2, 0.38)
+            p0 = Vector((x, ya, roof_z(ya) + 0.03))
+            p1 = Vector((x + rnd.uniform(-0.04, 0.04), y1, z1))
+            pm = p0.lerp(p1, 0.5) + Vector((0, 0, 0.03))
+            tops.append(mb.v(p0, (0.0, 1.0, ph)))
+            mids.append(mb.v(pm, (0.5, 1.0, ph)))
+            bots.append(mb.v(p1, (1.0, 1.0, ph)))
+        chunks = [(0, 6), (10, ncol - 1)] if k == 8 else [(0, ncol - 1)]
+        for a, b in chunks:
+            loft(mb, [tops[a:b + 1], mids[a:b + 1], bots[a:b + 1]], THATCH)
+
+    # Porch: crates, a rain barrel, a sagging rail and steps down.
+    yaw = 0.14
+    ax, ay = (math.cos(yaw), math.sin(yaw), 0), (-math.sin(yaw), math.cos(yaw), 0)
+    obox(mb, (0.95, 1.62, F + 0.21), ax, ay, 0.27, 0.22, 0.21, WOOD, c())
+    for dz in (-0.12, 0.12):
+        obox(mb, (0.95, 1.62, F + 0.21 + dz), ax, ay, 0.285, 0.235, 0.025, WOOD, c())
+    yaw = 0.62
+    obox(mb, (0.9, 1.6, F + 0.57), (math.cos(yaw), math.sin(yaw), 0), (-math.sin(yaw), math.cos(yaw), 0),
+         0.19, 0.16, 0.15, WOOD, c())
+    bb = rnd.random()
+    lathe(mb, [(0, 0), (0.2, 0), (0.245, 0.3), (0.2, 0.62), (0, 0.62)], 12, WOOD, center=(-1.3, 1.78, F),
+          col_fn=lambda t: (0, 0, bb))
+    plank(mb, (1.5, 1.15, F + 0.92), (1.5, 2.0, F + 0.92), 0.08, 0.05, col=c())
+    plank(mb, (1.5, 2.02, F + 0.9), (0.45, 2.06, F + 0.52), 0.08, 0.05, col=c())
+    for x in (-1.2, -0.5):
+        plank(mb, (x, 2.1, F - 0.05), (x, 2.8, -0.08), 0.16, 0.05, up=(1, 0, 0), col=c())
+    for y, z in ((2.33, F - 0.25), (2.58, F - 0.5)):
+        plank(mb, (-1.27, y, z), (-0.43, y, z), 0.22, 0.04, col=c())
+
+    ramp_r(mb, 0, -0.4, 3.5)
+    return mb.build("Hut", prop_mats("wood", "thatch", "lamp_glow"), smooth=False)
+
+
+def build_cairn():
+    """Seven stacked beach stones with a candle stub on top; origin at the ground under the stack."""
+    rnd = random.Random(501)
+    mb = MeshBuilder()
+    z = 0.0
+    rx, h = 0.44, 0.18
+    off = Vector((0, 0, 0))
+    for k in range(7):
+        rx_k = rx * rnd.uniform(0.9, 1.1)
+        ry_k = rx * rnd.uniform(0.7, 0.92)
+        rot = Matrix.Rotation(rnd.uniform(0, 6.28), 3, "Z") @ Matrix.Rotation(rnd.uniform(-0.12, 0.12), 3, "X")
+        # The squashed underside reaches 0.65 h below centre: sink each stone a little into the one beneath.
+        cz = z + h * 0.55
+        blob(mb, off + Vector((0, 0, cz)), (rx_k, ry_k, h), rnd, u=14, v=8, rough=0.1, flat=0.35, rot=rot,
+             col=(0, 0, rnd.random()))
+        z = cz + h * 0.9
+        off += Vector((rnd.uniform(-0.045, 0.045), rnd.uniform(-0.045, 0.045), 0))
+        rx *= rnd.uniform(0.76, 0.86)
+        h *= rnd.uniform(0.84, 1.0)
+    ramp_r(mb, 0, 0.0, z)
+    cb = rnd.random()
+    top = off + Vector((0.01, 0, z - 0.012))
+    lathe(mb, [(0, 0), (0.06, 0), (0.07, 0.008), (0.04, 0.012), (0.036, 0.04), (0.034, 0.09), (0.026, 0.1),
+               (0.005, 0.104), (0.005, 0.12), (0, 0.12)], 10, 1, center=top, col_fn=lambda t: (t * 0.6, 0.5, cb))
+    lathe(mb, [(0, 0.12), (0.014, 0.135), (0.012, 0.16), (0.006, 0.18), (0, 0.2)], 6, 1, center=top,
+          col_fn=lambda t: (0.7 + 0.3 * t, 0.5, cb))
+    return mb.build("Cairn", prop_mats("stone", "candle_glow"), smooth=True)
+
+
+def build_stone_lantern():
+    """Weathered toro: hex base, round shaft, platform, open firebox with a glow core, upturned cap and finial."""
+    rnd = random.Random(601)
+    mb = MeshBuilder()
+    STONE, GLOW = 0, 1
+    worn = lambda t, a: 1.0 + 0.02 * math.sin(a * 3 + 1.7 + t * 5) + rnd.uniform(-0.012, 0.012)
+    hexr = lambda a, rot: math.cos(math.pi / 6) / math.cos(((a - rot) % (math.pi / 3)) - math.pi / 6)
+    col = lambda t: (0, 0, 0.3)
+    lathe(mb, [(0.42, -0.1), (0.42, 0.1), (0.37, 0.14), (0.3, 0.17), (0.3, 0.22), (0, 0.22)], 6, STONE, col_fn=col,
+          radial_fn=worn)
+    lathe(mb, [(0.15, 0.2), (0.155, 0.25), (0.125, 0.3), (0.11, 0.55), (0.14, 0.57), (0.14, 0.61), (0.11, 0.63),
+               (0.1, 0.88), (0, 0.88)], 12, STONE, col_fn=col, radial_fn=worn, cap_bottom=False)
+    lathe(mb, [(0.12, 0.86), (0.3, 0.98), (0.34, 1.0), (0.34, 1.05), (0.27, 1.07), (0, 1.07)], 6, STONE, col_fn=col,
+          radial_fn=worn)
+    for k in range(6):
+        if k in (1, 4):
+            continue
+        a = 2 * math.pi * k / 6
+        d = Vector((math.cos(a), math.sin(a), 0))
+        obox(mb, d * 0.21 + Vector((0, 0, 1.2)), d, (-d.y, d.x, 0), 0.035, 0.04, 0.14, STONE, (0, 0, 0.5))
+    for k in (1, 4):
+        # Two opposite faces stay walled so the light falls in bars rather than a flat glow.
+        a = 2 * math.pi * (k + 0.5) / 6
+        d = Vector((math.cos(a), math.sin(a), 0))
+        obox(mb, d * 0.19 + Vector((0, 0, 1.2)), d, (-d.y, d.x, 0), 0.025, 0.1, 0.13, STONE, (0, 0, 0.5))
+    lathe(mb, [(0, 1.3), (0.26, 1.3), (0.27, 1.34), (0, 1.34)], 6, STONE, col_fn=col, radial_fn=worn)
+    cap_rot = math.radians(7)
+    upturn = lambda t, a: 0.08 * ((hexr(a, cap_rot) - 0.866) / 0.134) ** 2 * (1.0 if 0.1 < t < 0.4 else 0.35 if t < 0.55 else 0.0)
+    lathe(mb, [(0.2, 1.33), (0.56, 1.37), (0.57, 1.42), (0.43, 1.47), (0.2, 1.56), (0.09, 1.6), (0.09, 1.62),
+               (0, 1.62)], 24, STONE, col_fn=col, z_fn=upturn, rot=cap_rot,
+          radial_fn=lambda t, a: hexr(a, cap_rot) * (1.0 + rnd.uniform(-0.01, 0.01)) if t < 0.6 else 1.0)
+    lathe(mb, [(0.075, 1.6), (0.105, 1.66), (0.09, 1.72), (0.05, 1.76), (0.01, 1.8), (0, 1.81)], 10, STONE,
+          col_fn=col, radial_fn=worn)
+    s0 = len(mb.verts)
+    lathe(mb, [(0, 1.11), (0.08, 1.14), (0.1, 1.2), (0.08, 1.26), (0, 1.29)], 8, GLOW,
+          col_fn=lambda t: (t, 0.5, 0.3))
+    del s0
+    lean = Matrix.Rotation(math.radians(2.2), 3, "X")
+    xform(mb, 0, lambda p: lean @ (p * 0.9))
+    ramp_r(mb, 0, 0.0, 1.63)
+    return mb.build("StoneLantern", prop_mats("stone", "lamp_glow"), smooth=False)
+
+
+def build_lighthouse():
+    """The Keeper's lighthouse on a rock platform; keeper's cottage attached on +X, tower door facing -Y."""
+    rnd = random.Random(701)
+    mb = MeshBuilder()
+    WHITE, BAND, STONE, GLASS, WOOD = range(5)
+    cs = (0, 0, 0)
+
+    blob(mb, (2.4, 0.0, 0.15), (7.6, 5.4, 1.15), rnd, u=26, v=10, mat=STONE, rough=0.1, flat=0.5)
+    for k in range(11):
+        a = 2 * math.pi * k / 11 + rnd.uniform(-0.2, 0.2)
+        r = rnd.uniform(0.85, 1.05)
+        big = 1.3 if math.cos(a) < -0.3 else 1.0
+        sz = (rnd.uniform(1.0, 2.0) * big, rnd.uniform(0.8, 1.5) * big, rnd.uniform(0.6, 1.3) * big)
+        blob(mb, (2.4 + math.cos(a) * 7.3 * r, math.sin(a) * 5.2 * r, 0.1), sz, rnd, u=12, v=7, mat=STONE, rough=0.14,
+             flat=0.4, rot=Matrix.Rotation(rnd.uniform(0, 6.28), 3, "Z"))
+
+    def tower_r(z):
+        zt = (z - 1.8) / (21.0 - 1.8)
+        return 1.95 + 1.05 * (1 - zt) ** 1.6
+
+    bands = ((7.0, 9.6), (13.6, 16.2))
+    levels = sorted(set([round(1.8 + k * 19.2 / 18, 4) for k in range(19)] + [b for bd in bands for b in bd]))
+    prof = [(0, -0.4), (3.35, -0.4), (3.35, 1.55), (3.05, 1.75)] + [(tower_r(z), z) for z in levels] + \
+           [(2.2, 21.2), (2.55, 21.45), (2.85, 21.6), (2.88, 21.85), (0, 21.85)]
+
+    def tower_mat(i):
+        zm = (prof[i][1] + prof[i + 1][1]) / 2
+        if zm < 1.8:
+            return STONE
+        return BAND if any(a <= zm <= b for a, b in bands) and zm < 21 else WHITE
+
+    lathe(mb, prof, 32, col_fn=lambda t: cs, mat_fn=tower_mat)
+    for k in range(16):
+        a = 2 * math.pi * (k + 0.5) / 16
+        d = Vector((math.cos(a), math.sin(a), 0))
+        plank(mb, d * (tower_r(20.1) - 0.05) + Vector((0, 0, 20.1)), d * 2.62 + Vector((0, 0, 21.5)), 0.14, 0.2,
+              mat=WHITE)
+    for k in range(24):
+        a = 2 * math.pi * k / 24
+        d = Vector((math.cos(a), math.sin(a), 0)) * 2.74
+        limb(mb, [d + Vector((0, 0, 21.85)), d + Vector((0, 0, 22.85))], [0.03, 0.03], segments=4, mat=BAND,
+             col_fn=lambda t: cs)
+    for z, r, seg in ((22.85, 0.045, 5), (22.35, 0.025, 4)):
+        ring = [(math.cos(a) * 2.74, math.sin(a) * 2.74, z) for a in (2 * math.pi * k / 36 for k in range(36))]
+        limb(mb, ring, [r] * 36, segments=seg, mat=BAND, col_fn=lambda t: cs, closed=True)
+
+    lathe(mb, [(0, 21.85), (1.55, 21.85), (1.55, 22.62), (1.68, 22.68), (1.68, 22.78), (0, 22.78)], 16, WHITE,
+          col_fn=lambda t: cs)
+    gb = rnd.random()
+    lathe(mb, [(0, 22.78), (1.48, 22.78), (1.48, 24.28), (0, 24.28)], 12, GLASS, col_fn=lambda t: (t, 0.5, gb))
+    for k in range(12):
+        a = 2 * math.pi * k / 12
+        d = Vector((math.cos(a), math.sin(a), 0))
+        plank(mb, d * 1.49 + Vector((0, 0, 22.78)), d * 1.49 + Vector((0, 0, 24.28)), 0.07, 0.07, up=d, mat=BAND)
+    lathe(mb, [(1.46, 23.5), (1.53, 23.5), (1.53, 23.56), (1.46, 23.56), (1.46, 23.5)], 12, BAND,
+          col_fn=lambda t: cs, cap_bottom=False, cap_top=False)
+    dome = [(0, 24.28), (1.8, 24.28), (1.8, 24.4), (1.62, 24.46)]
+    for k in range(1, 8):
+        th = 1.35 * k / 7
+        dome.append((1.62 * math.cos(th), 24.46 + 1.05 * math.sin(th)))
+    dome += [(0.2, 25.56), (0.2, 25.72), (0.3, 25.8), (0.33, 25.9), (0.28, 26.0), (0.1, 26.06), (0.035, 26.1),
+             (0.03, 26.55), (0, 26.7)]
+    lathe(mb, dome, 20, BAND, col_fn=lambda t: cs)
+    plank(mb, (-0.4, 0, 26.35), (0.35, 0, 26.35), 0.035, 0.035, mat=BAND)
+    obox(mb, (-0.36, 0, 26.42), (1, 0, 0), (0, 0, 1), 0.07, 0.1, 0.01, BAND)
+
+    for a, z in ((-1.9, 4.8), (-0.4, 8.3), (1.1, 11.8), (2.4, 15.0), (-2.7, 18.4)):
+        d = Vector((math.cos(a), math.sin(a), 0))
+        t = Vector((-d.y, d.x, 0))
+        cpos = d * (tower_r(z) - 0.02) + Vector((0, 0, z))
+        obox(mb, cpos, t, (0, 0, 1), 0.3, 0.5, 0.12, WOOD)
+        obox(mb, cpos + Vector((0, 0, 0.58)) + d * 0.04, t, (0, 0, 1), 0.38, 0.08, 0.12, WHITE)
+        obox(mb, cpos - Vector((0, 0, 0.56)) + d * 0.06, t, (0, 0, 1), 0.36, 0.05, 0.14, WHITE)
+
+    d, t = Vector((0, -1, 0)), Vector((1, 0, 0))
+    base = d * (tower_r(2.8) - 0.05)
+    obox(mb, base + Vector((0, 0, 2.95)), t, (0, 0, 1), 0.66, 1.18, 0.14, STONE)
+    obox(mb, base + Vector((0, 0, 2.85)) + d * 0.08, t, (0, 0, 1), 0.48, 1.05, 0.1, WOOD)
+    plank(mb, base + d * 0.35 + Vector((-0.8, 0, 4.25)), base + d * 0.35 + Vector((0.8, 0, 4.25)), 0.6, 0.08,
+          up=(0, -0.25, 1), mat=WOOD)
+    for k in range(3):
+        top = 1.75 - 0.3 * k
+        obox(mb, base + d * (0.4 + 0.38 * k) + Vector((0, 0, (top - 0.4) / 2)), t, (0, 0, 1), 0.8 - 0.05 * k,
+             (top + 0.4) / 2, 0.2, STONE)
+
+    extrude(mb, [(-2.25, -0.4), (2.25, -0.4), (2.25, 1.38), (-2.25, 1.38)], (2.4, 0, 0), (0, 1, 0), (0, 0, 1),
+            (1, 0, 0), 6.0, STONE)
+    extrude(mb, [(-2.1, 1.35), (2.1, 1.35), (2.1, 3.7), (0, 5.15), (-2.1, 3.7)], (2.6, 0, 0), (0, 1, 0), (0, 0, 1),
+            (1, 0, 0), 5.6, WHITE)
+    for s in (-1, 1):
+        ay = Vector((0, s * 2.5, -1.8)).normalized()
+        nrm = Vector((0, s * 1.8, 2.5)).normalized()
+        obox(mb, Vector((5.45, s * 1.25, 4.35)) + nrm * 0.09, (1, 0, 0), ay, 2.95, 1.6, 0.09, WOOD)
+    plank(mb, (2.5, 0, 5.36), (8.4, 0, 5.36), 0.22, 0.12, mat=WOOD)
+    obox(mb, (7.2, 1.0, 5.0), (1, 0, 0), (0, 1, 0), 0.38, 0.32, 1.35, STONE)
+    obox(mb, (7.2, 1.0, 6.4), (1, 0, 0), (0, 1, 0), 0.45, 0.39, 0.06, STONE)
+    for x in (7.03, 7.37):
+        lathe(mb, [(0, 6.46), (0.11, 6.46), (0.085, 6.72), (0.1, 6.78), (0.1, 6.82), (0, 6.82)], 8, STONE,
+              center=(x, 1.0, 0), col_fn=lambda t: cs)
+    obox(mb, (5.4, -2.12, 2.33), (1, 0, 0), (0, 0, 1), 0.62, 1.0, 0.06, STONE)
+    obox(mb, (5.4, -2.15, 2.28), (1, 0, 0), (0, 0, 1), 0.47, 0.92, 0.06, WOOD)
+    plank(mb, (4.75, -2.38, 3.45), (6.05, -2.38, 3.45), 0.55, 0.07, up=(0, -0.2, 1), mat=WOOD)
+    for x, y in ((3.8, -1), (7.0, -1), (4.4, 1), (6.9, 1)):
+        obox(mb, (x, y * 2.13, 2.6), (1, 0, 0), (0, 0, 1), 0.38, 0.5, 0.05, WOOD)
+        obox(mb, (x, y * 2.17, 2.05), (1, 0, 0), (0, 0, 1), 0.47, 0.05, 0.09, STONE)
+    obox(mb, (8.23, 0, 4.15), (0, 1, 0), (0, 0, 1), 0.3, 0.36, 0.05, WOOD)
+    for k in range(3):
+        top = 1.05 - 0.3 * k
+        obox(mb, (5.4, -2.42 - 0.32 * k, (top - 0.3) / 2), (1, 0, 0), (0, 0, 1), 0.72, (top + 0.3) / 2, 0.17, STONE)
+
+    ramp_r(mb, 0, 0.0, 26.7)
+    return mb.build("Lighthouse", prop_mats("lighthouse_white", "lighthouse_band", "stone", "lamp_glass", "wood"),
+                    smooth=False)
+
+
+def build_swing():
+    """Rope swing. Origin on the ground under the seat; the ropes loop over an (absent) bough at z=4, so place
+    it under a palm or limb, and pivot any swinging about (0, 0, 4)."""
+    rnd = random.Random(801)
+    mb = MeshBuilder()
+    ROPE, WOOD = 0, 1
+    hang, seat = 4.0, 0.5
+    for y in (-0.24, 0.24):
+        b = rnd.random()
+        st = 8
+        path = [(0.015 * math.sin(i * 1.3 + y * 10) * math.sin(math.pi * i / st), y, hang - 0.1 - (hang - 0.1 - seat) * i / st)
+                for i in range(st + 1)]
+        limb(mb, path, [0.016] * (st + 1), segments=5, mat=ROPE, col_fn=lambda t, b=b: (t, 1.0, b))
+        loop = [(math.cos(a) * 0.1, y + 0.012 * math.sin(a), hang + math.sin(a) * 0.1)
+                for a in (2 * math.pi * k / 14 for k in range(14))]
+        limb(mb, loop, [0.016] * 14, segments=5, mat=ROPE, col_fn=lambda t, b=b: (0.0, 1.0, b), closed=True)
+        sphere(mb, (0, y, seat - 0.05), 0.032, u=6, v=4, mat=ROPE, col=(1.0, 1.0, b))
+    plank(mb, (0, -0.33, seat), (0, 0.33, seat), 0.2, 0.045, mat=WOOD, col=(1.0, 0.0, rnd.random()))
+    return mb.build("Swing", prop_mats("rope", "wood"), smooth=False)
+
+
+def build_toy_boat():
+    """A child's toy sailboat, 0.4 m; bow toward +X, origin under the keel."""
+    rnd = random.Random(901)
+    mb = MeshBuilder()
+    WOOD, SAIL = 0, 1
+    b = rnd.random()
+    rings = []
+    n = 12
+    for i in range(n + 1):
+        u = i / n
+        x = -0.2 + 0.4 * u
+        w = 0.062 * math.sin(math.pi * (0.18 + 0.82 * u)) ** 0.55
+        deck = 0.075 + 0.02 * u ** 2
+        keel = 0.035 * smoothstep(0.55, 1.0, u)
+        if w < 1e-3:
+            rings.append([mb.v((x, 0, deck - 0.005), (0, 0, b))])
+            continue
+        ring = []
+        for s in range(12):
+            a = 2 * math.pi * s / 12
+            ca, sa = math.cos(a), math.sin(a)
+            y = w * math.copysign(abs(ca) ** 0.8, ca)
+            z = deck if sa > 0 else deck + (deck - keel) * math.copysign(abs(sa) ** 0.8, sa)
+            ring.append(mb.v((x, y, z), (0, 0, b)))
+        rings.append(ring)
+    rings_loft(mb, rings, WOOD, True, False)
+    obox(mb, (-0.08, 0, 0.095), (1, 0, 0), (0, 1, 0), 0.045, 0.032, 0.022, WOOD, (0, 0, b))
+    limb(mb, [(0.03, 0, 0.07), (0.03, 0, 0.4)], [0.0065, 0.005], segments=5, col_fn=lambda t: (t, 0, b))
+    limb(mb, [(0.03, 0, 0.135), (-0.16, 0, 0.135)], [0.0045, 0.0045], segments=4, col_fn=lambda t: (0.3, 0, b))
+    limb(mb, [(0.19, 0, 0.095), (0.25, 0, 0.1)], [0.004, 0.003], segments=4, col_fn=lambda t: (0.2, 0, b))
+    sb = rnd.random()
+    rows = []
+    for k in range(6):
+        v = k / 5
+        z = 0.14 + 0.24 * v
+        leech = 0.03 - 0.175 * (1 - v) ** 1.1
+        if k == 5:
+            rows.append([mb.v((0.03, 0, z), (1.0, 1.0, sb))])
+            continue
+        rows.append([mb.v((0.03 + (leech - 0.03) * j / 4, 0.022 * math.sin(math.pi * j / 4) * (1 - v) ** 0.7, z),
+                          (v, 1.0, sb)) for j in range(5)])
+    loft(mb, rows, SAIL)
+    rows = []
+    for k in range(5):
+        v = k / 4
+        fx, fz = 0.245 + (0.04 - 0.245) * v, 0.1 + (0.37 - 0.1) * v
+        if k == 4:
+            rows.append([mb.v((fx, 0, fz), (1.0, 1.0, sb))])
+            continue
+        bx, bz = 0.045, 0.12 + 0.2 * v
+        rows.append([mb.v((fx + (bx - fx) * j / 3, -0.014 * math.sin(math.pi * j / 3) * (1 - v), fz + (bz - fz) * j / 3),
+                          (v, 1.0, sb)) for j in range(4)])
+    loft(mb, rows, SAIL)
+    loft(mb, [[mb.v((0.034, 0, 0.395), (1, 1, sb)), mb.v((0.034, 0, 0.37), (1, 1, sb))],
+              [mb.v((0.085, 0.006, 0.383), (1, 1, sb))]], SAIL)
+    return mb.build("ToyBoat", prop_mats("wood", "sail"), smooth=True)
+
+
+def export_props():
+    reset()
+    build_jetty()
+    build_wreck()
+    build_hut()
+    build_cairn()
+    build_stone_lantern()
+    build_lighthouse()
+    build_swing()
+    build_toy_boat()
+    export("props")
+
+
+# ---------------------------------------------------------------- creatures
+# All face +X with the origin at the centre of mass; Z up. See the colour encoding in the module docstring.
+
+def build_bird():
+    """Egret in gliding flight: wings spread flat (span 1.4 m), neck out, legs trailing past the tail."""
+    rnd = random.Random(1101)
+    mb = MeshBuilder()
+    Y, Z = Vector((0, 1, 0)), UP
+    xh, xt = 0.62, -0.44
+    bb = rnd.random()
+    stations = [(0.62, 0.075, 0, 0), (0.55, 0.074, 0.007, 0.007), (0.5, 0.075, 0.014, 0.013),
+                (0.465, 0.079, 0.026, 0.028), (0.43, 0.074, 0.024, 0.025), (0.37, 0.055, 0.015, 0.016),
+                (0.28, 0.035, 0.017, 0.018), (0.19, 0.022, 0.026, 0.028), (0.1, 0.008, 0.055, 0.055),
+                (0.0, 0.0, 0.07, 0.064), (-0.1, 0.0, 0.066, 0.056), (-0.2, 0.006, 0.05, 0.04),
+                (-0.28, 0.01, 0.045, 0.02), (-0.36, 0.012, 0.05, 0.009), (-0.44, 0.012, 0, 0)]
+    rings = []
+    for x, z, w, h in stations:
+        col = ((xh - x) / (xh - xt), 0.0, bb)
+        cpos = Vector((x, 0, z))
+        if w == 0:
+            rings.append([mb.v(cpos, col)])
+            continue
+        rings.append([mb.v(cpos + Y * (math.cos(a) * w) + Z * (math.sin(a) * h), col)
+                      for a in (2 * math.pi * s / 7 for s in range(7))])
+    rings_loft(mb, rings)
+    for sgn in (-1, 1):
+        lb = rnd.random()
+        limb(mb, [(-0.12, sgn * 0.022, -0.035), (-0.38, sgn * 0.024, -0.03), (-0.66, sgn * 0.02, -0.022)],
+             [0.008, 0.006, 0.004], segments=3, col_fn=lambda t: (1.0, 0.0, lb))
+
+    def wing(s):
+        # Broad arm out to a forward wrist at ~40% span, then a hand that sweeps back to a rounded, slotted tip.
+        le = 0.06 + 0.07 * smoothstep(0.0, 0.4, s) - 0.26 * smoothstep(0.4, 1.0, s) ** 1.3
+        te = -0.17 - 0.02 * smoothstep(0.2, 0.6, s) - 0.04 * smoothstep(0.6, 1.0, s)
+        tip = math.sqrt(max(0.0, 1.0 - smoothstep(0.82, 1.0, s) ** 2))
+        mid = (le + te) / 2
+        half = (le - te) / 2 * (0.2 + 0.8 * tip)
+        return mid + half, mid - half, 0.012 + 0.04 * s * s
+
+    for sgn in (-1, 1):
+        wb = rnd.random()
+        st = []
+        for i in range(11):
+            s = i / 10
+            le, te, z = wing(s)
+            y = sgn * (0.04 + 0.56 * s)
+            st.append(((le, y, z), (te, y, z), (0, 0, 1), 0.015 * (1 - 0.75 * s) + 0.003, (s, 1.0, wb)))
+        blade_loft(mb, st)
+        # Slotted primaries: broad blunt fingers fanning from the hand, the big-seabird tell.
+        for k, f in enumerate((0.1, 0.35, 0.6, 0.85)):
+            s0 = 0.8 + 0.1 * math.sin(math.pi * f)
+            le, te, z = wing(s0)
+            ang = math.radians(10 + 45 * f)
+            dvec = Vector((-math.sin(ang), sgn * math.cos(ang), 0.0))
+            side = Vector((dvec.y, -dvec.x, 0)).normalized() * sgn
+            base = Vector((le + (te - le) * (0.15 + 0.7 * f), sgn * (0.04 + 0.56 * s0), z + 0.003))
+            Lf = 0.15 - 0.05 * f
+            fb = rnd.random()
+            fs = []
+            for j in range(4):
+                u = j / 3
+                p = base + dvec * (Lf * u) + Vector((0, 0, 0.012 * u * u))
+                w = 0.02 * (1 - 0.55 * u ** 3)
+                fs.append((p + side * w, p - side * w, (0, 0, 1), 0.003 * (1 - u) + 0.001, (min(1.0, s0 + 0.2 * u), 1.0, fb)))
+            blade_loft(mb, fs)
+    return mb.build("Bird", [material("bird", (0.93, 0.93, 0.9))], smooth=True)
+
+
+def build_jellyfish():
+    """Bell up (+Z) with tentacles trailing down -Z; origin at the bell's centre. Swims bell-first, i.e. +Z."""
+    rnd = random.Random(1201)
+    mb = MeshBuilder()
+    bb = rnd.random()
+    # Counter-clockwise: subumbrella from the inner pole out to the rim lip, then the exumbrella up to the apex.
+    prof = [(0.0, -0.02), (0.1, -0.03), (0.19, -0.055), (0.25, -0.09), (0.275, -0.12), (0.3, -0.13),
+            (0.305, -0.1), (0.3, -0.04), (0.27, 0.03), (0.21, 0.09), (0.12, 0.13), (0.0, 0.145)]
+    rim = lambda t: max(0.0, 1.0 - abs(t - 0.47) / 0.2)
+    lathe(mb, prof, 32, 0, col_fn=lambda t: (0.0, 0.0, bb),
+          radial_fn=lambda t, a: 1.0 + 0.035 * math.cos(a * 8) * rim(t),
+          z_fn=lambda t, a: -0.03 * abs(math.cos(a * 4)) ** 3 * rim(t))
+    for k in range(10):
+        a = 2 * math.pi * (k + 0.5) / 10
+        b = rnd.random()
+        L = rnd.uniform(1.5, 2.0)
+        ph = rnd.uniform(0, 6.28)
+        st = 10
+        root = Vector((math.cos(a) * 0.27, math.sin(a) * 0.27, -0.115))
+        path = []
+        for i in range(st + 1):
+            t = i / st
+            drift = 0.12 * t + 0.05 * math.sin(t * 5 + ph) * t
+            path.append(root + Vector((math.cos(a) * drift + 0.05 * math.sin(t * 7 + ph) * t,
+                                       math.sin(a) * drift + 0.05 * math.cos(t * 6 + ph) * t, -L * t)))
+        limb(mb, path, [0.011 * (1 - 0.75 * i / st) for i in range(st + 1)], segments=3, mat=1,
+             col_fn=lambda t, b=b: (t, 1.0, b), cap_start=False)
+    for k in range(4):
+        a = 2 * math.pi * k / 4 + 0.4
+        b = rnd.random()
+        L = rnd.uniform(0.7, 0.95)
+        st = 14
+        path = [Vector((math.cos(a) * (0.03 + 0.06 * t) + 0.03 * math.sin(t * 6 + k) * t,
+                        math.sin(a) * (0.03 + 0.06 * t) + 0.03 * math.cos(t * 5 + k) * t, -0.03 - L * t))
+                for t in (i / st for i in range(st + 1))]
+        frill = lambda t, ang, k=k: 1.0 + 0.5 * math.sin(ang * 3 + t * 30 + k) * (0.3 + 0.7 * t)
+        limb(mb, path, [0.035 * (1 - 0.6 * i / st) + 0.006 for i in range(st + 1)], segments=6, mat=1,
+             col_fn=lambda t, b=b: (t, 1.0, b), radial_fn=frill, cap_start=False)
+    return mb.build("Jellyfish", [material("jelly_bell", (0.55, 0.7, 0.95)),
+                                  material("jelly_tentacle", (0.75, 0.6, 0.95))], smooth=True)
+
+
+def build_fish():
+    """Small leaping fish, 0.5 m snout to tail fork; laterally compressed with a forked tail."""
+    rnd = random.Random(1301)
+    mb = MeshBuilder()
+    Y, Z = Vector((0, 1, 0)), UP
+    xh = 0.25
+    R = lambda p: max(0.0, min(1.0, (xh - p[0]) / 0.5))
+    bb = rnd.random()
+    stations = [(0.25, -0.005, 0, 0, 0), (0.235, -0.004, 0.01, 0.014, 0.014), (0.2, 0.0, 0.022, 0.035, 0.03),
+                (0.15, 0.005, 0.03, 0.05, 0.042), (0.09, 0.007, 0.033, 0.058, 0.048), (0.02, 0.006, 0.031, 0.055, 0.045),
+                (-0.04, 0.004, 0.025, 0.045, 0.036), (-0.09, 0.002, 0.016, 0.03, 0.025), (-0.13, 0.0, 0.009, 0.017, 0.015),
+                (-0.15, 0.0, 0.006, 0.013, 0.012), (-0.155, 0.0, 0, 0, 0)]
+    rings = []
+    for x, z, w, ht, hb in stations:
+        cpos = Vector((x, 0, z))
+        col = (R(cpos), 0.0, bb)
+        if w == 0:
+            rings.append([mb.v(cpos, col)])
+            continue
+        rings.append([mb.v(cpos + Y * (math.cos(a) * w) + Z * (math.sin(a) * (ht if math.sin(a) > 0 else hb)), col)
+                      for a in (2 * math.pi * s / 8 for s in range(8))])
+    rings_loft(mb, rings)
+    for sgn in (-1, 1):
+        sphere(mb, (0.2, sgn * 0.0185, 0.01), 0.0065, u=6, v=4, col=(0.1, 0.0, bb))
+
+    def fin_col(b):
+        return lambda p: (R(p), 1.0, b)
+
+    for sgn in (-1, 1):
+        b = rnd.random()
+        st = []
+        for i in range(6):
+            s = i / 5
+            outer = (-0.135 - 0.115 * s, 0, sgn * (0.012 + 0.08 * s ** 0.8))
+            inner = (-0.135 - 0.045 * s - 0.07 * s ** 3, 0, sgn * (0.092 * s ** 3))
+            st.append((outer, inner, (0, 1, 0), 0.006 * (1 - s) + 0.0015, fin_col(b)))
+        blade_loft(mb, st, cap_start=True)
+    b = rnd.random()
+    st = []
+    for i in range(4):
+        s = i / 3
+        zb = 0.058 - 0.004
+        st.append(((0.07 - 0.09 * s, 0, zb + 0.04 * s), (-0.035 + 0.015 * s, 0, zb + 0.04 * s * 0.92), (0, 1, 0),
+                   0.004 * (1 - s) + 0.001, fin_col(b)))
+    blade_loft(mb, st)
+    for sgn in (-1, 1):
+        b = rnd.random()
+        st = []
+        for i in range(4):
+            s = i / 3
+            root = Vector((0.14, sgn * 0.026, -0.018))
+            p = root + Vector((-0.06 * s, sgn * 0.045 * s, -0.02 * s))
+            ch = 0.036 * (1 - 0.7 * s * s)
+            st.append((p + Vector((ch * 0.4, 0, 0)), p - Vector((ch * 0.6, 0, 0)), (0, -sgn * 0.3, 1),
+                       0.003 * (1 - s) + 0.001, (s, 1.0, b)))
+        blade_loft(mb, st)
+        b = rnd.random()
+        st = []
+        for i in range(3):
+            s = i / 2
+            p = Vector((0.03 - 0.035 * s, sgn * (0.012 + 0.015 * s), -0.04 - 0.025 * s))
+            ch = 0.022 * (1 - s) + 0.002
+            st.append((p + Vector((ch * 0.5, 0, 0)), p - Vector((ch * 0.5, 0, 0)), (0, -sgn, 0.4),
+                       0.002 * (1 - s) + 0.001, (s, 1.0, b)))
+        blade_loft(mb, st)
+    b = rnd.random()
+    st = []
+    for i in range(3):
+        s = i / 2
+        st.append(((-0.055 - 0.05 * s, 0, -0.03 - 0.03 * s), (-0.11 + 0.005 * s, 0, -0.018 - 0.035 * s), (0, 1, 0),
+                   0.003 * (1 - s) + 0.001, fin_col(b)))
+    blade_loft(mb, st)
+    return mb.build("Fish", [material("fish", (0.58, 0.65, 0.75))], smooth=True)
+
+
+WHALE = [  # u: 0 snout -> 1 fluke tip; half-width, half-height above / below the centre line, centre z
+    (0.0, 0.05, 0.05, 0.05, -0.1),
+    (0.012, 0.3, 0.17, 0.32, -0.14),
+    (0.035, 0.52, 0.3, 0.64, -0.18),
+    (0.07, 0.76, 0.48, 0.98, -0.2),
+    (0.12, 1.04, 0.72, 1.3, -0.2),
+    (0.2, 1.36, 1.04, 1.58, -0.14),
+    (0.3, 1.58, 1.26, 1.62, -0.05),
+    (0.4, 1.56, 1.32, 1.46, 0.02),
+    (0.5, 1.38, 1.27, 1.18, 0.08),
+    (0.6, 1.1, 1.14, 0.9, 0.12),
+    (0.66, 0.92, 1.08, 0.74, 0.13),
+    (0.72, 0.7, 0.88, 0.56, 0.12),
+    (0.8, 0.44, 0.64, 0.4, 0.08),
+    (0.87, 0.28, 0.44, 0.28, 0.04),
+    (0.92, 0.19, 0.28, 0.19, 0.02),
+    (0.94, 0.15, 0.2, 0.15, 0.0),
+    (0.955, 0.08, 0.1, 0.08, 0.0),
+]
+WHALE_LEN, WHALE_NOSE = 14.0, 6.5
+WHALE_TIP = -8.1  # fluke trailing tips; R reaches 1 here
+
+
+def build_whale():
+    """Humpback, 14 m: knobbly rostrum, ventral pleats, very long scalloped flippers, serrated flukes."""
+    rnd = random.Random(1401)
+    mb = MeshBuilder()
+    R = lambda p: max(0.0, min(1.0, (WHALE_NOSE - p[0]) / (WHALE_NOSE - WHALE_TIP)))
+    bb = rnd.random()
+    seg = 44
+    us = [0.0, 0.004, 0.01, 0.02, 0.034, 0.05, 0.07, 0.095] + [0.12 + 0.03 * k for k in range(28)] + [0.96]
+    rings = []
+    for u in us:
+        w, ht, hb, zc = catmull(WHALE, u)
+        x = WHALE_NOSE - WHALE_LEN * u
+        col = (R((x,)), 0.0, bb)
+        if u in (0.0, us[-1]):
+            rings.append([mb.v((x, 0, zc), col)])
+            continue
+        w, ht, hb = max(w, 0.02), max(ht, 0.02), max(hb, 0.02)
+        pleat_u = smoothstep(0.015, 0.06, u) * smoothstep(0.5, 0.4, u)
+        mouth_u = smoothstep(0.24, 0.16, u)
+        ring = []
+        for s in range(seg):
+            a = -math.pi / 2 + 2 * math.pi * s / seg
+            ca, sa = math.cos(a), math.sin(a)
+            y = w * math.copysign(abs(ca) ** 0.85, ca)
+            dz = (ht if sa > 0 else hb) * math.copysign(abs(sa) ** 0.95, sa)
+            k = 1.0
+            # Alternate ventral vertices sink a little: the throat pleats that run from chin to navel.
+            k -= 0.03 * pleat_u * smoothstep(-0.3, -0.5, sa) * (s % 2)
+            k -= 0.03 * mouth_u * max(0.0, 1.0 - abs(sa + 0.12) / 0.1)
+            ring.append(mb.v((x, y * k, zc + dz * k), col))
+        rings.append(ring)
+    rings_loft(mb, rings)
+
+    def surf(u, f, top=True):
+        w, ht, hb, zc = catmull(WHALE, u)
+        return Vector((WHALE_NOSE - WHALE_LEN * u, f * w, zc + (ht if top else -hb) * (1 - f * f) ** 0.5 * (1 if top else 1)))
+
+    # Tubercles: knobs scattered along the rostrum and chin, irregular so they read as warts, not rivets.
+    for k in range(26):
+        u = rnd.uniform(0.015, 0.13)
+        f = rnd.uniform(-0.45, 0.45) * min(1.0, u / 0.05 + 0.3)
+        p = surf(u, f)
+        sphere(mb, p, rnd.uniform(0.07, 0.13), u=6, v=4, col=(R(p), 0.0, bb), scale=(1, 1, 0.6))
+    for k in range(10):
+        u = rnd.uniform(0.012, 0.08)
+        p = surf(u, rnd.choice((-1, 1)) * rnd.uniform(0.6, 0.85), top=False)
+        sphere(mb, p, rnd.uniform(0.07, 0.11), u=6, v=4, col=(R(p), 0.0, bb), scale=(1, 0.6, 1))
+    for f in (-0.97, 0.97):
+        w, ht, hb, zc = catmull(WHALE, 0.135)
+        sphere(mb, (WHALE_NOSE - WHALE_LEN * 0.135, f * w, zc - 0.05), 0.1, u=6, v=4, col=(0.135, 0.0, bb))
+
+    # Dorsal: a low hump with a small sickle fin, two-thirds back.
+    db = rnd.random()
+    st = []
+    for i in range(4):
+        s = i / 3
+        u0, u1 = 0.62, 0.7
+        p0, p1 = surf(u0, 0.0), surf(u1, 0.0)
+        lead = p0 + (Vector((p1.x + 0.15, 0, p1.z + 0.5)) - p0) * s - Vector((0, 0, 0.15 * (1 - s)))
+        trail = p1 + (Vector((p1.x + 0.05, 0, p1.z + 0.5)) - p1) * s ** 0.6 - Vector((0, 0, 0.15 * (1 - s)))
+        st.append((lead, trail, (0, 1, 0), 0.12 * (1 - s) + 0.02, lambda p: (R(p), 1.0, db)))
+    blade_loft(mb, st, cap_start=True)
+
+    for sgn in (-1, 1):
+        fb = rnd.random()
+        root = Vector((2.7, sgn * 1.25, -0.75))
+        d = Vector((-0.3, sgn * 0.88, -0.36)).normalized()
+        cdir = (Vector((1, 0, 0)) - d * d.x).normalized()
+        nrm = d.cross(cdir).normalized()
+        span, n = 4.6, 22
+        st = []
+        for i in range(n + 1):
+            s = i / n
+            ctr = root + d * (span * s) - Vector((0.55 * s * s, 0, 0.15 * s * s))
+            chord = 1.0 * (1 - 0.2 * s) * (1 - 0.85 * smoothstep(0.72, 1.0, s)) + 0.04
+            # Tubercles: the scalloped leading edge that gives the humpback flipper its unmistakable outline.
+            bump = 0.07 * abs(math.sin(math.pi * s * 8)) * (1 - smoothstep(0.85, 1.0, s))
+            st.append((ctr + cdir * (0.4 * chord + bump), ctr - cdir * (0.6 * chord), nrm,
+                       0.14 * (1 - 0.75 * s) + 0.015, (s, 1.0, fb)))
+        blade_loft(mb, st)
+
+    for sgn in (-1, 1):
+        fb = rnd.random()
+        st = []
+        n = 20
+        for i in range(n + 1):
+            s = i / n
+            y = sgn * 2.55 * s
+            z = 0.12 * s * s
+            le = -6.3 - 1.3 * s ** 1.6
+            # Swept, convex trailing edge with a central notch and a ragged rim.
+            te = -7.05 + ((-6.3 - 1.3) - -7.05) * s - 0.75 * math.sin(math.pi * s) ** 0.8 \
+                + 0.05 * math.sin(s * 40) * 4 * s * (1 - s)
+            if i == n:
+                te = le
+            st.append(((le, y, z), (te, y, z), (0, 0, 1), 0.17 * (1 - s) + 0.02, lambda p, fb=fb: (R(p), 1.0, fb)))
+        blade_loft(mb, st, cap_start=True, cap_end=False)
+
+    # Centre of mass from the body table, so the game can spin it about its middle when it breaches.
+    num = den = 0.0
+    for k in range(200):
+        u = k / 199 * 0.97
+        w, ht, hb, zc = catmull(WHALE, u)
+        a = max(w, 0) * max(ht + hb, 0)
+        num += a * (WHALE_NOSE - WHALE_LEN * u)
+        den += a
+    cx = num / den
+    xform(mb, 0, lambda p: p - Vector((cx, 0, 0)))
+    obj = mb.build("Whale", [material("whale", (0.16, 0.18, 0.24))], smooth=True)
+    print(f"[lapis] whale centre of mass shifted by {cx:.2f} m")
+    return obj
+
+
+def export_creatures():
+    reset()
+    build_bird()
+    build_jellyfish()
+    build_fish()
+    build_whale()
+    export("creatures")
+
+
 # ---------------------------------------------------------------- export
 
 def export(name, animations=False):
@@ -1469,6 +2643,7 @@ def export(name, animations=False):
     print(f"[lapis] exported {name}")
 
 
-for asset, fn in (("flora", export_flora), ("boat", build_boat), ("keeper", build_keeper)):
+for asset, fn in (("flora", export_flora), ("boat", build_boat), ("keeper", build_keeper),
+                  ("props", export_props), ("creatures", export_creatures)):
     if not ONLY or asset in ONLY:
         fn()

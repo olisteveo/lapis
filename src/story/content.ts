@@ -73,4 +73,9 @@ export const LINES = {
   skyFalls: 'Another star falls. The sky is a little darker.',
   boatDone: 'The palms burn a little brighter.',
   next: 'The bright one hangs in the north, past the lake.',
+  lagoon: 'A hidden lagoon. The water here is full of light.',
+  stonesHint: 'Stones lead through the rocks. Space to jump; run to jump further.',
+  fell: 'The sea takes you, gently, and gives you back.',
+  currentHint: 'A current of starlight. Let it carry you.',
+  strokeHint: 'Space as the oars dip, for a long stroke.',
 };

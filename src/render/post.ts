@@ -117,7 +117,9 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   // noise with it, so each stroke has streaks. Bristles re-lay at the boil rate.
   const STEPS = 9;
   const stepPx = 1.6;
-  const bristle = (p: N) => hash(floor(p.x.mul(0.55)).add(floor(p.y.mul(0.55)).mul(1931)).add(boil.mul(17.31)));
+  // The land and sea re-draw at the boil rate; the sky holds still so the stars don't crawl.
+  const strokeBoil = select(isSky, float(0), boil) as N;
+  const bristle = (p: N) => hash(floor(p.x.mul(0.55)).add(floor(p.y.mul(0.55)).mul(1931)).add(strokeBoil.mul(17.31)));
   let acc: N = ldr.sample(screenUV).rgb;
   let streak: N = bristle(px);
   let wsum: N = float(1);
@@ -170,7 +172,7 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const wobble = vec2(
     mx_noise_float(vec3(px.mul(0.02), boil.mul(0.37))),
     mx_noise_float(vec3(px.mul(0.02).add(9.1), boil.mul(0.37))),
-  ).mul(1.6);
+  ).mul(select(isSky, float(0), float(1.6)));
   const ld = (o: N) => {
     const dd = depthTex.sample(screenUV.add(wobble.add(o).mul(texel))).r;
     // Perspective depth is too compressed to edge-detect directly; spread it out first.
@@ -180,14 +182,15 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const tl = (o: N) => luminance(ldr.sample(screenUV.add(wobble.add(o).mul(texel))).rgb);
   const tEdge = abs(tl(vec2(1.5, 0)).sub(tl(vec2(-1.5, 0)))).add(abs(tl(vec2(0, 1.5)).sub(tl(vec2(0, -1.5)))));
   const lineNoise = mx_noise_float(vec3(px.mul(0.05), boil.mul(0.61))).mul(0.5).add(0.5);
-  const ink = max(smoothstep(0.35, 0.9, dEdge), smoothstep(0.16, 0.42, tEdge).mul(0.55)).mul(lineNoise.mul(0.6).add(0.4));
+  // No tonal ink in the sky: it would outline every star and make it jitter.
+  const ink = max(smoothstep(0.35, 0.9, dEdge), smoothstep(0.16, 0.42, tEdge).mul(0.55).mul(select(isSky, float(0), float(1)))).mul(lineNoise.mul(0.6).add(0.4));
   c = mix(c, color(0x070b24), ink.mul(0.6).mul(paint));
 
   // ---- 6. Stipple: tiny warm and cream dots through the dark blues, as in every reference.
   const cell = floor(px.div(3)) as N;
-  const sh = hash(cell.x.add(cell.y.mul(7919)).add(boil.mul(13.7)));
+  const sh = hash(cell.x.add(cell.y.mul(7919)));
   const blueDark = smoothstep(0.35, 0.08, luminance(c)).mul(smoothstep(0.0, 0.08, c.b.sub(c.r)));
-  const dotOn = smoothstep(0.9965, 1.0, sh).mul(blueDark);
+  const dotOn = smoothstep(0.9975, 1.0, sh).mul(blueDark).mul(select(isSky, float(0), float(1)));
   const dotCol = mix(color(PALETTE.starGold), color(PALETTE.starWhite), fract(sh.mul(91)));
   c = mix(c, pow(dotCol, vec3(1 / 2.2)), dotOn.mul(0.8).mul(paint));
 

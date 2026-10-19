@@ -7,10 +7,13 @@ import type { Audio } from '../audio/audio';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { Narrative } from './narrative';
 import { THE_BOAT, LINES } from './content';
+import { LAGOONS } from '../world/heightfield';
 import { Constellation } from './constellation';
 import { FallenStars } from './fallenStars';
 import { createFootprints, createNote, DistantFigure } from './prologue';
 import type { PrologueLayout } from './placement';
+import { Echoes, type EchoDef } from './echoes';
+import type { Landmarks } from '../world/landmarks';
 
 const SAVE_KEY = 'lapis.save.v1';
 
@@ -102,6 +105,49 @@ export class Story {
     this.figure.load(keeper);
   }
 
+  private echoes: Echoes | null = null;
+
+  /** Memory echoes anchored to the opening beach and the nearest landmarks. */
+  setupEchoes(keeper: GLTF, landmarks: Landmarks) {
+    const L = this.layout;
+    const h = (x: number, z: number) => this.hf.height(x, z);
+    const side = { x: -L.seaward.z, z: L.seaward.x };
+    const defs: EchoDef[] = [];
+    // A parent pointing out the stars to a child, along the beach from where you wake.
+    for (let d = 26; d < 60; d += 2) {
+      const x = L.spawn.x + side.x * d;
+      const z = L.spawn.z + side.z * d;
+      if (h(x, z) > 0.2 && h(x, z) < 1.4) {
+        defs.push({ id: 'echo-point', line: "Which one's the bright one? That one? That one?", x, y: h(x, z), z,
+          yaw: Math.atan2(L.seaward.x, L.seaward.z), adult: 'point', child: 'lookUp', childOffset: [0.75, 0.25] });
+        break;
+      }
+    }
+    const jetty = landmarks.nearest('Jetty', L.spawn.x, L.spawn.z);
+    if (jetty) {
+      const dx = Math.cos(jetty.yaw);
+      const dz = -Math.sin(jetty.yaw);
+      const x = jetty.x + dx * 15;
+      const z = jetty.z + dz * 15;
+      defs.push({ id: 'echo-jetty', line: 'Can we stay out till the lamp comes on?', x, y: jetty.y + 1.2 - 0.42, z,
+        yaw: Math.atan2(dx, dz), adult: 'sit', child: 'sit', childOffset: [0.65, 0] });
+    }
+    const cairn = landmarks.nearest('Cairn', L.spawn.x + L.seaward.x * -200, L.spawn.z + L.seaward.z * -200);
+    if (cairn) {
+      defs.push({ id: 'echo-cairn', line: 'One more stone. For luck. For you.', x: cairn.x + 1.3, y: cairn.y, z: cairn.z,
+        yaw: -Math.PI / 2, adult: 'stand', child: 'lookUp', childOffset: [-0.2, 0.7] });
+    }
+    this.echoes = new Echoes(defs, (id) => this.save.seen.includes(id));
+    this.echoes.load(keeper);
+    this.echoes.onTrigger = (def) => {
+      this.seen(def.id);
+      this.narrative.say(def.line, 'memory');
+      this.audio.memory();
+      this.onMemory?.(6);
+    };
+    this.group.add(this.echoes.group);
+  }
+
   private seen(key: string) {
     if (this.save.seen.includes(key)) return true;
     this.save.seen.push(key);
@@ -132,6 +178,7 @@ export class Story {
   update(dt: number, player: PlayerController, camera: THREE.Camera, playing: boolean) {
     this.narrative.update(dt);
     this.boat.update(dt, camera);
+    if (playing) this.echoes?.update(dt, camera.position);
     this.stars.update(dt, camera);
     if (this.figure.update(dt, camera) && !this.seen('figure')) this.narrative.say(LINES.figure);
     this.flora.glow.value += (this.glowTarget - this.flora.glow.value) * Math.min(1, dt * 0.4);
@@ -139,7 +186,18 @@ export class Story {
     this.prompt = '';
     this.pendingAction = null;
     if (!playing) return;
-    this.narrative.objective(THE_BOAT.name, this.save.collected.length, THE_BOAT.fragments.length);
+    const found = LAGOONS.filter((_, i) => this.save.seen.includes(`lagoon-${i}`)).length;
+    this.narrative.objective(THE_BOAT.name, this.save.collected.length, THE_BOAT.fragments.length, found ? `secret lagoons ${found} / ${LAGOONS.length}` : '');
+    LAGOONS.forEach((L, i) => {
+      if (Math.hypot(L.x - player.x, L.z - player.z) < L.r - 6 && !this.seen(`lagoon-${i}`)) {
+        this.narrative.say(LINES.lagoon);
+        this.audio.chime(3);
+      }
+      // Near a lagoon's stones for the first time: teach the jump.
+      if (Math.hypot(L.x - player.x, L.z - player.z) < L.r + 55 && Math.hypot(L.x - player.x, L.z - player.z) > L.r + 20 && !this.seen('stones')) {
+        this.narrative.say(LINES.stonesHint, 'hint', 7);
+      }
+    });
 
     const px = player.x;
     const pz = player.z;
@@ -208,6 +266,11 @@ export class Story {
     this.narrative.say(THE_BOAT.name.toUpperCase(), 'title');
     this.narrative.say(LINES.boatDone);
     this.narrative.say(LINES.next);
+  }
+
+  /** Where the glitter path should point: the nearest fallen star still waiting. */
+  guideTarget(player: PlayerController) {
+    return this.stars.nearest(player.x, player.z)?.pos ?? null;
   }
 
   /** Lean on the heightfield for the audio mix around the listener. */

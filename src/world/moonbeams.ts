@@ -15,6 +15,8 @@ export class Moonbeams {
   private sprites: THREE.Sprite[] = [];
   private fades: { value: number }[] = [];
   private last = new THREE.Vector3(1e9, 0, 1e9);
+  /** Whether the beams should draw this frame (the reflection pass restores to this). */
+  wanted = false;
 
   constructor(private hf: Heightfield) {
     this.group.name = 'moonbeams';
@@ -62,12 +64,18 @@ export class Moonbeams {
         }
       for (let k = n; k < POOL; k++) this.sprites[k].visible = false;
     }
+    // Beams only make sense from under the canopy; from the shore or the sea they read as searchlights.
+    const inside = Math.min(1, Math.max(0, (this.hf.sample(focus.x, focus.z).grove - 0.35) / 0.3));
     for (let k = 0; k < POOL; k++) {
       const s = this.sprites[k];
       const d = s.visible ? Math.hypot(s.position.x - focus.x, s.position.z - focus.z) : RADIUS;
       // Fade with distance, and fade out when you're standing right in one.
-      const target = s.visible ? Math.min(1, (RADIUS - d) / 25) * Math.min(1, d / 6) : 0;
+      const target = s.visible ? Math.min(1, (RADIUS - d) / 25) * Math.min(1, d / 6) * inside : 0;
       this.fades[k].value += (target - this.fades[k].value) * Math.min(1, dt * 2);
+      if (this.fades[k].value < 0.01 && target === 0) this.fades[k].value = 0;
     }
+    // Don't draw at all outside the jungle (saves fill-rate, and guarantees no stray shafts).
+    this.wanted = inside > 0.01 || this.fades.some((f) => f.value > 0.01);
+    this.group.visible = this.wanted;
   }
 }

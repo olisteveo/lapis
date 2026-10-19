@@ -39,7 +39,7 @@ function skyDome() {
   const cell = floor(dir.mul(900));
   const seed = hash(dot(cell, vec3(12.9898, 78.233, 37.719)));
   const thresh = mix(0.9965, 0.985, milky);
-  const twinkle = sin(time.mul(seed.mul(3).add(1)).add(seed.mul(100))).mul(0.35).add(0.65);
+  const twinkle = sin(time.mul(seed.mul(1.2).add(0.4)).add(seed.mul(100))).mul(0.12).add(0.88);
   const tiny = step(thresh, seed).mul(twinkle).mul(smoothstep(0.0, 0.08, el)).mul(cloud.oneMinus());
   const tint = mix(color(PALETTE.starWhite), color(PALETTE.starGold), fract(seed.mul(17)));
   col = col.add(tint.mul(tiny).mul(0.9));
@@ -76,8 +76,8 @@ function starField(count: number) {
 
   const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
   mat.positionNode = cameraPosition.add(dirSize.xyz.mul(STAR_RADIUS));
-  const tw = sin(time.mul(meta.y.mul(2.5).add(0.6)).add(meta.y.mul(40))).mul(0.3).add(0.7);
-  mat.scaleNode = vec2(dirSize.w.mul(STAR_RADIUS).mul(tw.mul(0.4).add(0.8)));
+  const tw = sin(time.mul(meta.y.mul(1.1).add(0.3)).add(meta.y.mul(40))).mul(0.1).add(0.9);
+  mat.scaleNode = vec2(dirSize.w.mul(STAR_RADIUS));
   const shape = starShape(uv(), dirSize.w.mul(110).min(0.95), float(0));
   const tint = mix(color(PALETTE.starWhite), color(PALETTE.starGold), meta.x);
   const fade = smoothstep(0.0, 0.06, dirSize.y);
@@ -115,10 +115,11 @@ function moon() {
   const disc = smoothstep(0.36, 0.33, r);
   const shadow = smoothstep(0.31, 0.35, length(q.sub(vec2(0.13, 0.06))));
   const crescent = disc.mul(shadow.mul(0.85).add(0.15));
-  const halo = exp(r.mul(-5.5)).mul(0.1);
+  const halo = exp(r.mul(-6)).mul(0.04);
   // Painted texture on the disc so it reads as the orange rising moon of ref 1, not a flat circle.
   const mottling = mx_fractal_noise_float(vec3(q.mul(6), 1.0), 3).mul(0.15).add(0.92);
-  mat.colorNode = vec4(color(PALETTE.moon).mul(crescent.mul(mottling).mul(1.1).add(halo)), 1);
+  // Kept below the bloom threshold: a bright moon near the horizon gets smeared into rays.
+  mat.colorNode = vec4(color(PALETTE.moon).mul(crescent.mul(mottling).mul(0.62).add(halo)), 1);
   const sprite = new THREE.Sprite(mat);
   sprite.frustumCulled = false;
   sprite.renderOrder = -8;
@@ -156,20 +157,32 @@ export class ShootingStar {
     this.sprite.name = 'shootingStar';
   }
 
-  /** Fire across the sky between two directions; screen angle approximated from azimuth delta. */
-  fire(from: THREE.Vector3, to: THREE.Vector3) {
+  /** Fire across the sky between two directions. */
+  fire(from: THREE.Vector3, to: THREE.Vector3, life = 1.6) {
     this.from.value.copy(from).normalize();
     this.to.value.copy(to).normalize();
-    const azA = Math.atan2(from.x, -from.z);
-    const azB = Math.atan2(to.x, -to.z);
-    this.angle.value = Math.atan2(to.y - from.y, (azB - azA) * Math.cos(from.y));
+    this.life = life;
     this.elapsed = 0;
   }
 
-  update(dt: number) {
+  private dirAt(t: number, out: THREE.Vector3) {
+    const k = Math.min(1, Math.max(0, t));
+    const e = k * k * 0.6 + k * 0.4;
+    return out.copy(this.from.value).lerp(this.to.value, e).normalize();
+  }
+
+  /** Orients the streak along its actual on-screen motion, whatever way the camera faces. */
+  update(dt: number, camera?: THREE.Camera) {
     if (this.elapsed < 0) return;
     this.elapsed += dt;
-    this.t.value = this.elapsed / this.life;
+    const t = this.elapsed / this.life;
+    this.t.value = t;
+    if (camera) {
+      const a = this.dirAt(t, new THREE.Vector3()).add(camera.position).project(camera);
+      const b = this.dirAt(t - 0.03, new THREE.Vector3()).add(camera.position).project(camera);
+      const aspect = (camera as THREE.PerspectiveCamera).aspect ?? 1;
+      this.angle.value = Math.atan2(a.y - b.y, (a.x - b.x) * aspect);
+    }
     if (this.elapsed > this.life) this.elapsed = -1;
   }
 }

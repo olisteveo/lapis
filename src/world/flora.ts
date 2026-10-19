@@ -107,6 +107,7 @@ export class Flora implements Colliders {
   private lastLo = new THREE.Vector3(1e9, 0, 1e9);
   private mirrorHidden: THREE.Mesh[] = [];
   private solids = new Float32Array(0);
+  private clear = new Map<string, number[]>();
   private solidCount = 0;
   private lastLoBuild = 0;
   private scratch = new Float32Array(1 << 16);
@@ -267,6 +268,29 @@ export class Flora implements Colliders {
     }
   }
 
+  /** Keep plants out of these circles (landmarks). Bucketed by 64m cell for cheap lookups. */
+  setClearings(circles: { x: number; z: number; r: number }[]) {
+    this.clear.clear();
+    for (const c of circles) {
+      for (let j = Math.floor((c.z - c.r) / 64); j <= Math.floor((c.z + c.r) / 64); j++)
+        for (let i = Math.floor((c.x - c.r) / 64); i <= Math.floor((c.x + c.r) / 64); i++) {
+          const key = `${i},${j}`;
+          const list = this.clear.get(key) ?? [];
+          list.push(c.x, c.z, c.r);
+          this.clear.set(key, list);
+        }
+    }
+    this.lastHi.set(1e9, 0, 1e9);
+    this.loDirty = true;
+  }
+
+  private cleared(x: number, z: number) {
+    const list = this.clear.get(`${Math.floor(x / 64)},${Math.floor(z / 64)}`);
+    if (!list) return false;
+    for (let k = 0; k < list.length; k += 3) if (Math.hypot(list[k] - x, list[k + 1] - z) < list[k + 2]) return true;
+    return false;
+  }
+
   near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void) {
     const s = this.solids;
     for (let i = 0; i < this.solidCount; i++) {
@@ -287,6 +311,7 @@ export class Flora implements Colliders {
         if (!set) continue;
         for (let k = 0; k < set.length; k += 5) {
           if (Math.abs(set[k] - focus.x) > R || Math.abs(set[k + 2] - focus.z) > R) continue;
+          if (this.clear.size && this.cleared(set[k], set[k + 2])) continue;
           out.push(set[k], set[k + 2], r * set[k + 4]);
         }
       }
@@ -312,6 +337,7 @@ export class Flora implements Colliders {
           const d = Math.hypot(set[k] - focus.x, set[k + 2] - focus.z);
           // Only submit what the shader can show: hi inside its radius, lo in its band.
           if (d > (lod === 'hi' ? radius : cfg.far + 20) || d < inner) continue;
+          if (this.clear.size && this.cleared(set[k], set[k + 2])) continue;
           if ((n + 1) * 5 > this.scratch.length) {
             const grown = new Float32Array(this.scratch.length * 2);
             grown.set(this.scratch);
