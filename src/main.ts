@@ -4,8 +4,8 @@ import { settings, onSettingsChange } from './settings';
 import { PauseMenu } from './ui/menu';
 import { JournalMap } from './ui/map';
 import { Satchel } from './ui/satchel';
-import { LAGOONS } from './world/heightfield';
-import { createHeightfield, findSpawn } from './world/heightfield';
+import { LAGOONS } from './core/heightfield';
+import { createHeightfield, findSpawn } from './core/heightfield';
 import { Terrain, WorkerPool } from './world/terrain';
 import { createReflectionProxy, createTerrainMaterial } from './world/terrainMaterial';
 import { createWater } from './world/water';
@@ -19,22 +19,22 @@ import { Fauna } from './world/fauna';
 import { Wonders, layoutWonders } from './world/wonders';
 import { Puzzles, layoutPuzzles, skyFeatures } from './world/puzzles';
 import { Waterfalls, layoutFalls } from './world/waterfalls';
-import { LighthouseClimb } from './world/lighthouseClimb';
+import { LighthouseClimb } from './core/lighthouseClimb';
 import { Nightmares, type LightSource } from './world/nightmares';
-import { layoutRegionStars } from './story/placement';
+import { layoutRegionStars } from './core/placement';
 import { Stones, layoutStones } from './world/stones';
 import { Currents } from './world/currents';
 import { Flora } from './world/flora';
 import { createPost } from './render/post';
-import { PlayerController } from './game/player';
+import { PlayerController } from './core/player';
 import { Input } from './game/input';
 import { Avatar } from './game/avatar';
 import { CameraRig } from './game/cameraRig';
 import { Wisp } from './game/wisp';
 import { Audio } from './audio/audio';
 import { Story } from './story/story';
-import { layoutPrologue } from './story/placement';
-import { LINES, STORYBOOK } from './story/content';
+import { layoutPrologue } from './core/placement';
+import { LINES, STORYBOOK } from './core/content';
 
 const SEED = 1337;
 const $ = (id: string) => document.getElementById(id)!;
@@ -354,7 +354,7 @@ async function boot() {
         },
         /** Simulated playtesters of four skills on every puzzle; prints and returns the table. */
         async playtest(runs = 30) {
-          const { playtest } = await import('./debug/playtest');
+          const { playtest } = await import('./core/playtest');
           const rows = playtest(puzzleSites, skyFeatures(boatAz), runs);
           console.table(rows);
           return rows;

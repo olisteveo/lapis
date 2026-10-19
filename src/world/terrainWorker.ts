@@ -1,5 +1,5 @@
 // Builds terrain chunk meshes and flora scatter off the main thread.
-import { createHeightfield, type Heightfield, type TerrainSample } from './heightfield';
+import { createHeightfield, type Heightfield, type TerrainSample } from '../core/heightfield';
 
 export type WorkerRequest =
   | { kind: 'chunk'; id: number; seed: number; x0: number; z0: number; size: number; segs: number }

@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "assets": "sh tools/blender/build.sh",
-    "map": "node tools/map.ts"
+    "map": "node tools/map.ts",
+    "check:core": "node tools/check-core.mjs",
+    "playtest": "node --experimental-transform-types --no-warnings --import ./tools/node/register.mjs tools/playtest.ts"
   },
   "dependencies": {
     "simplex-noise": "^4.0.3",

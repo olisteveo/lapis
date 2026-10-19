@@ -1,4 +1,4 @@
-import type { Platforms } from '../game/player';
+import type { Platforms } from './player';
 
 // Geometry of the hollow DreamLighthouse (tools/blender/lighthouse.py, public/models/lighthouse.json),
 // in model units; angles are counter-clockwise from +X seen from above, i.e. atan2(-z, x).

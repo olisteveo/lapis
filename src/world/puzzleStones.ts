@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { color, exp, length, mix, texture, uniform, uv, vec4 } from 'three/tsl';
 import { PALETTE } from '../config';
+import { StonesRule } from '../core/puzzleRules';
 import { stoneMaterial, type PuzzleHooks, type PuzzleImpl, type PuzzleSite, type SkyFeature } from './puzzles';
 
 /** A disc carved with one sky feature: its stars and the lines between them, inked in gold. */
@@ -55,18 +56,16 @@ function symbolTexture(f: SkyFeature) {
  */
 export class StoneRing implements PuzzleImpl {
   readonly group = new THREE.Group();
-  private shown: number[];
+  /** The rules (src/core); this class only draws them. */
+  readonly rule: StonesRule;
   private glow = uniform(0);
   private dials: { value: THREE.Texture }[] = [];
   private textures: THREE.CanvasTexture[];
-  private isSolved: boolean;
 
-  constructor(readonly site: PuzzleSite, solved: boolean, private hooks: PuzzleHooks, private features: SkyFeature[]) {
-    this.isSolved = solved;
+  constructor(readonly site: PuzzleSite, solved: boolean, private hooks: PuzzleHooks, features: SkyFeature[]) {
+    this.rule = new StonesRule(site, features.length, solved);
     this.textures = features.map(symbolTexture);
     const stones = site.stones!;
-    // Start every dial on a wrong face (deterministic, so it's the same puzzle each visit).
-    this.shown = stones.map((s, i) => (solved ? s.answer : (s.answer + 1 + ((i * 7 + 3) % (features.length - 1))) % features.length));
     if (solved) this.glow.value = 1;
     const mat = stoneMaterial();
     const slab = new THREE.BoxGeometry(1.5, 3.2, 0.7).translate(0, 1.4, 0);
@@ -89,7 +88,7 @@ export class StoneRing implements PuzzleImpl {
 
   private faceMaterial(i: number) {
     const m = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-    const dial = texture(this.textures[this.shown[i]]);
+    const dial = texture(this.textures[this.rule.shown[i]]);
     this.dials[i] = dial as unknown as { value: THREE.Texture };
     const ink = dial.r;
     const rim = exp(length(uv().sub(0.5)).mul(2).sub(1).abs().mul(-30)).mul(0.6);
@@ -99,7 +98,7 @@ export class StoneRing implements PuzzleImpl {
   }
 
   get solved() {
-    return this.isSolved;
+    return this.rule.solved;
   }
 
   near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void) {
@@ -107,18 +106,17 @@ export class StoneRing implements PuzzleImpl {
   }
 
   interaction(x: number, z: number) {
-    if (this.isSolved) return null;
+    if (this.rule.solved) return null;
     const i = this.site.stones!.findIndex((s) => Math.hypot(s.x - x, s.z - z) < 2.4);
     if (i < 0) return null;
     return { prompt: 'E   turn the stone', act: () => this.turn(i) };
   }
 
   private turn(i: number) {
-    this.shown[i] = (this.shown[i] + 1) % this.features.length;
-    this.dials[i].value = this.textures[this.shown[i]];
-    this.hooks.note(this.shown[i]);
-    if (this.site.stones!.every((s, k) => this.shown[k] === s.answer)) {
-      this.isSolved = true;
+    const solved = this.rule.turn(i);
+    this.dials[i].value = this.textures[this.rule.shown[i]];
+    this.hooks.note(this.rule.shown[i]);
+    if (solved) {
       this.glow.value = 1;
       this.hooks.solve(this.site);
     }

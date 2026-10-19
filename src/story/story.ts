@@ -1,62 +1,46 @@
 import * as THREE from 'three/webgpu';
-import type { Heightfield } from '../world/heightfield';
+import type { Heightfield } from '../core/heightfield';
 import type { Flora } from '../world/flora';
 import type { ShootingStar } from '../world/sky';
-import type { PlayerController } from '../game/player';
+import type { PlayerController } from '../core/player';
 import type { Audio } from '../audio/audio';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { Narrative } from './narrative';
-import { THE_BOAT, LINES, CONSTELLATIONS, TOTAL_STARS, ENDING } from './content';
-import { BIOMES, LAGOONS, RIVER } from '../world/heightfield';
+import { THE_BOAT, LINES, CONSTELLATIONS, TOTAL_STARS, ENDING } from '../core/content';
+import { BIOMES, LAGOONS, RIVER } from '../core/heightfield';
 import { Constellation } from './constellation';
 import { FallenStars } from './fallenStars';
 import { createFootprints, createNote, DistantFigure } from './prologue';
-import type { P, PrologueLayout } from './placement';
+import type { P, PrologueLayout } from '../core/placement';
 import type { Puzzles, PuzzleSite } from '../world/puzzles';
 import { Echoes, type EchoDef } from './echoes';
 import type { Landmarks } from '../world/landmarks';
-import type { LighthouseClimb } from '../world/lighthouseClimb';
+import type { LighthouseClimb } from '../core/lighthouseClimb';
 import type { Wonders } from '../world/wonders';
-import { NightClock, type NightCue } from './night';
+import { NightClock, type NightCue } from '../core/night';
+import { Progress, type SaveStore } from '../core/progress';
 import { KEEPSAKES, Keepsakes, layoutKeepsakes, type KeepsakeId } from './keepsakes';
 import { SEE_RANGE } from './fallenStars';
 import { settings } from '../settings';
 import type { Wisp, WispCall, WispMood } from '../game/wisp';
 
-const SAVE_KEY = 'lapis.save.v1';
 const REGION_WONDER = { meadow: 'moontree', lantern: 'ring', dunes: 'whale', drowned: 'bell' } as const;
 
-interface Save {
-  /** Banked stars: carried to a lighthouse, lit in the sky for good. */
-  collected: string[];
-  seen: string[];
-  /** Beacons whose lamps you've lit. */
-  lit?: number[];
-  lastBeacon?: number;
-  keepsakes?: KeepsakeId[];
-}
-
-function loadSave(): Save {
-  try {
-    if (new URLSearchParams(location.search).has('reset')) localStorage.removeItem(SAVE_KEY);
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) {
-      const save = JSON.parse(raw) as Save;
-      // Older saves called the seashell by its old name.
-      if (save.keepsakes) save.keepsakes = save.keepsakes.map((k) => ((k as string) === 'conch' ? 'shell' : k));
-      return save;
-    }
-  } catch {
-    // Private windows and blocked storage: just play without persistence.
-  }
-  return { collected: [], seen: [] };
-}
+const browserStore: SaveStore = {
+  get: (k) => localStorage.getItem(k),
+  set: (k, v) => localStorage.setItem(k, v),
+  remove: (k) => localStorage.removeItem(k),
+};
 
 /** Runs the prologue: clues on the beach, the six fallen stars, and The Boat in the sky. */
 export class Story {
   readonly narrative = new Narrative();
   readonly group = new THREE.Group();
-  private save = loadSave();
+  /** The rules of progress live in src/core; the story presents them. */
+  readonly progress = new Progress(browserStore, new URLSearchParams(location.search).has('reset'));
+  private get save() {
+    return this.progress.save;
+  }
   private skies: Constellation[];
   /** Fragment id -> which constellation, which of its stars. */
   private starRef = new Map<string, { c: number; i: number }>();
@@ -179,8 +163,7 @@ export class Story {
   private takeKeepsake(id: KeepsakeId) {
     const def = KEEPSAKES.find((k) => k.id === id)!;
     this.keepsakes.take(id);
-    this.save.keepsakes = [...(this.save.keepsakes ?? []), id];
-    this.persist();
+    this.progress.addKeepsake(id);
     this.applyKeepsakes();
     this.audio.memory();
     this.audio.chime(5);
@@ -209,7 +192,7 @@ export class Story {
   }
 
   get allLit() {
-    return this.skies.every((c) => c.isComplete);
+    return this.progress.allLit;
   }
 
   /** Opening: hide the first star until it's seen to fall, and keep pillars dark. */
@@ -410,15 +393,12 @@ export class Story {
 
   /** Light a beacon (first visit) or rest by it: bank carried stars and begin a new night. */
   private rest(i: number) {
-    const lm = this.landmarks!;
-    const first = !lm.isLit(i);
+    const first = this.progress.restAt(i);
     if (first) {
-      lm.lightBeacon(i);
-      this.save.lit = [...(this.save.lit ?? []), i];
+      this.landmarks!.lightBeacon(i);
       this.narrative.say(LINES.lit);
       this.audio.chime(4);
     }
-    this.save.lastBeacon = i;
     this.bankCarried();
     this.night.reset();
     this.onNewNight?.();
@@ -445,7 +425,7 @@ export class Story {
     for (const id of this.stars.carriedIds) {
       const r = this.starRef.get(id)!;
       this.stars.collect(id, this.skies[r.c].dirs[r.i]);
-      if (!this.save.collected.includes(id)) this.save.collected.push(id);
+      this.progress.bank(id);
     }
     this.persist();
   }
@@ -499,18 +479,11 @@ export class Story {
   }
 
   private seen(key: string) {
-    if (this.save.seen.includes(key)) return true;
-    this.save.seen.push(key);
-    this.persist();
-    return false;
+    return this.progress.seen(key);
   }
 
   private persist() {
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(this.save));
-    } catch {
-      // Ignore: progress just won't survive a reload.
-    }
+    this.progress.persist();
   }
 
   /** Called on the frame E is pressed. Returns true if the story used the press. */
@@ -676,8 +649,7 @@ export class Story {
       if (!this.seen('carryHint')) setTimeout(() => this.guide("Listen! Carry it to a lighthouse before the night runs out, or it'll fall back.", 'listen'), 7000);
     } else {
       this.stars.collect(id, this.skies[r.c].dirs[r.i]);
-      this.save.collected.push(id);
-      this.persist();
+      this.progress.bank(id);
     }
     this.audio.chime(index % 6);
     this.audio.memory();

@@ -1,4 +1,5 @@
 import { Vector3 } from 'three';
+import { SKY_DIRS, type Dir } from './core/sky';
 
 // The whole look hangs off this palette, pulled from the reference paintings.
 export const PALETTE = {
@@ -24,19 +25,12 @@ export const PALETTE = {
   fog: 0x2a3d9c,
 } as const;
 
-const dir = (azimuthDeg: number, elevationDeg: number) => {
-  const az = (azimuthDeg * Math.PI) / 180;
-  const el = (elevationDeg * Math.PI) / 180;
-  // Azimuth 0 = north (-Z), clockwise toward east (+X).
-  return new Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)).normalize();
-};
+const v = (d: Dir) => new Vector3(d.x, d.y, d.z);
 
 export const SKY = {
-  /** The bright one: due north over the River of Light. Glitter paths on the water point home. */
-  brightStar: dir(0, 22),
-  moon: dir(58, 7),
-  /** Key light: a cool wash from high above the star, so faces toward home catch the rim. */
-  keyLight: dir(20, 38),
+  brightStar: v(SKY_DIRS.brightStar),
+  moon: v(SKY_DIRS.moon),
+  keyLight: v(SKY_DIRS.keyLight),
 };
 
 export type QualityName = 'low' | 'medium' | 'high';

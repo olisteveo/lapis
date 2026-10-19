@@ -3,8 +3,8 @@ import { color, float, hash, length, mix, positionLocal, positionWorld, sin, smo
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE } from '../config';
 import { drawnSurface } from '../render/drawn';
-import { BIOMES, LIGHTHOUSE, WORLD_HALF, type Heightfield } from './heightfield';
-import type { Colliders } from '../game/player';
+import { BIOMES, LIGHTHOUSE, WORLD_HALF, type Heightfield } from '../core/heightfield';
+import type { Colliders } from '../core/player';
 
 export interface Placed {
   type: string;

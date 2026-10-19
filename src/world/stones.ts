@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { color, mix, mx_noise_float, normalWorld, positionWorld, smoothstep, vec3 } from 'three/tsl';
-import { LAGOONS, type Heightfield } from './heightfield';
-import type { Platforms } from '../game/player';
+import { LAGOONS, type Heightfield } from '../core/heightfield';
+import type { Platforms } from '../core/player';
 
 export interface Stone {
   x: number;

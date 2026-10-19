@@ -150,6 +150,9 @@ Then open `http://localhost:5180`. `?reset` starts a fresh save; `?debug` adds a
 ```bash
 npm run build      # typecheck and production build into dist/
 npm run assets     # regenerate every model with headless Blender
+npm run playtest   # headless simulated playtesters (optional run count, e.g. 200)
+npm run check:core # fail if src/core imports anything engine-specific
+dotnet run --project sbox/Lapis.Parity   # C# port parity against the TypeScript traces
 ```
 
 Sound effects: `tools/audio/.venv/bin/python tools/audio/build_sounds.py` (numpy).
@@ -160,19 +163,22 @@ Sound effects: `tools/audio/.venv/bin/python tools/audio/build_sounds.py` (numpy
 
 ```
 src/
+  core/              engine-free game rules: heightfield, player controller, night clock,
+                     puzzle layouts and rule machines, nightmare brain, deer herd,
+                     keepsakes, progress and saves, simulated playtesters
   main.ts            boot, game loop, input wiring, menus
   config.ts          palette, sky, quality presets
   render/            painterly post-process, drawn shading helpers
-  world/             heightfield, streamed terrain (worker pool, LODs), flora, water,
+  world/             streamed terrain (worker pool, LODs), flora, water,
                      sky, landmarks and lighthouses, wildlife and fauna, wonders,
                      puzzles, nightmares, waterfalls
-  game/              engine-agnostic player controller, camera rig, the little light
-  story/             story and save, constellations, fallen stars, keepsakes, night clock,
-                     narrative overlay, placement
+  game/              avatar, camera rig, the little light
+  story/             story flow, constellations, fallen stars, keepsakes, narrative overlay
   audio/             audio buses, synthesised sounds, music director
   ui/                pause menu, chart, satchel
-  debug/             simulated playtesters
+sbox/                C# pilot port (Lapis.Core, parity runner, s&box component wrappers)
 tools/
+  parity/            TypeScript trace recorder for the C# parity tests
   blender/           headless Blender scripts that build every model (glb + FBX)
   audio/             offline sound synthesis
 docs/                story bible, game design, music, voice script, playtest report
@@ -180,7 +186,8 @@ docs/                story bible, game design, music, voice script, playtest rep
 
 - **Engine**: Three.js r186 `WebGPURenderer` with TSL node materials throughout; a custom `RenderPipeline` for the post-process.
 - **World**: a deterministic heightfield sampled in a worker pool that builds terrain chunks with LODs and skirts and scatters flora by rules per region; flora is instanced in distance bands.
-- **Player logic** is engine-agnostic (`src/game/player.ts`): walking, wading, jumping, stacked platforms like spiral stairs, the boat with currents and power strokes. The plan is to carry it over to s&box later.
+- **Rules are engine-free** (`src/core`, enforced by `npm run check:core`): the player controller, night clock, puzzles, nightmares, herd and progress are plain deterministic TypeScript that the Three.js renderers only read from. That is what lets the playtesters run headless and the game move to s&box.
+- **s&box port**: the player controller and night clock are already in C# (`sbox/`), matching the TypeScript to within 1e-15 over ten recorded scenarios. [docs/SHADERS.md](docs/SHADERS.md) specifies every shader for the HLSL rewrite.
 - **Assets** are code: `tools/blender/*.py` build the flora, boat, props, fauna, wonders, the climbable lighthouse and the nightmares, export glb for the game and FBX for other engines, and encode sway and walk-cycle data in vertex colours for the shaders.
 
 ## Documents
@@ -190,3 +197,5 @@ docs/                story bible, game design, music, voice script, playtest rep
 - [docs/MUSIC.md](docs/MUSIC.md): the score and the Suno prompts
 - [docs/VOICE.md](docs/VOICE.md): Mara's lines and recording direction
 - [docs/PLAYTEST.md](docs/PLAYTEST.md): simulated playtest results
+- [docs/SHADERS.md](docs/SHADERS.md): shader spec for the s&box port
+- [sbox/README.md](sbox/README.md): the C# pilot and parity tests

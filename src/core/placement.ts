@@ -1,8 +1,8 @@
 // Deterministic placement of the prologue around the spawn beach, read from the heightfield
 // so it survives any retune of the world generator.
-import { BIOMES, LAGOONS, mulberry32, type Heightfield } from '../world/heightfield';
-import type { Wonder } from '../world/wonders';
-import type { PuzzleSite } from '../world/puzzles';
+import { BIOMES, LAGOONS, mulberry32, type Heightfield } from './heightfield';
+import type { Wonder } from './wonders';
+import type { PuzzleSite } from './puzzles';
 import { CONSTELLATIONS } from './content';
 
 export interface P {

@@ -4,7 +4,7 @@ import {
   positionView, positionWorld, pow, reflect, reflector, saturate, sin, smoothstep, time, vec2, vec3, viewportDepthTexture,
 } from 'three/tsl';
 import { PALETTE, QUALITY, SKY, onQualityChange } from '../config';
-import { LAGOONS } from './heightfield';
+import { LAGOONS } from '../core/heightfield';
 
 export function createWater() {
   const reflection = reflector({ resolutionScale: QUALITY.reflection });

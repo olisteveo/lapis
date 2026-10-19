@@ -1,4 +1,4 @@
-import { WORLD_HALF, WORLD_SIZE, type Heightfield } from '../world/heightfield';
+import { WORLD_HALF, WORLD_SIZE, type Heightfield } from '../core/heightfield';
 
 const RES = 256;
 const FOG = 128;

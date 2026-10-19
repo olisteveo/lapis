@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { cameraPosition, color, exp, float, length, mix, positionWorld, sin, smoothstep, time, uniform, uv, vec4, abs } from 'three/tsl';
 import { PALETTE } from '../config';
 import { starShape } from '../render/starShape';
-import type { P } from './placement';
+import type { P } from '../core/placement';
 
 /** How far an unmarked star's glint can be seen; the paper lantern pushes it out. */
 export const SEE_RANGE = uniform(75);

@@ -6,10 +6,10 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FLORA, PALETTE, QUALITY, SKY, onQualityChange } from '../config';
 import { drawnSurface, penLines } from '../render/drawn';
-import { WORLD_HALF } from './heightfield';
+import { WORLD_HALF } from '../core/heightfield';
 import type { WorkerPool } from './terrain';
 import type { FloraResult } from './terrainWorker';
-import type { Colliders } from '../game/player';
+import type { Colliders } from '../core/player';
 
 interface TypeCfg {
   hi: number;
