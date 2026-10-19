@@ -1,0 +1,200 @@
+{
+ "units": "metres, Blender Z-up; glTF/three: (x, y, z)_three = (x, z, -y)_blender. Angles are radians counter-clockwise seen from above from +X (three: atan2(-z, x)).",
+ "wall": {
+  "outer": [
+   3.2,
+   2.4
+  ],
+  "thickness": 0.35,
+  "rule": "outer(z) = 3.2 - 0.8 * z / 22.0 for 0 <= z <= 22.0, 2.4 above (parapet to z=23.02); inner(z) = outer(z) - 0.35"
+ },
+ "door": {
+  "angle": 0.0,
+  "width": 1.4,
+  "height": 2.5,
+  "sillZ": 0.2,
+  "note": "arched (semicircular head); width is the clear width at the inner face, the outer face splays wider"
+ },
+ "groundFloor": 0.2,
+ "plinth": [
+  {
+   "radius": 5.6,
+   "top": 0.06
+  },
+  {
+   "radius": 4.9,
+   "top": 0.2
+  }
+ ],
+ "newel": 0.35,
+ "newelTop": 22.9,
+ "stair": {
+  "startAngle": 0.6,
+  "turnDirection": "ccw",
+  "rise": 0.25,
+  "anglePerStep": 0.314159,
+  "steps": 87,
+  "turns": 4.35,
+  "inner": 0.35,
+  "outerRule": "inner wall radius at tread height: outer_i = inner((i+1)*rise)",
+  "firstTreadTop": 0.25,
+  "lastTreadTop": 21.75,
+  "treadThickness": 0.32,
+  "arrivalAngle": 27.931856,
+  "treadRule": "tread i: top z=(i+1)*rise, angles [startAngle+i*a, startAngle+(i+1)*a], radii [inner, outer_i], solid down to top-treadThickness",
+  "outerPerStep": [
+   2.840909,
+   2.831818,
+   2.822727,
+   2.813636,
+   2.804545,
+   2.795455,
+   2.786364,
+   2.777273,
+   2.768182,
+   2.759091,
+   2.75,
+   2.740909,
+   2.731818,
+   2.722727,
+   2.713636,
+   2.704545,
+   2.695455,
+   2.686364,
+   2.677273,
+   2.668182,
+   2.659091,
+   2.65,
+   2.640909,
+   2.631818,
+   2.622727,
+   2.613636,
+   2.604545,
+   2.595455,
+   2.586364,
+   2.577273,
+   2.568182,
+   2.559091,
+   2.55,
+   2.540909,
+   2.531818,
+   2.522727,
+   2.513636,
+   2.504545,
+   2.495455,
+   2.486364,
+   2.477273,
+   2.468182,
+   2.459091,
+   2.45,
+   2.440909,
+   2.431818,
+   2.422727,
+   2.413636,
+   2.404545,
+   2.395455,
+   2.386364,
+   2.377273,
+   2.368182,
+   2.359091,
+   2.35,
+   2.340909,
+   2.331818,
+   2.322727,
+   2.313636,
+   2.304545,
+   2.295455,
+   2.286364,
+   2.277273,
+   2.268182,
+   2.259091,
+   2.25,
+   2.240909,
+   2.231818,
+   2.222727,
+   2.213636,
+   2.204545,
+   2.195455,
+   2.186364,
+   2.177273,
+   2.168182,
+   2.159091,
+   2.15,
+   2.140909,
+   2.131818,
+   2.122727,
+   2.113636,
+   2.104545,
+   2.095455,
+   2.086364,
+   2.077273,
+   2.068182,
+   2.059091
+  ],
+  "minOuterTreadDepth": 0.646882,
+  "headroomPerTurn": 4.68
+ },
+ "topFloor": {
+  "z": 22.0,
+  "thickness": 0.3,
+  "inner": 0.35,
+  "outer": 2.05,
+  "opening": {
+   "from": 24.790263,
+   "to": 27.931856,
+   "fromMod2Pi": 5.940708,
+   "toMod2Pi": 2.799115,
+   "note": "no floor over angles [from, to] ccw (newel to wall): the stairwell. The stair arrives at `to`; a rail 1.0 m high closes the `from` edge."
+  }
+ },
+ "galleryDoor": {
+  "angle": 4.31969,
+  "width": 1.2,
+  "height": 2.3,
+  "sillZ": 22.0
+ },
+ "gallery": {
+  "z": 22.0,
+  "inner": 2.4,
+  "outer": 4.4,
+  "thickness": 0.4,
+  "railRadius": 4.3,
+  "railHeight": 1.0
+ },
+ "runeRings": [
+  {
+   "name": "RuneRing_0",
+   "z": 6.5,
+   "radius": 4.213636,
+   "tiltRadians": 0.122173,
+   "tiltAxisAngle": 0.4
+  },
+  {
+   "name": "RuneRing_1",
+   "z": 12.0,
+   "radius": 4.063636,
+   "tiltRadians": 0.087266,
+   "tiltAxisAngle": 2.5
+  },
+  {
+   "name": "RuneRing_2",
+   "z": 17.0,
+   "radius": 3.781818,
+   "tiltRadians": 0.139626,
+   "tiltAxisAngle": 4.4
+  }
+ ],
+ "lampGlass": {
+  "radius": 2.15,
+  "z": [
+   23.02,
+   26.3
+  ]
+ },
+ "crystalCenterZ": 25.0,
+ "counts": {
+  "windows": 12,
+  "innerGlyphs": 36,
+  "lanterns": 6
+ }
+}
