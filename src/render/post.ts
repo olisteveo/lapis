@@ -187,14 +187,6 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const ink = max(smoothstep(0.35, 0.9, dEdge), smoothstep(0.16, 0.42, tEdge).mul(0.55).mul(select(isSky, float(0), float(1)))).mul(lineNoise.mul(0.6).add(0.4));
   c = mix(c, color(0x070b24), ink.mul(0.6).mul(paint));
 
-  // ---- 6. Stipple: tiny warm and cream dots through the dark blues, as in every reference.
-  const cell = floor(px.div(3)) as N;
-  const sh = hash(cell.x.add(cell.y.mul(7919)));
-  const blueDark = smoothstep(0.35, 0.08, luminance(c)).mul(smoothstep(0.0, 0.08, c.b.sub(c.r)));
-  const dotOn = smoothstep(0.9975, 1.0, sh).mul(blueDark).mul(select(isSky, float(0), float(1)));
-  const dotCol = mix(color(PALETTE.starGold), color(PALETTE.starWhite), fract(sh.mul(91)));
-  c = mix(c, pow(dotCol, vec3(1 / 2.2)), dotOn.mul(0.8).mul(paint));
-
   // ---- 7. Canvas: emboss the weave, let pigment pool in the valleys.
   const canvasTex = new THREE.TextureLoader().load('/textures/canvas.png');
   canvasTex.wrapS = canvasTex.wrapT = THREE.RepeatWrapping;
