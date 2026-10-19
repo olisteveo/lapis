@@ -132,8 +132,8 @@ export class Audio {
     this.one(`chime_${k % 6}`, 0.7, k >= 6 ? 1.5 : 1);
   }
 
-  /** The conch: a hollow, rising hum, brighter the closer a hidden star is. */
-  conch(near: number) {
+  /** The seashell: a hollow, rising hum, brighter the closer a hidden star is. */
+  shellHum(near: number) {
     this.one('chime_2', 0.15 + near * 0.35, 0.5 + near * 0.6);
   }
 

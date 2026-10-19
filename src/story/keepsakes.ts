@@ -3,7 +3,7 @@ import { color, exp, length, sin, time, uv, vec4 } from 'three/tsl';
 import { BIOMES, LAGOONS, mulberry32, type Heightfield } from '../world/heightfield';
 import type { P } from './placement';
 
-export type KeepsakeId = 'conch' | 'wings' | 'lantern' | 'compass' | 'ribbon';
+export type KeepsakeId = 'shell' | 'wings' | 'lantern' | 'compass' | 'ribbon';
 
 export interface KeepsakeDef {
   id: KeepsakeId;
@@ -18,7 +18,7 @@ export interface KeepsakeDef {
 }
 
 export const KEEPSAKES: KeepsakeDef[] = [
-  { id: 'conch', name: 'The Conch', memory: 'Hold it to your ear. You can hear the stars in it.', effect: 'Hums when a hidden star is near. The closer, the brighter it sings.', hint: 'behind falling water, where the sea is still and full of light', tint: 0xffb8c8 },
+  { id: 'shell', name: 'The Seashell', memory: 'Hold it to your ear. You can hear the stars in it.', effect: 'Hums when a hidden star is near. The closer, the brighter it sings.', hint: 'behind falling water, where the sea is still and full of light', tint: 0xffb8c8 },
   { id: 'wings', name: 'Moth Wings', memory: 'I made you wings. Now you can fly too.', effect: 'Hold Space in the air to glide.', hint: 'on high ground in the meadows', tint: 0xe8e0ff },
   { id: 'lantern', name: 'Paper Lantern', memory: 'Take it. Then the dark has to stay back.', effect: 'Nightmares keep their distance, and you can spot star glints from further away.', hint: 'deep in the Lantern Wood', tint: 0xffc070 },
   { id: 'compass', name: 'The Compass', memory: "It always knows where home is. Even when I don't.", effect: 'Shows where you are on the chart.', hint: 'among the dunes', tint: 0x9ff0e0 },
@@ -29,11 +29,11 @@ export const KEEPSAKES: KeepsakeDef[] = [
 export function layoutKeepsakes(hf: Heightfield, spawn: P): Record<KeepsakeId, P> {
   const rnd = mulberry32(777);
   const out = {} as Record<KeepsakeId, P>;
-  // The conch waits on the ledge behind the waterfall, in the secret lagoon nearest where you wake.
+  // The seashell waits on the ledge behind the waterfall, in the secret lagoon nearest where you wake.
   const order = LAGOONS.map((L, i) => ({ L, i })).sort((a, b) => Math.hypot(a.L.x - spawn.x, a.L.z - spawn.z) - Math.hypot(b.L.x - spawn.x, b.L.z - spawn.z));
   const { L, i } = order[0];
   const fa = hf.lagoonGaps[i] + Math.PI;
-  out.conch = { x: L.x + Math.sin(fa) * (L.r - 7.5), z: L.z + Math.cos(fa) * (L.r - 7.5) };
+  out.shell = { x: L.x + Math.sin(fa) * (L.r - 7.5), z: L.z + Math.cos(fa) * (L.r - 7.5) };
   const regional: [KeepsakeId, keyof typeof BIOMES][] = [['wings', 'meadow'], ['lantern', 'lantern'], ['compass', 'dunes'], ['ribbon', 'drowned']];
   for (const [id, region] of regional) {
     const B = BIOMES[region];

@@ -12,7 +12,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 
 /** Small inked glyphs for each keepsake, drawn rather than iconified. */
 const GLYPH: Record<KeepsakeId, string> = {
-  conch: '<path d="M8 30 C4 18 14 6 26 8 C34 10 36 20 30 26 C24 32 14 34 8 30 Z M14 26 C18 20 24 18 28 20" />',
+  shell: '<path d="M8 30 C4 18 14 6 26 8 C34 10 36 20 30 26 C24 32 14 34 8 30 Z M14 26 C18 20 24 18 28 20" />',
   wings: '<path d="M20 22 C12 8 4 10 6 20 C8 28 16 26 20 22 C24 26 32 28 34 20 C36 10 28 8 20 22 Z M20 22 L20 32" />',
   lantern: '<path d="M14 10 H26 M15 10 C10 16 10 26 15 32 H25 C30 26 30 16 25 10 M20 4 V10 M16 32 H24 V35 H16 Z" />',
   compass: '<circle cx="20" cy="20" r="13" /><path d="M20 9 L23 20 L20 31 L17 20 Z M20 20 L20 20" />',

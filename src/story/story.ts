@@ -40,7 +40,12 @@ function loadSave(): Save {
   try {
     if (new URLSearchParams(location.search).has('reset')) localStorage.removeItem(SAVE_KEY);
     const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) return JSON.parse(raw) as Save;
+    if (raw) {
+      const save = JSON.parse(raw) as Save;
+      // Older saves called the seashell by its old name.
+      if (save.keepsakes) save.keepsakes = save.keepsakes.map((k) => ((k as string) === 'conch' ? 'shell' : k));
+      return save;
+    }
   } catch {
     // Private windows and blocked storage: just play without persistence.
   }
@@ -197,7 +202,7 @@ export class Story {
     };
   }
 
-  private conchT = 0;
+  private shellT = 0;
 
   get litTotal() {
     return this.save.collected.length;
@@ -622,14 +627,14 @@ export class Story {
       this.pendingAction = puzzle.act;
     }
 
-    // The conch sings faster as a hidden star gets closer.
-    if (this.hasKeepsake('conch')) {
+    // The seashell sings faster as a hidden star gets closer.
+    if (this.hasKeepsake('shell')) {
       const hidden = this.stars.nearest(px, pz);
-      this.conchT -= dt;
-      if (hidden && !hidden.beacon && hidden.dist < 240 && this.conchT <= 0) {
+      this.shellT -= dt;
+      if (hidden && !hidden.beacon && hidden.dist < 240 && this.shellT <= 0) {
         const near = 1 - hidden.dist / 240;
-        this.audio.conch(near);
-        this.conchT = 0.5 + (1 - near) * 2.6;
+        this.audio.shellHum(near);
+        this.shellT = 0.5 + (1 - near) * 2.6;
       }
     }
 
