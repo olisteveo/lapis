@@ -208,6 +208,15 @@ async function boot() {
     }),
     flora.load('/models/flora.glb', '/models/biomes.glb').then((types) => debug && console.log('flora types', types)),
   ]);
+  // Build every material's shader now, in the background, rather than the first time it comes into
+  // view: entering a new region otherwise stalls for a frame or two while its plants compile.
+  // Empty plant batches (instanceCount 0) are skipped by the compiler, so give each one a stand-in
+  // instance for the warm-up; the next flora update replaces it with the real counts.
+  flora.group.traverse((o) => {
+    const g = (o as THREE.Mesh).geometry as THREE.InstancedBufferGeometry | undefined;
+    if (g?.isInstancedBufferGeometry && !g.instanceCount) g.instanceCount = 1;
+  });
+  renderer.compileAsync(scene, camera).catch(() => {});
 
   // Polled rather than event-driven: embedded panes and devtools can resize without a reliable event.
   const size = new THREE.Vector2();
@@ -337,7 +346,7 @@ async function boot() {
     // Console handle for art direction: lapis.view(x, z, yaw, pitch), lapis.player, etc.
     Object.assign(window, {
       lapis: {
-        player, input, camera, hf, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones, fauna, wonders, nightmares, puzzles, climb,
+        player, input, camera, hf, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones, fauna, wonders, nightmares, puzzles, climb, renderer,
         get post() {
           return post;
         },
