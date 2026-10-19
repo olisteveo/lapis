@@ -17,6 +17,9 @@ export class CameraRig {
   private lastBoatHeading = 0;
   private wasBoat = false;
   private boatEye = new THREE.Vector3();
+  private lastStep = 0;
+  /** Fired once per footfall, synced to the head-bob. */
+  onStep: ((speed: number) => void) | null = null;
 
   constructor(private camera: THREE.PerspectiveCamera, private world: WorldQuery) {
     camera.rotation.order = 'YXZ';
@@ -51,6 +54,9 @@ export class CameraRig {
     const moving = Math.min(1, p.speed / 3.2);
     this.stepPhase += dt * (5.2 + p.speed * 0.9) * (moving > 0.05 ? 1 : 0);
     const bob = Math.sin(this.stepPhase * 2) * 0.035 * moving;
+    const step = Math.floor((this.stepPhase * 2 + Math.PI / 2) / (Math.PI * 2));
+    if (step !== this.lastStep && moving > 0.1) this.onStep?.(p.speed);
+    this.lastStep = step;
     const sway = Math.sin(this.stepPhase) * 0.025 * moving;
     const target = p.y + EYE + bob;
     // Ease vertical changes so stepping up roots and dunes doesn't jolt the view.

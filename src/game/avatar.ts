@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import type { Anim, PlayerController } from './player';
 
 // Boat-local seat for the rower (three.js axes, bow toward +X), tuned against the mesh.
@@ -9,6 +9,7 @@ export class Avatar {
   readonly keeper = new THREE.Group();
   readonly boat = new THREE.Group();
   private mixer!: THREE.AnimationMixer;
+  keeperGltf: GLTF | null = null;
   private actions = new Map<Anim, THREE.AnimationAction>();
   private current: Anim | null = null;
   private oars: THREE.Object3D[] = [];
@@ -25,6 +26,7 @@ export class Avatar {
   async load(keeperUrl: string, boatUrl: string) {
     const loader = new GLTFLoader();
     const [k, b] = await Promise.all([loader.loadAsync(keeperUrl), loader.loadAsync(boatUrl)]);
+    this.keeperGltf = k;
     this.keeper.add(k.scene);
     k.scene.traverse((o) => {
       const m = o as THREE.Mesh;

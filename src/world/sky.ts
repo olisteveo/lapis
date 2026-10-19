@@ -23,7 +23,7 @@ function skyDome() {
   col = mix(col, color(PALETTE.fog).mul(0.7), smoothstep(0.0, -0.08, el));
 
   const toMoon = saturate(dot(dir, moonDir));
-  col = col.add(color(PALETTE.moon).mul(pow(toMoon, 24).mul(0.35).add(pow(toMoon, 4).mul(0.05))));
+  col = col.add(color(PALETTE.moon).mul(pow(toMoon, 30).mul(0.22).add(pow(toMoon, 6).mul(0.025))));
   col = col.add(color(PALETTE.starWhite).mul(pow(saturate(dot(dir, starDir)), 900).mul(0.12)));
 
   // Long horizontal cloud streaks low on the horizon, as in the lake painting.
@@ -115,7 +115,7 @@ function moon() {
   const disc = smoothstep(0.36, 0.33, r);
   const shadow = smoothstep(0.31, 0.35, length(q.sub(vec2(0.13, 0.06))));
   const crescent = disc.mul(shadow.mul(0.85).add(0.15));
-  const halo = exp(r.mul(-4.5)).mul(0.25);
+  const halo = exp(r.mul(-5.5)).mul(0.1);
   // Painted texture on the disc so it reads as the orange rising moon of ref 1, not a flat circle.
   const mottling = mx_fractal_noise_float(vec3(q.mul(6), 1.0), 3).mul(0.15).add(0.92);
   mat.colorNode = vec4(color(PALETTE.moon).mul(crescent.mul(mottling).mul(2.2).add(halo)), 1);

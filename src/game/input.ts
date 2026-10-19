@@ -16,7 +16,8 @@ export class Input {
     el.addEventListener('click', () => {
       this.onFirstGesture?.();
       this.onFirstGesture = null;
-      el.requestPointerLock?.();
+      // Embedded previews can refuse pointer lock; ignore that rather than throwing.
+      Promise.resolve(el.requestPointerLock?.()).catch(() => {});
     });
     document.addEventListener('pointerlockchange', () => (this.locked = document.pointerLockElement === el));
     addEventListener('mousemove', (e) => {

@@ -13,6 +13,10 @@ import { PlayerController } from './game/player';
 import { Input } from './game/input';
 import { Avatar } from './game/avatar';
 import { CameraRig } from './game/cameraRig';
+import { Audio } from './audio/audio';
+import { Story } from './story/story';
+import { layoutPrologue } from './story/placement';
+import { LINES } from './story/content';
 
 const SEED = 1337;
 const $ = (id: string) => document.getElementById(id)!;
@@ -54,13 +58,15 @@ async function boot() {
   scene.add(sky.group, terrain.group, water.mesh, water.target, sparkles.group, flora.group, avatar.boat, motes);
 
   const spawn = findSpawn(hf);
+  const layout = layoutPrologue(hf, spawn);
   const player = new PlayerController(hf);
   player.colliders = flora;
   player.place(spawn.x, spawn.z, Math.PI);
-  // Beach the boat in the shallows just seaward of where the Keeper wakes.
-  let bz = spawn.z;
-  while (hf.height(spawn.x + 4, bz) > -0.7 && bz < spawn.z + 80) bz += 0.5;
-  player.placeBoat(spawn.x + 4, bz + 1.5, Math.PI * 0.5);
+  player.placeBoat(layout.boat.x, layout.boat.z, layout.boat.heading);
+
+  const audio = new Audio();
+  const story = new Story(layout, hf, flora, sky.shooting, audio);
+  scene.add(story.group);
 
   // Reflection pass rules: the Keeper casts no reflection (twist clue #1), sparkles stay out
   // of the mirror, and terrain must not sample the render target it is being drawn into.
@@ -87,7 +93,7 @@ async function boot() {
   const post = createPost(renderer, scene, camera);
 
   await Promise.all([
-    avatar.load('/models/keeper.glb', '/models/boat.glb'),
+    avatar.load('/models/keeper.glb', '/models/boat.glb').then(() => avatar.keeperGltf && story.loadFigure(avatar.keeperGltf)),
     flora.load('/models/flora.glb').then((types) => debug && console.log('flora types', types)),
   ]);
 
@@ -103,27 +109,51 @@ async function boot() {
     settleFrames = 3;
   };
 
+  // Intro timeline (seconds after the first click):
+  //   0-6   black; a whisper.   6-8 fade up, on your back staring at the sky.
+  //   8.6   a star falls.        10-14.5 the title over the sky.   15-19.5 you sit up.
+  const INTRO_DARK = 6;
+  const INTRO_END = 19.5;
   let state: 'title' | 'intro' | 'play' = debug && location.hash === '#play' ? 'play' : 'title';
   let introT = 0;
   let shot = false;
+  let titleShown = false;
   // Wake facing north: the bright one is the first thing you see when you sit up.
   input.yaw = 0;
   input.pitch = -0.04;
+  const fade = $('fade');
   input.onFirstGesture = () => {
-    if (state === 'title') {
-      state = 'intro';
-      $('hint').style.opacity = '0';
-    }
+    if (state !== 'title') return;
+    state = 'intro';
+    audio.start().catch((e) => console.warn('audio failed', e));
+    $('hint').style.opacity = '0';
+    $('title').style.opacity = '0';
+    fade.style.transitionDuration = '0.8s';
+    fade.style.opacity = '1';
+    setTimeout(() => story.narrative.say(LINES.wake, 'whisper'), 1200);
   };
+  const skipIntro = () => {
+    introT = INTRO_END;
+    fade.style.opacity = '0';
+  };
+  let ePressed = false;
   addEventListener('keydown', (e) => {
-    if (e.code === 'Escape' && state === 'intro') introT = Math.max(introT, 14);
+    if (e.code === 'Escape' && state === 'intro') skipIntro();
+    if (e.code === 'KeyE' && !e.repeat) ePressed = true;
   });
+  rig.onStep = (speed) => {
+    const h = hf.height(player.x, player.z);
+    const s = hf.sample(player.x, player.z);
+    const surface = h < -0.05 ? 'water' : h < 0.75 ? 'wet' : h < 2.8 && s.grove < 0.3 ? 'sand' : 'jungle';
+    audio.step(surface, speed);
+  };
+  let lastStroke = 0;
 
   if (debug) {
     // Console handle for art direction: lapis.view(x, z, yaw, pitch), lapis.player, etc.
     Object.assign(window, {
       lapis: {
-        player, input, camera, hf, post, flora, sparkles,
+        player, input, camera, hf, post, flora, sparkles, story, layout, audio,
         view(x: number, z: number, yaw = input.yaw, pitch = input.pitch) {
           state = 'play';
           player.mode = 'walk';
@@ -153,34 +183,56 @@ async function boot() {
     const dt = Math.min(clock.getDelta(), 1 / 20);
     const now = clock.getElapsed();
 
+    const pressed = ePressed;
+    ePressed = false;
     if (state === 'title' || state === 'intro') {
       if (state === 'intro') introT += dt;
-      rig.intro(introT, player, input);
-      if (state === 'intro' && !shot && introT > 2.6) {
-        shot = true;
-        sky.shooting.fire(new THREE.Vector3(-0.55, 0.85, -0.6), new THREE.Vector3(0.25, 0.08, -1));
-      }
-      if (introT > 6.5) $('title').style.opacity = '0';
-      if (introT > 13.5) {
-        state = 'play';
-        $('hint').textContent = 'WASD  walk     mouse  look     shift  run     E  boat';
-        $('hint').style.opacity = '1';
-        setTimeout(() => ($('hint').style.opacity = '0'), 9000);
+      rig.intro(Math.max(0, introT - INTRO_DARK), player, input);
+      if (state === 'intro') {
+        if (introT > INTRO_DARK - 0.5 && introT < INTRO_DARK) {
+          fade.style.transitionDuration = '2.5s';
+          fade.style.opacity = '0';
+        }
+        if (!shot && introT > INTRO_DARK + 2.6) {
+          shot = true;
+          sky.shooting.fire(new THREE.Vector3(-0.55, 0.85, -0.6), new THREE.Vector3(0.25, 0.08, -1));
+          audio.starFall();
+        }
+        if (!titleShown && introT > 10) {
+          titleShown = true;
+          $('title').style.opacity = '1';
+        }
+        if (introT > 14.5) $('title').style.opacity = '0';
+        if (introT >= INTRO_END) {
+          state = 'play';
+          $('title').style.opacity = '0';
+          story.narrative.say('WASD  walk      mouse  look      shift  run', 'hint', 7);
+        }
       }
     } else {
-      $('title').style.opacity = '0';
+      // The story gets first claim on E (gather, read); otherwise it boards or leaves the boat.
+      const storyUsed = pressed && story.interact();
       player.update(dt, {
-        moveX: input.moveX,
-        moveY: input.moveY,
+        moveX: story.narrative.reading ? 0 : input.moveX,
+        moveY: story.narrative.reading ? 0 : input.moveY,
         sprint: input.down('ShiftLeft', 'ShiftRight'),
-        interact: input.down('KeyE'),
+        interact: pressed && !storyUsed,
         cameraYaw: input.yaw,
       });
       rig.follow(dt, player, input, avatar.boat);
+      if (player.mode === 'boat' && player.boat.rowing) {
+        const st = player.boat.stroke;
+        if (lastStroke < 0.05 && st >= 0.05) audio.oarDip();
+        if (lastStroke < 0.55 && st >= 0.55) audio.oarDrip();
+        lastStroke = st;
+      }
     }
+    story.update(dt, player, camera, state === 'play');
+    audio.update(story.audioMix(player));
     const promptEl = $('prompt');
-    promptEl.textContent = player.prompt;
-    promptEl.style.opacity = player.prompt && state === 'play' ? '1' : '0';
+    const prompt = story.currentPrompt || player.prompt;
+    promptEl.textContent = prompt;
+    promptEl.style.opacity = prompt && state === 'play' ? '1' : '0';
 
     avatar.update(dt, player);
     sky.shooting.update(dt);
@@ -190,7 +242,8 @@ async function boot() {
     water.update(focus);
     camera.updateMatrixWorld();
     // A hidden or collapsed canvas has zero size; rendering then invalidates every target.
-    if (renderer.domElement.clientWidth > 0 && renderer.domElement.clientHeight > 0) post.pipeline.render();
+    // Skip the resize frame itself: post targets are reallocated and briefly invalid.
+    if (renderer.domElement.clientWidth > 0 && renderer.domElement.clientHeight > 0 && settleFrames < 3) post.pipeline.render();
 
     frames++;
     fpsT += dt;

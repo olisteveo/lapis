@@ -6,7 +6,7 @@
     <title>Lapis</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;1,300&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500&family=Cormorant+Garamond:ital,wght@0,300;0,500;1,300;1,400&display=swap" rel="stylesheet" />
     <style>
       html, body { margin: 0; height: 100%; background: #070c2a; overflow: hidden; }
       canvas { display: block; width: 100vw; height: 100vh; }
@@ -28,6 +28,25 @@
         opacity: 0; transition: opacity 0.6s ease; pointer-events: none;
       }
       #error { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; color: #f3e6da; font-family: sans-serif; padding: 24px; text-align: center; }
+      #fade { position: fixed; inset: 0; background: #02030a; opacity: 0; pointer-events: none; transition: opacity 1s ease; }
+      .line {
+        position: fixed; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none;
+        font-family: 'Cormorant Garamond', serif; color: #f3e6da; opacity: 0; transition-property: opacity; transition-timing-function: ease;
+        max-width: min(80vw, 900px); text-shadow: 0 0 24px rgba(10, 16, 60, 0.9), 0 0 40px rgba(255, 176, 101, 0.18);
+      }
+      .line.memory { top: 38%; font-style: italic; font-weight: 400; font-size: clamp(24px, 3.2vw, 42px); letter-spacing: 0.03em; }
+      .line.whisper { top: 46%; font-style: italic; font-weight: 300; font-size: clamp(18px, 2vw, 26px); letter-spacing: 0.3em; color: #c9cfee; }
+      .line.title { top: 34%; font-weight: 300; font-size: clamp(28px, 4vw, 56px); letter-spacing: 0.55em; }
+      .line.observation { bottom: 14%; font-style: italic; font-weight: 300; font-size: clamp(16px, 1.6vw, 22px); letter-spacing: 0.06em; opacity: 0; }
+      .line.hint { bottom: 14%; font-weight: 300; font-size: clamp(14px, 1.2vw, 17px); letter-spacing: 0.2em; color: rgba(243, 230, 218, 0.7); white-space: pre-wrap; }
+      #note {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -46%) rotate(-2deg); width: min(420px, 80vw); padding: 44px 40px;
+        background: #e9dfcf; color: #23243a; font-family: 'Caveat', cursive; font-size: 40px; line-height: 1.2; text-align: center;
+        box-shadow: 0 30px 80px rgba(0, 0, 10, 0.6); opacity: 0; pointer-events: none; transition: opacity 0.8s ease, transform 0.8s ease;
+        background-image: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.35), transparent 60%), radial-gradient(ellipse at 80% 90%, rgba(120,90,60,0.18), transparent 50%);
+      }
+      #note.open { opacity: 1; transform: translate(-50%, -50%) rotate(-2deg); }
+      #note p { margin: 0; }
       #stats { position: fixed; top: 8px; left: 8px; color: rgba(243,230,218,0.6); font: 11px monospace; pointer-events: none; display: none; }
     </style>
   </head>
@@ -36,6 +55,7 @@
     <div id="hint">click to begin</div>
     <div id="prompt"></div>
     <div id="stats"></div>
+    <div id="fade"></div>
     <div id="error"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
