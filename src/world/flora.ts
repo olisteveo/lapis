@@ -1,10 +1,11 @@
 import * as THREE from 'three/webgpu';
 import {
   abs, attribute, cameraPosition, color, cos, dot, float, hash, mix, normalGeometry, positionLocal, saturate, sin, smoothstep,
-  step, time, uniform, vec2, vec3, vertexColor, length,
+  step, time, uniform, vec2, vec3, vertexColor, length, varying, normalize,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FLORA, PALETTE, QUALITY, SKY, onQualityChange } from '../config';
+import { hatchAt, strokes, tones } from '../render/drawn';
 import { WORLD_HALF } from './heightfield';
 import type { WorkerPool } from './terrain';
 import type { FloraResult } from './terrainWorker';
@@ -230,11 +231,13 @@ export class Flora implements Colliders {
       sin(time.mul(0.93).add(inst.z.mul(0.07)).add(ph).add(1.3)),
     ).mul(swayW).mul(gust).mul(cfg.sway).mul(scl);
 
-    mat.positionNode = vec3(
+    const world = vec3(
       lp.x.mul(c).add(lp.z.mul(s)).add(sway.x),
       lp.y,
       lp.z.mul(c).sub(lp.x.mul(s)).add(sway.y),
     ).mul(keep).add(inst.xyz);
+    mat.positionNode = world;
+    const wp = varying(world);
 
     const ng = normalGeometry;
     const n = vec3(ng.x.mul(c).add(ng.z.mul(s)), ng.y, ng.z.mul(c).sub(ng.x.mul(s)));
@@ -275,6 +278,19 @@ export class Flora implements Colliders {
         const pulse = sin(time.mul(0.8).add(variety.mul(30))).mul(0.25).add(0.75);
         col = col.add(vec3(0.2, 0.6, 0.85).mul(tip).mul(pulse).mul(partName === 'fern' ? 1.1 : 0.35));
       }
+    }
+    // Trunks, bark and mushroom flesh are drawn: flat tones and vertical pen strokes on the
+    // shadow side, anchored in the world so they don't swim. Leaves stay painted.
+    const drawn = partName === 'trunk' || partName.includes('bark') || partName.includes('core') || partName.startsWith('mushroom_') && !partName.includes('glow');
+    if (drawn) {
+      const nl = dot(n, key);
+      const edge = sin(wp.y.mul(0.9).add(variety.mul(9))).mul(0.06);
+      const t = tones(nl, edge, 0.6);
+      const view = normalize(wp.xz.sub(cameraPosition.xz));
+      const u = dot(wp.xz, vec2(view.y.negate(), view.x)).add(sin(wp.y.mul(0.7)).mul(0.04));
+      const dc = length(wp.sub(cameraPosition));
+      const hatch = hatchAt(u, dc, 0.8, 1.0, 0.3).mul(float(1).sub(t.lit1)).mul(strokes(wp, wp.y.mul(2), u.mul(3), false)).mul(smoothstep(140, 50, dc));
+      col = mix(col.mul(t.tone.mul(0.7).add(0.45)), color(0x0b1030), hatch.mul(0.72));
     }
     mat.colorNode = col.mul(fade.mul(0.3).add(0.7));
     return mat;

@@ -1,19 +1,12 @@
 import * as THREE from 'three/webgpu';
 import {
-  attribute, cameraPosition, color, cross, dot, float, fract, fwidth, min, mix, mx_fractal_noise_float, mx_noise_float, normalize,
+  attribute, cameraPosition, color, cross, dot, float, min, mix, mx_fractal_noise_float, mx_noise_float, normalize,
   normalWorld, positionWorld, smoothstep, texture, vec2, vec3, screenUV, max, sin, time,
 } from 'three/tsl';
 import { PALETTE, SKY } from '../config';
+import { hatchAt, penLines, strokes, tones } from '../render/drawn';
 
 type N = any;
-
-/** A pen line of roughly constant on-screen width (in pixels) wherever c crosses a whole number. */
-function penLines(c: N, px: number) {
-  const f = fract(c);
-  const d = min(f, f.oneMinus());
-  const w = fwidth(c).max(1e-5);
-  return smoothstep(w.mul(px), w.mul(px * 0.4), d);
-}
 
 /**
  * Reflection source shared by the water and the wet sand. The water's reflector owns the
@@ -106,9 +99,7 @@ export function createTerrainMaterial(reflection: THREE.TextureNode) {
   const key = normalize(vec3(SKY.keyLight.x, SKY.keyLight.y, SKY.keyLight.z));
   const nl = dot(normalWorld, key);
   const edge = mx_noise_float(vec3(p.x.mul(0.05), p.y.mul(0.05), p.z.mul(0.05))).mul(0.12);
-  const lit1 = smoothstep(0.02, 0.07, nl.add(edge));
-  const lit2 = smoothstep(0.7, 0.75, nl.add(edge));
-  const tone = mix(float(0.34), mix(float(0.68), float(1.0), lit2), lit1);
+  const { tone, lit1, lit2 } = tones(nl, edge);
   const painted: N = mat.colorNode;
   // Hatching follows the contour (across the slope); on flat ground it falls on a diagonal.
   const along = cross(normalWorld, vec3(0, 1, 0));
@@ -119,23 +110,22 @@ export function createTerrainMaterial(reflection: THREE.TextureNode) {
   const dir = normalize(mix(flatDir, contourDir, smoothstep(0.35, 0.6, slope)));
   const across = vec2(dir.y.negate(), dir.x);
   const camD = camDist;
-  // Hatching keeps a constant density on screen, like an illustrator's: spacing doubles with each
-  // doubling of distance, blending between the two nearest octaves; lines are pen-width.
-  const lvl = camD.div(10).max(1).log2();
-  const s0 = lvl.floor().exp2().mul(0.45);
-  const blend = lvl.fract();
-  const hatchAt = (coord: N, spacing: number, px: number) =>
-    mix(penLines(coord.div(s0.mul(spacing)), px), penLines(coord.div(s0.mul(spacing * 2)), px), blend);
   const fade = smoothstep(1400, 600, camD);
   const shadow = float(1).sub(lit1);
   const deep = smoothstep(-0.15, -0.4, nl.add(edge));
   const mid = lit1.mul(float(1).sub(lit2));
   const hand = mx_noise_float(vec3(p.x.mul(0.15), 0, p.z.mul(0.15))).mul(0.35);
-  const hatchMain = hatchAt(dot(p.xz, across).add(hand), 1, 1.1);
-  const hatchCross = hatchAt(dot(p.xz, dir).add(hand), 1, 1.0);
-  const hatchSparse = hatchAt(dot(p.xz, across).add(hand), 2, 0.9);
-  // Mid tones get a light single hatch, shadow the full hatch, deep shadow crossed.
-  const hatch = hatchMain.mul(shadow).add(hatchCross.mul(deep)).add(hatchSparse.mul(mid).mul(0.5)).mul(fade).mul(0.75);
+  const u = dot(p.xz, across).add(hand);
+  const v = dot(p.xz, dir);
+  const hatchMain = hatchAt(u, camD, 1, 1.1);
+  const hatchCross = hatchAt(v.add(hand), camD, 1, 1.0);
+  const hatchSparse = hatchAt(u, camD, 2, 0.9);
+  // Mid tones get a light single hatch, shadow the full hatch, deep shadow crossed, all laid in
+  // broken strokes and patches. Sand stays soft and painted: it only hatches in real shadow.
+  const marks = strokes(p, v, u);
+  const sandSoft = float(1).sub(sandMask.mul(0.8));
+  const hatch = hatchMain.mul(shadow).add(hatchCross.mul(deep)).add(hatchSparse.mul(mid).mul(0.5).mul(sandSoft.mul(sandSoft)))
+    .mul(marks).mul(fade).mul(0.8);
   // Contours every 12 m on rising ground, as on a hand-drawn chart; strata on the cliffs.
   // A hand's wobble, so contours meander instead of following the mesh's straight facets.
   const wob = mx_noise_float(vec3(p.x.mul(0.02), 0, p.z.mul(0.02))).mul(3).add(mx_noise_float(vec3(p.x.mul(0.09), 0, p.z.mul(0.09))).mul(1.4));
