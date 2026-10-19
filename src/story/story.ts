@@ -135,20 +135,27 @@ export class Story {
     };
     puzzles.onSolve = (site) => this.solvePuzzle(site);
     puzzles.onDiscover = (site) => {
-      if (site.kind === 'stones') {
-        if (!this.seen('stonesPuzzleHint'))
-          this.guide("Hmm? Each stone has a picture of the sky. I think each one should show what it's looking at. Stand behind a stone and look up past it!", 'hmm');
-        else this.guide('Listen! More sky stones. What can each of them see?', 'listen');
-      } else if (site.kind === 'bells') {
-        if (site.slot === 0) this.guide('Listen! Bells, under the water. The water remembers things the air forgets... look at their reflections.', 'listen');
-        else this.guide("Hmm? These bells have marks on them. But I don't trust them. What does the water say?", 'hmm');
-      } else if (!this.seen('puzzleHint')) this.guide('Hey! A circle of lanterns. Stand in the middle and listen, then light them in the same order.', 'hey');
-      else this.guide('Listen! More lanterns. I think they want to sing.', 'listen');
+      const lines: Record<string, [string, WispCall]> = {
+        fireflies: ["Hey! Fireflies, and a little jar. It's shut tight... maybe something nice inside would open it? Something that smells sweet.", 'hey'],
+        footprints: ["Hmm? Little footprints in the dew. They only show if you go gently. And... some of them are yours.", 'hmm'],
+        glowcaps: ['Look! The mushrooms are joined by roots. Touch one and its friends change too. Can you light them all at once?', 'look'],
+        mirrors: ['Listen! A beam of light, and mirror caps. The shrine wants the light to visit every one of them first.', 'listen'],
+        stones: ["Hmm? Each stone has a picture of the sky. I think each one should show what it's looking at. Stand behind a stone and look up past it!", 'hmm'],
+        bells: site.slot === 0
+          ? ['Listen! Bells, under the water. The water remembers things the air forgets... look at their reflections.', 'listen']
+          : ["Hmm? These bells have marks on them. But I don't trust them. What does the water say?", 'hmm'],
+      };
+      const [text, call] = lines[site.kind];
+      this.guide(text, call);
     };
     puzzles.onNote = (k) => this.audio.note(k);
-    puzzles.onFail = () => {
+    puzzles.onFail = (site) => {
+      if (site.kind === 'fireflies') {
+        if (!this.seen('fireflyScatter')) this.guide("Oh no, you scared them! Gently... they're shy. Come round behind them.", 'watch');
+        return;
+      }
       this.audio.discord();
-      this.guide("Hmm? That's not how it went. Listen again.", 'hmm');
+      this.guide("Hmm? That's not how it went. Try again.", 'hmm');
     };
     this.night.onCue = (cue) => this.nightCue(cue);
   }
@@ -261,7 +268,14 @@ export class Story {
     const c = CONSTELLATIONS.find((k) => k.region === site.region)!;
     const f = c.fragments.filter((k) => k.source === 'puzzle')[site.slot];
     if (f) this.stars.land(this.stars.indexOf(f.id));
-    const line = { lanterns: 'Oh! The lanterns are singing!', stones: 'Oh! The stones can see the sky!', bells: 'Oh! The water remembered!' }[site.kind];
+    const line = {
+      fireflies: 'Oh! They went in! Look how the jar glows!',
+      footprints: 'Oh! This is where she was going!',
+      glowcaps: 'Oh! All of them at once! The shrine is awake!',
+      mirrors: 'Oh! The light found its way!',
+      stones: 'Oh! The stones can see the sky!',
+      bells: 'Oh! The water remembered!',
+    }[site.kind];
     this.guide(`${line} A star is falling, right there!`, 'oh', 'star');
   }
 

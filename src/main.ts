@@ -118,7 +118,7 @@ async function boot() {
   flora.setClearings([
     ...landmarks.placed.map((p) => ({ x: p.x, z: p.z, r: (CLEAR[p.type] ?? 2) * p.scale })),
     // Wonders stand in open ground so they can be seen from the edge of their clearing.
-    ...puzzleSites.map((p) => ({ x: p.x, z: p.z, r: p.kind === 'stones' ? 22 : p.kind === 'lanterns' && p.slot === 1 ? 16 : 11 })),
+    ...puzzleSites.map((p) => ({ x: p.x, z: p.z, r: { stones: 22, glowcaps: 18, mirrors: 26, fireflies: 34, footprints: 6, bells: 11 }[p.kind] })),
     ...wonders.list.filter((w) => w.id !== 'rocks').map((w) => ({ x: w.x, z: w.z, r: { whale: 26, ring: 30, moontree: 24, bell: 12 }[w.id] ?? 16 })),
   ]);
   scene.add(landmarks.group, wildlife.group, fauna.group, wonders.group, puzzles.group, nightmares.group, stones.mesh, currents.group);
@@ -399,7 +399,7 @@ async function boot() {
     ...wonders.list.map((w) =>
       story.hasSeen(`wonder-${w.id}`) ? { kind: 'wonder' as const, x: w.x, z: w.z, label: w.name } : { kind: 'mystery' as const, x: w.x, z: w.z },
     ),
-    ...puzzleSites.filter((p) => story.hasSeen(p.id)).map((p) => ({ kind: 'lagoon' as const, x: p.x, z: p.z, label: 'lanterns' })),
+    ...puzzleSites.filter((p) => story.hasSeen(p.id)).map((p) => ({ kind: 'lagoon' as const, x: p.x, z: p.z, label: { fireflies: 'the firefly jar', footprints: 'footprints', glowcaps: 'glowcaps', mirrors: 'mirror caps', stones: 'sky stones', bells: 'drowned bells' }[p.kind] })),
   ];
   const openMenu = () => {
     if (menu.open || state !== 'play') return;
@@ -558,7 +558,7 @@ async function boot() {
       landmarks.beacons.forEach((b, i) => landmarks.isLit(i) && lights.push({ x: b.placed.x, z: b.placed.z, r: 55 }));
       for (const p of landmarks.placed)
         if (p.type === 'StoneLantern' || p.type === 'Hut' || p.type === 'Cairn') lights.push({ x: p.x, z: p.z, r: p.type === 'Hut' ? 12 : 8 });
-      for (const p of puzzleSites) if (story.hasSeen(p.id)) lights.push({ x: p.x, z: p.z, r: 16 });
+      for (const p of puzzleSites) if (story.hasSeen(p.id)) lights.push({ x: p.reward?.x ?? p.x, z: p.reward?.z ?? p.z, r: 16 });
       // The paper lantern: a small circle of light that goes where you go.
       if (story.hasKeepsake('lantern')) lights.push({ x: player.x, z: player.z, r: 6 });
       player.canGlide = story.hasKeepsake('wings');

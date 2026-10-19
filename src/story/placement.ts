@@ -191,7 +191,7 @@ export function layoutRegionStars(hf: Heightfield, wonders: Wonder[], puzzles: P
       }
       if (f.source === 'puzzle') {
         const p = regionPuzzles[puzzleSlot++];
-        if (p) out[f.id] = { x: p.x, z: p.z };
+        if (p) out[f.id] = p.reward ?? { x: p.x, z: p.z };
         continue;
       }
       let best: P | null = null;

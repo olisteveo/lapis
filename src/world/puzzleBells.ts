@@ -101,7 +101,7 @@ export class BellPool implements PuzzleImpl {
     this.hooks.note(i);
     if (this.site.order![this.step] !== i) {
       this.step = 0;
-      setTimeout(() => this.hooks.fail(), 400);
+      setTimeout(() => this.hooks.fail(this.site), 400);
       return;
     }
     this.step++;

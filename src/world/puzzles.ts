@@ -1,15 +1,17 @@
 import * as THREE from 'three/webgpu';
-import { color, dot, exp, length, mix, normalWorld, saturate, sin, time, uniform, uv, vec3, vec4 } from 'three/tsl';
-import { PALETTE, SKY } from '../config';
+import { color, dot, mix, normalWorld, saturate, vec3 } from 'three/tsl';
+import { SKY } from '../config';
 import { BIOMES, mulberry32, type Heightfield } from './heightfield';
 import type { Wonder } from './wonders';
 import type { Colliders } from '../game/player';
 import { CONSTELLATIONS } from '../story/content';
 import { StoneRing } from './puzzleStones';
 import { BellPool } from './puzzleBells';
+import { DewTrail, Fireflies } from './puzzleMeadow';
+import { Glowcaps, MirrorCaps } from './puzzleWood';
 
 export type Region = 'meadow' | 'lantern' | 'dunes' | 'drowned';
-export type PuzzleKind = 'lanterns' | 'stones' | 'bells';
+export type PuzzleKind = 'fireflies' | 'footprints' | 'glowcaps' | 'mirrors' | 'stones' | 'bells';
 export type Spot = { x: number; y: number; z: number };
 
 export interface PuzzleSite {
@@ -21,9 +23,22 @@ export interface PuzzleSite {
   x: number;
   y: number;
   z: number;
-  /** Lantern circles: the lanterns and the tune (lantern indices). */
-  lanterns?: Spot[];
-  tune?: number[];
+  /** Where its star falls, if not in the middle (the end of a trail). */
+  reward?: { x: number; z: number };
+  /** Fireflies: the jar to herd them into, the moonflower that opens it, boulders in the way. */
+  jar?: Spot;
+  flower?: Spot;
+  rocks?: (Spot & { r: number })[];
+  /** Dew footprints: her trail (with gaps), and your prints beside it that fork off to dead ends. */
+  trail?: (Spot & { yaw: number })[];
+  decoyTrail?: (Spot & { yaw: number })[];
+  /** Glowcaps: the mushrooms, the roots between them, and which start lit. */
+  caps?: Spot[];
+  links?: number[][];
+  start?: boolean[];
+  /** Mirror caps: source stone, caps, shrine (as node indices), and which nodes each cap can aim at. */
+  nodes?: Spot[];
+  aims?: number[][];
   /** Constellation stones: each stone's spot, the azimuth it looks toward, and the sky feature it must show. */
   stones?: (Spot & { az: number; answer: number })[];
   /** Reflection bells: the bells, the true order (shown only in the water), and false marks on the real bells. */
@@ -50,16 +65,10 @@ export function skyFeatures(boatAzimuth: number): SkyFeature[] {
 }
 
 const KIND: Record<Region, [PuzzleKind, PuzzleKind]> = {
-  meadow: ['lanterns', 'lanterns'],
-  lantern: ['lanterns', 'lanterns'],
+  meadow: ['fireflies', 'footprints'],
+  lantern: ['glowcaps', 'mirrors'],
   dunes: ['stones', 'stones'],
   drowned: ['bells', 'bells'],
-};
-const LANTERN_SIZE: Record<Region, [number, number][]> = {
-  meadow: [[4, 4], [5, 5]],
-  lantern: [[5, 5], [5, 6]],
-  dunes: [[5, 6], [6, 7]],
-  drowned: [[6, 7], [6, 8]],
 };
 
 /** Two puzzles per region, on open ground away from the wonder; the drowned town's stand in the shallows. */
@@ -73,7 +82,7 @@ export function layoutPuzzles(hf: Heightfield, wonders: Wonder[], boatAzimuth: n
     const B = BIOMES[region];
     for (let slot = 0; slot < 2; slot++) {
       const kind = KIND[region][slot];
-      const radius = kind === 'lanterns' ? (slot === 0 ? 7 : 12) : kind === 'stones' ? 7 : slot === 0 ? 7 : 9;
+      const radius = kind === 'stones' ? 7 : slot === 0 ? 7 : 9;
       for (let tries = 0; tries < 900; tries++) {
         const a = rnd() * Math.PI * 2;
         const d = Math.sqrt(rnd()) * B.r * (region === 'drowned' ? 1.1 : 0.8);
@@ -102,16 +111,123 @@ export function layoutPuzzles(hf: Heightfield, wonders: Wonder[], boatAzimuth: n
           if (slot === 1) site.decoy = decoy;
         } else {
           if (h < 0.8 || slope(x, z) > (region === 'dunes' ? 3.5 : 2)) continue;
-          if (kind === 'lanterns') {
-            const [count, tuneLength] = LANTERN_SIZE[region][slot];
-            site.lanterns = ring(count, radius, a);
-            const tune: number[] = [];
-            for (let k = 0; k < tuneLength; k++) {
-              let n = Math.floor(rnd() * count);
-              if (n === tune[k - 1]) n = (n + 1) % count;
-              tune.push(n);
+          const dry = (px: number, pz: number) => hf.height(px, pz) > 0.6 && slope(px, pz) < 2.5;
+          const at = (px: number, pz: number) => ({ x: px, y: hf.height(px, pz), z: pz });
+          if (kind === 'fireflies') {
+            // The jar stands a good walk from where the swarm gathers; boulders sit between them, and
+            // the moonflower that opens the jar grows further off again.
+            const ja = a + 1.3;
+            const jx = x + Math.sin(ja) * 28;
+            const jz = z + Math.cos(ja) * 28;
+            const fa = a - 1.9;
+            const fx = x + Math.sin(fa) * 38;
+            const fz = z + Math.cos(fa) * 38;
+            if (!dry(jx, jz) || !dry(fx, fz)) continue;
+            site.jar = at(jx, jz);
+            site.flower = at(fx, fz);
+            site.rocks = [0.35, 0.55, 0.72].map((t, k) => {
+              const off = (k % 2 ? 1 : -1) * (2 + k);
+              const rx = x + (jx - x) * t + Math.cos(ja) * off;
+              const rz = z + (jz - z) * t - Math.sin(ja) * off;
+              return { ...at(rx, rz), r: 1.6 + k * 0.4 };
+            });
+            site.reward = { x: jx, z: jz };
+          } else if (kind === 'footprints') {
+            // Her small prints wander about 140 m. Yours walk beside hers, but twice they split off to
+            // dead ends; twice hers cross wet ground where no prints show at all.
+            const walk = (x0: number, z0: number, h0: number, n: number, wobble: number) => {
+              const out: (Spot & { yaw: number })[] = [];
+              let px = x0;
+              let pz = z0;
+              let heading = h0;
+              for (let k = 0; k < n; k++) {
+                heading += (rnd() - 0.5) * wobble + Math.sin(k / 9) * 0.1;
+                px += Math.sin(heading) * 1.1;
+                pz += Math.cos(heading) * 1.1;
+                if (!dry(px, pz)) return null;
+                out.push({ ...at(px, pz), yaw: heading });
+              }
+              return out;
+            };
+            const path = walk(x, z, a, 125, 0.45);
+            if (!path) continue;
+            const side = (p: Spot & { yaw: number }, d: number) => at(p.x + Math.cos(p.yaw) * d, p.z - Math.sin(p.yaw) * d);
+            const child: (Spot & { yaw: number })[] = [];
+            const adult: (Spot & { yaw: number })[] = [];
+            const gaps = [[48, 57], [96, 104]];
+            const forks = [30, 74];
+            let bad = false;
+            path.forEach((p, k) => {
+              const foot = k % 2 ? 0.12 : -0.12;
+              if (!gaps.some(([g0, g1]) => k >= g0 && k <= g1)) child.push({ ...side(p, foot), yaw: p.yaw });
+              // Your prints keep pace beside hers, except after each fork, where they wander off.
+              const forked = forks.some((f) => k >= f && k < f + 30);
+              if (!forked && k % 2 === 0) adult.push({ ...side(p, 0.75), yaw: p.yaw });
+            });
+            for (const f of forks) {
+              const turn = (rnd() > 0.5 ? 1 : -1) * (0.7 + rnd() * 0.4);
+              const branch = walk(path[f].x, path[f].z, path[f].yaw + turn, 26, 0.35);
+              if (!branch) {
+                bad = true;
+                break;
+              }
+              branch.forEach((p, k) => k % 2 === 0 && adult.push({ ...side(p, 0.2), yaw: p.yaw }));
             }
-            site.tune = tune;
+            if (bad) continue;
+            site.trail = child;
+            site.decoyTrail = adult;
+            site.reward = { x: path[path.length - 1].x, z: path[path.length - 1].z };
+          } else if (kind === 'glowcaps') {
+            // Six mushrooms joined by roots. Touching one flips it and every mushroom its roots reach.
+            const caps: Spot[] = [];
+            for (let k = 0; k < 6; k++) {
+              const ca = a + (k / 6) * Math.PI * 2 + (rnd() - 0.5) * 0.4;
+              const cr = 8 + rnd() * 5;
+              caps.push(at(x + Math.sin(ca) * cr, z + Math.cos(ca) * cr));
+            }
+            if (caps.some((c) => !dry(c.x, c.z))) continue;
+            const links: number[][] = caps.map(() => []);
+            const join = (i: number, j: number) => {
+              if (!links[i].includes(j)) links[i].push(j);
+              if (!links[j].includes(i)) links[j].push(i);
+            };
+            for (let k = 0; k < 6; k++) join(k, (k + 1) % 6);
+            join(0, 3);
+            join(1, 4);
+            // Scramble from all-lit with presses the player has to undo: always solvable.
+            const lit = caps.map(() => true);
+            const presses = new Set<number>();
+            while (presses.size < 3) presses.add(Math.floor(rnd() * 6));
+            for (const k of presses) for (const j of [k, ...links[k]]) lit[j] = !lit[j];
+            if (lit.every(Boolean)) continue;
+            site.caps = caps;
+            site.links = links;
+            site.start = lit;
+          } else if (kind === 'mirrors') {
+            // Source, five caps, shrine. The caps lie along a hidden route (each within reach of the
+            // next), then the beam must visit every cap before the shrine will wake.
+            const reach = 14;
+            const nodes: Spot[] = [at(x, z)];
+            let px = x;
+            let pz = z;
+            let heading = a;
+            for (let k = 0; k < 5; k++) {
+              heading += (rnd() > 0.5 ? 1 : -1) * (1.2 + rnd() * 0.9);
+              const d = 8 + rnd() * 4;
+              px += Math.sin(heading) * d;
+              pz += Math.cos(heading) * d;
+              nodes.push(at(px, pz));
+            }
+            heading += (rnd() - 0.5) * 1.4;
+            nodes.push(at(px + Math.sin(heading) * 10, pz + Math.cos(heading) * 10));
+            if (nodes.some((n) => !dry(n.x, n.z))) continue;
+            if (nodes.some((n, i) => nodes.some((m, j) => j > i && Math.hypot(n.x - m.x, n.z - m.z) < 4))) continue;
+            const last = nodes.length - 1;
+            site.aims = nodes.map((n, i) =>
+              i === 0 ? [1] : i === last ? [] : nodes.map((_, j) => j).filter((j) => j !== i && j !== 0 && Math.hypot(nodes[j].x - n.x, nodes[j].z - n.z) <= reach),
+            );
+            site.nodes = nodes;
+            site.reward = { x: nodes[last].x, z: nodes[last].z };
           } else {
             // Each stone stands on the ring at the bearing of the sky feature it must show.
             const pick = slot === 0 ? pickSeparated(features, 4) : features.map((_, i) => i);
@@ -152,10 +268,17 @@ function pickSeparated(features: SkyFeature[], n: number) {
   return chosen;
 }
 
+export interface PlayerState {
+  x: number;
+  y: number;
+  z: number;
+  speed: number;
+}
+
 /** What every puzzle reports back to the manager. */
 export interface PuzzleHooks {
   note(k: number): void;
-  fail(): void;
+  fail(site: PuzzleSite): void;
   solve(site: PuzzleSite): void;
 }
 
@@ -165,7 +288,7 @@ export interface PuzzleImpl {
   readonly solved: boolean;
   readonly group: THREE.Object3D;
   interaction(x: number, z: number): { prompt: string; act: () => void } | null;
-  update(dt: number): void;
+  update(dt: number, player: PlayerState): void;
   near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void): void;
   setMirror?(mirror: boolean): void;
 }
@@ -179,126 +302,13 @@ export function stoneMaterial() {
   return m;
 }
 
-/** Lantern circles: stand on the dais to hear the tune, then light the lanterns in its order. */
-class LanternCircle implements PuzzleImpl {
-  readonly group = new THREE.Group();
-  private flames: { value: number }[] = [];
-  private state: 'idle' | 'showing' | 'input' | 'solved';
-  private step = 0;
-  private t = 0;
-
-  constructor(readonly site: PuzzleSite, solved: boolean, private hooks: PuzzleHooks) {
-    this.state = solved ? 'solved' : 'idle';
-    const stone = stoneMaterial();
-    const post = new THREE.CylinderGeometry(0.22, 0.32, 1.5, 7).translate(0, 0.75, 0);
-    // The cap floats clear of the bowl so the flame between them is always visible.
-    const cap = new THREE.ConeGeometry(0.42, 0.45, 7).translate(0, 2.55, 0);
-    const bowl = new THREE.CylinderGeometry(0.34, 0.26, 0.18, 7).translate(0, 1.58, 0);
-    const daisMat = new THREE.MeshBasicNodeMaterial();
-    const lambert = saturate(dot(normalWorld, KEY).mul(0.55).add(0.45));
-    // A star carved into the dais, glowing faintly so it reads as somewhere to stand.
-    const carve = exp(length(uv().sub(0.5).mul(2)).mul(-3)).mul(0.25);
-    daisMat.colorNode = mix(color(0x2a3158), color(0x5b6797), lambert).add(color(PALETTE.starGold).mul(carve));
-    const d = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.6, 0.5, 18).translate(0, -0.05, 0), daisMat);
-    d.position.set(site.x, site.y, site.z);
-    this.group.add(d);
-    site.lanterns!.forEach((l, k) => {
-      for (const g of [post, bowl, cap]) {
-        const m = new THREE.Mesh(g, stone);
-        m.position.set(l.x, l.y - 0.1, l.z);
-        this.group.add(m);
-      }
-      const flame = uniform(solved ? 1 : 0);
-      this.flames.push(flame);
-      const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-      const r = length(uv().sub(0.5)).mul(2);
-      const flicker = sin(time.mul(11).add(k * 3)).mul(0.08).add(sin(time.mul(23).add(k)).mul(0.05)).add(0.9);
-      // Unlit: a cold ember so the circle is legible. Lit: warm gold.
-      const tint = mix(color(0x5a6ab0).mul(0.35), color(PALETTE.starGold).mul(2.4), flame);
-      mat.colorNode = vec4(tint.mul(exp(r.mul(-4.5)).add(exp(r.mul(-14)).mul(1.5))).mul(flicker), 1);
-      const s = new THREE.Sprite(mat);
-      s.position.set(l.x, l.y + 1.95, l.z);
-      s.scale.setScalar(1.1);
-      this.group.add(s);
-    });
-  }
-
-  get solved() {
-    return this.state === 'solved';
-  }
-
-  near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void) {
-    for (const l of this.site.lanterns!) if (Math.abs(l.x - x) < reach + 1 && Math.abs(l.z - z) < reach + 1) visit(l.x, l.z, 0.35);
-  }
-
-  private reset() {
-    this.step = 0;
-    this.flames.forEach((f) => (f.value = 0));
-  }
-
-  interaction(x: number, z: number) {
-    const s = this.site;
-    if (this.solved) return null;
-    if (Math.hypot(s.x - x, s.z - z) < 2.6 && this.state !== 'showing')
-      return {
-        prompt: 'E   listen to the lanterns',
-        act: () => {
-          this.reset();
-          this.state = 'showing';
-          this.t = -0.6;
-        },
-      };
-    if (this.state !== 'input') return null;
-    const k = s.lanterns!.findIndex((l) => Math.hypot(l.x - x, l.z - z) < 2.3);
-    return k >= 0 ? { prompt: 'E   light the lantern', act: () => this.press(k) } : null;
-  }
-
-  private press(k: number) {
-    this.hooks.note(k);
-    this.flames[k].value = 1;
-    if (k !== this.site.tune![this.step]) {
-      setTimeout(() => {
-        this.reset();
-        this.hooks.fail();
-      }, 450);
-      return;
-    }
-    this.step++;
-    if (this.step >= this.site.tune!.length) {
-      this.state = 'solved';
-      this.flames.forEach((f) => (f.value = 1));
-      this.hooks.solve(this.site);
-    }
-  }
-
-  update(dt: number) {
-    if (this.state !== 'showing') return;
-    // The demonstration: each lantern of the tune flares in turn with its note.
-    const tune = this.site.tune!;
-    const prev = Math.floor(this.t / 0.9);
-    this.t += dt;
-    const now = Math.floor(this.t / 0.9);
-    if (this.t >= 0 && now !== prev && now < tune.length) {
-      this.flames.forEach((f) => (f.value = 0));
-      this.flames[tune[now]].value = 1;
-      this.hooks.note(tune[now]);
-    }
-    if (this.t >= 0 && this.t % 0.9 > 0.6) this.flames.forEach((f) => (f.value = 0));
-    if (this.t > tune.length * 0.9 + 0.3) {
-      this.flames.forEach((f) => (f.value = 0));
-      this.state = 'input';
-      this.step = 0;
-    }
-  }
-}
-
 /** All the island's puzzles: lantern circles, constellation stones and reflection bells. */
 export class Puzzles implements Colliders {
   readonly group = new THREE.Group();
   private impls: PuzzleImpl[];
   private discovered = new Set<string>();
   onNote: ((k: number) => void) | null = null;
-  onFail: (() => void) | null = null;
+  onFail: ((site: PuzzleSite) => void) | null = null;
   onSolve: ((site: PuzzleSite) => void) | null = null;
   /** First time someone comes near an unsolved puzzle. */
   onDiscover: ((site: PuzzleSite) => void) | null = null;
@@ -307,12 +317,26 @@ export class Puzzles implements Colliders {
     this.group.name = 'puzzles';
     const hooks: PuzzleHooks = {
       note: (k) => this.onNote?.(k),
-      fail: () => this.onFail?.(),
+      fail: (s) => this.onFail?.(s),
       solve: (s) => this.onSolve?.(s),
     };
-    this.impls = sites.map((s) =>
-      s.kind === 'stones' ? new StoneRing(s, solved(s.id), hooks, features) : s.kind === 'bells' ? new BellPool(s, solved(s.id), hooks) : new LanternCircle(s, solved(s.id), hooks),
-    );
+    this.impls = sites.map((s) => {
+      const done = solved(s.id);
+      switch (s.kind) {
+        case 'stones':
+          return new StoneRing(s, done, hooks, features);
+        case 'bells':
+          return new BellPool(s, done, hooks);
+        case 'fireflies':
+          return new Fireflies(s, done, hooks);
+        case 'footprints':
+          return new DewTrail(s, done, hooks);
+        case 'glowcaps':
+          return new Glowcaps(s, done, hooks);
+        default:
+          return new MirrorCaps(s, done, hooks);
+      }
+    });
     for (const p of this.impls) this.group.add(p.group);
   }
 
@@ -334,13 +358,13 @@ export class Puzzles implements Colliders {
     for (const p of this.impls) p.setMirror?.(mirror);
   }
 
-  update(dt: number, player: { x: number; z: number }) {
+  update(dt: number, player: PlayerState) {
     for (const p of this.impls) {
       if (!this.discovered.has(p.site.id) && Math.hypot(p.site.x - player.x, p.site.z - player.z) < 22) {
         this.discovered.add(p.site.id);
         if (!p.solved) this.onDiscover?.(p.site);
       }
-      p.update(dt);
+      p.update(dt, player);
     }
   }
 }
