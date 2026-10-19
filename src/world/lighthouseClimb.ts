@@ -64,9 +64,10 @@ export class LighthouseClimb implements Platforms {
         if (L.r <= innerR(top) + 0.05) out.push(top);
       }
     }
-    const open = L.phi >= TOP.open.from || L.phi <= TOP.open.to;
-    if (!open && L.r >= NEWEL && L.r <= TOP.outer) out.push(TOP.z);
-    if (L.r >= GALLERY.inner && L.r <= GALLERY.outer) out.push(GALLERY.z);
+    // One floor at the top from the newel out to the gallery's edge, so the doorway through the
+    // wall has a sill to walk on; the wall itself is enforced by blocked(), not by missing floor.
+    const open = (L.phi >= TOP.open.from || L.phi <= TOP.open.to) && L.r <= TOP.outer;
+    if (!open && L.r >= NEWEL && L.r <= GALLERY.outer) out.push(TOP.z);
     if (L.r < wallIn) out.push(FLOOR);
     else if (L.r <= 5.6) out.push(L.r <= 4.9 ? 0.2 : 0.06);
     return out;

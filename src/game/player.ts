@@ -188,7 +188,8 @@ export class PlayerController {
     const mx = Math.sin(this.heading) * step;
     const mz = Math.cos(this.heading) * step;
     const canMoveTo = (x: number, z: number, len2: number) => {
-      if (this.platforms?.blocked?.(x, z, this.y)) return false;
+      // Never trap anyone: if you are already somewhere counted as blocked, any move is allowed.
+      if (this.platforms?.blocked?.(x, z, this.y) && !this.platforms.blocked(this.x, this.z, this.y)) return false;
       const g = this.ground(x, z);
       if (this.airborne) return g <= this.y + 0.15; // only a wall stops you mid-air
       if (g < WADE_DEPTH) return false; // deep water: jump it or stay out
