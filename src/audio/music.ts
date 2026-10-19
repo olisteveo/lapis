@@ -58,9 +58,19 @@ export class MusicDirector {
     if (!ctx || !out) return null;
     if (!this.duck) {
       this.duck = ctx.createGain();
-      this.duck.connect(out);
+      this.dreadGain = ctx.createGain();
+      this.duck.connect(this.dreadGain).connect(out);
     }
     return this.duck;
+  }
+
+  private dreadGain: GainNode | null = null;
+
+  /** 0..1: the score sinks away while nightmares are close. */
+  setDread(d: number) {
+    const ctx = this.ctx();
+    if (!ctx || !this.dreadGain) return;
+    this.dreadGain.gain.setTargetAtTime(1 - d * 0.85, ctx.currentTime, d > 0.05 ? 0.6 : 2);
   }
 
   private async start(area: MusicArea, fadeIn: number) {

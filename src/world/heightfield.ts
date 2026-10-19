@@ -313,7 +313,8 @@ export function createHeightfield(seed = 1337): Heightfield {
       const duneH = m * 18 + crest * crest * 9 * inland + 1.2;
       h = lerp(h, duneH, R.dunes);
     } else {
-      h = Math.max(-70, m * 110 - 1.5);
+      // Continuous with the land at m = 0: a step here traced the coast as hard straight edges.
+      h = Math.max(-70, m * 110 - 1.5 * smoothstep(0, -0.03, m));
     }
 
     // Lake basin: blend down to a sandy shelf so the shore forms naturally.
@@ -349,6 +350,9 @@ export function createHeightfield(seed = 1337): Heightfield {
 
     // The drowned town: a broad shallow shelf you can wade across among the ruins.
     if (R.drowned > 0) h = lerp(h, -1.15 + fbm(nDetail, x / 30, z / 30, 2) * 0.35, R.drowned);
+
+    // Sandbars and runnels so the waterline wanders instead of following one smooth contour.
+    if (Math.abs(h) < 4) h += (fbm(nDetail, x / 24, z / 24, 3) * 0.45 + fbm(nDetail, x / 7, z / 7, 2) * 0.12) * smoothstep(4, 0.5, Math.abs(h));
 
     // Beaches: compress the band just above sea level into wide, gently sloping sand.
     if (h > 0 && h < 5) h = h * 0.32;

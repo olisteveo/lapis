@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  attribute, color, float, mix, mx_fractal_noise_float, mx_noise_float, normalWorld, positionWorld, smoothstep,
+  attribute, cameraPosition, color, float, mix, mx_fractal_noise_float, mx_noise_float, normalWorld, positionWorld, smoothstep,
   texture, vec2, vec3, screenUV, max, sin, time,
 } from 'three/tsl';
 import { PALETTE } from '../config';
@@ -69,7 +69,9 @@ export function createTerrainMaterial(reflection: THREE.TextureNode) {
   base = mix(base, paving, biome.w.mul(0.85));
 
   // Mirror-wet band at the waterline reuses the water's reflection target (refs 2 and 3).
-  const wetMask = smoothstep(0.75, 0.05, h.add(fine.mul(0.08))).mul(sandMask);
+  // The wet band fades with distance: coarse far terrain would show it as flat mirrored triangles.
+  const camDist = cameraPosition.sub(positionWorld).length();
+  const wetMask = smoothstep(0.75, 0.05, h.add(fine.mul(0.25))).mul(sandMask).mul(smoothstep(320, 90, camDist));
   const ripple = vec2(fine.mul(0.004), mx_noise_float(vec2(p.x.mul(0.3), p.z.mul(0.3))).mul(0.004));
   const mirrored = reflection.sample(screenUV.flipX().add(ripple)).rgb;
   const wetColor = mix(color(PALETTE.wetSand), mirrored.mul(1.1), 0.9);

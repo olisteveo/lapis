@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import {
   cameraPosition, color, dot, float, fract, floor, hash, instancedBufferAttribute, length, mix, mod, normalize, pow, reflect,
-  saturate, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4, mx_noise_float,
+  saturate, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4, mx_noise_float, viewportDepthTexture, perspectiveDepthToViewZ,
+  cameraNear, cameraFar, positionView,
 } from 'three/tsl';
 import { PALETTE, QUALITY, SKY, onQualityChange } from '../config';
 import { mulberry32 } from './heightfield';
@@ -45,12 +46,16 @@ function layer(count: number, span: number, seed: number, sizeScale: number, nea
   const v = normalize(cameraPosition.sub(pos));
   const glint = pow(saturate(dot(reflect(v.negate(), facet), normalize(guide))), 9);
   // A second, sparser population twinkles anywhere so open water never goes dead.
-  const ambient = pow(hash(tick.add(s.z.mul(3001))), 14).mul(0.7);
+  const ambient = pow(hash(tick.add(s.z.mul(3001))), 40).mul(0.5);
   const envelope = sin(phase.mul(Math.PI));
   const d = length(xz.sub(cam));
   const edgeFade = smoothstep(half, half.mul(0.75), d);
   // Keep glints off the camera: up close a single sprite would fill the view with rays.
   const nearFade = smoothstep(float(near), float(near * 3), d);
+  // Glints over shallows or sand get clipped by the ground into hard white triangles; fade them
+  // wherever the scene behind is less than a few metres beyond the sprite.
+  const sceneZ = perspectiveDepthToViewZ(viewportDepthTexture(), cameraNear, cameraFar);
+  const clearance = smoothstep(1.5, 8.0, positionView.z.sub(sceneZ));
   const bright = glint.mul(1.6).add(ambient).mul(envelope).mul(edgeFade).mul(nearFade).mul(intensity);
 
   const size = float(0.4).add(d.mul(0.0045)).mul(bright.min(1.6).mul(0.8).add(0.25)).mul(sizeScale);
@@ -58,7 +63,7 @@ function layer(count: number, span: number, seed: number, sizeScale: number, nea
   const shape = starShape(uv(), bright.mul(0.5).add(0.45).min(1), float(0));
   const warm = smoothstep(0.55, 0.85, s.w);
   const tint = mix(color(PALETTE.starWhite), color(PALETTE.starGold), warm);
-  mat.colorNode = vec4(tint.mul(shape).mul(bright).mul(1.8), 1);
+  mat.colorNode = vec4(tint.mul(shape).mul(bright).mul(clearance).mul(1.8), 1);
 
   const sprite = new THREE.Sprite(mat);
   sprite.count = count;

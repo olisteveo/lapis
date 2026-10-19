@@ -231,6 +231,17 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const frostEdge = smoothstep(float(0.98).sub(frost.mul(0.5)), float(1.18).sub(frost.mul(0.35)), ev.add(crystals.mul(0.12))).mul(smoothstep(0.45, 0.75, frost));
   c = mix(c, vec3(0.86, 0.91, 1.0), frostEdge.mul(0.8));
 
+  // ---- 10b. Nightmare: the dream curdles. Colour drains toward bruised crimson, the darks
+  // go to ink, and black veins creep in from the edges, crawling as the paint boils.
+  const nightmare = uniform(0);
+  const nl = luminance(c);
+  const curdled = mix(vec3(0.02, 0.0, 0.03), vec3(0.62, 0.12, 0.16), smoothstep(0.05, 0.75, nl)).mul(smoothstep(0.0, 0.9, nl).mul(0.8).add(0.35));
+  c = mix(c, curdled, nightmare.mul(0.7));
+  const veinN = mx_noise_float(px.mul(0.012).add(vec2(boil.mul(0.07), 0))).add(mx_noise_float(px.mul(0.05)).mul(0.35));
+  const veins = smoothstep(0.06, 0.0, veinN.abs()).mul(smoothstep(float(1.05).sub(nightmare.mul(0.65)), float(1.2).sub(nightmare.mul(0.4)), ev.add(veinN.mul(0.1))));
+  const inkEdge = smoothstep(float(1.1).sub(nightmare.mul(0.45)), float(1.25).sub(nightmare.mul(0.3)), ev.add(crystals.mul(0.15)));
+  c = mix(c, vec3(0.01, 0.0, 0.02), max(veins, inkEdge).mul(smoothstep(0.1, 0.5, nightmare)));
+
   // ---- 11. Vignette and grain.
   const v = length(screenUV.sub(0.5).mul(vec2(1.1, 1)));
   c = mix(pow(color(PALETTE.zenith), vec3(1 / 2.2)).mul(0.7), c, smoothstep(0.9, 0.3, v).mul(0.3).add(0.7));
@@ -238,5 +249,5 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
 
   pipeline.outputNode = vec4(min(c, vec3(1)), 1);
   pipeline.outputColorTransform = false;
-  return { pipeline, paint, boilRate, memoryMix, frost };
+  return { pipeline, paint, boilRate, memoryMix, frost, nightmare };
 }

@@ -16,6 +16,10 @@ import { Landmarks, layoutLandmarks, CompositeColliders } from './world/landmark
 import { Wildlife } from './world/wildlife';
 import { Fauna } from './world/fauna';
 import { Wonders, layoutWonders } from './world/wonders';
+import { Puzzles, layoutPuzzles } from './world/puzzles';
+import { LighthouseClimb } from './world/lighthouseClimb';
+import { Nightmares, type LightSource } from './world/nightmares';
+import { layoutRegionStars } from './story/placement';
 import { Stones, layoutStones } from './world/stones';
 import { Currents } from './world/currents';
 import { Flora } from './world/flora';
@@ -76,24 +80,41 @@ async function boot() {
   const layout = layoutPrologue(hf, spawn);
   const player = new PlayerController(world);
   const stones = new Stones(layoutStones(hf));
-  player.platforms = stones;
   const landmarks = new Landmarks(layoutLandmarks(hf, spawn));
+  const climb = new LighthouseClimb(
+    landmarks.placed.filter((p) => p.type === 'Beacon' || p.type === 'Lighthouse').map((p) => ({ x: p.x, y: p.y, z: p.z, yaw: p.yaw, scale: p.scale })),
+  );
+  player.platforms = {
+    top: (x, z, y) => Math.max(stones.top(x, z), climb.top(x, z, y)),
+    blocksBoat: (x, z, r) => stones.blocksBoat(x, z, r),
+    confine: (x, z, y, b) => climb.confine(x, z, y, b),
+  };
   const wildlife = new Wildlife(hf);
   const fauna = new Fauna(hf);
   const wonders = new Wonders(layoutWonders(hf));
-  player.colliders = new CompositeColliders([flora, landmarks, fauna, wonders]);
+  const puzzleSites = layoutPuzzles(hf, wonders.list);
+  const puzzles = new Puzzles(puzzleSites, (id) => {
+    try {
+      return (JSON.parse(localStorage.getItem('lapis.save.v1') ?? '{}').seen ?? []).includes(id);
+    } catch {
+      return false;
+    }
+  });
+  player.colliders = new CompositeColliders([flora, landmarks, fauna, wonders, puzzles]);
+  const nightmares = new Nightmares(hf);
   const CLEAR: Record<string, number> = { RuinArch: 4, RuinWall: 4, RuinSteps: 3, Beacon: 14, Lighthouse: 14, Hut: 6, Wreck: 7, Jetty: 4, Swing: 2.5, Cairn: 2, StoneLantern: 1.5 };
   flora.setClearings([
     ...landmarks.placed.map((p) => ({ x: p.x, z: p.z, r: (CLEAR[p.type] ?? 2) * p.scale })),
     // Wonders stand in open ground so they can be seen from the edge of their clearing.
+    ...puzzleSites.map((p) => ({ x: p.x, z: p.z, r: p.slot === 0 ? 11 : 16 })),
     ...wonders.list.filter((w) => w.id !== 'rocks').map((w) => ({ x: w.x, z: w.z, r: { whale: 26, ring: 30, moontree: 24, bell: 12 }[w.id] ?? 16 })),
   ]);
-  scene.add(landmarks.group, wildlife.group, fauna.group, wonders.group, stones.mesh, currents.group);
+  scene.add(landmarks.group, wildlife.group, fauna.group, wonders.group, puzzles.group, nightmares.group, stones.mesh, currents.group);
   player.place(spawn.x, spawn.z, Math.PI);
   player.placeBoat(layout.boat.x, layout.boat.z, layout.boat.heading);
 
   const audio = new Audio();
-  const story = new Story(layout, hf, flora, sky.shooting, audio);
+  const story = new Story(layout, hf, flora, sky.shooting, audio, layoutRegionStars(hf, wonders.list, puzzleSites), puzzles);
   story.attachWonders(wonders);
   const wisp = new Wisp();
   story.wisp = wisp;
@@ -156,14 +177,15 @@ async function boot() {
   const optional = (p: Promise<unknown>, what: string) => p.catch((e) => console.warn(`${what} not loaded yet`, e?.message ?? e));
   await Promise.all([
     optional(
-      landmarks.load('/models/props.glb', '/models/biomes.glb').then((t) => {
-        story.attachBeacons(landmarks);
+      landmarks.load('/models/props.glb', '/models/biomes.glb', '/models/lighthouse.glb').then((t) => {
+        story.attachBeacons(landmarks, climb);
         if (debug) console.log('landmarks', t);
       }),
       'props',
     ),
     optional(wildlife.load('/models/creatures.glb').then((t) => debug && console.log('wildlife', t)), 'creatures'),
     optional(fauna.load('/models/fauna.glb').then((t) => debug && console.log('fauna', t)), 'fauna'),
+    optional(nightmares.load('/models/nightmares.glb').then((t) => debug && console.log('nightmares', t)), 'nightmares'),
     optional(wonders.load('/models/wonders.glb').then((t) => debug && console.log('wonders', t)), 'wonders'),
     avatar.load('/models/keeper.glb', '/models/boat.glb').then(() => {
       if (!avatar.keeperGltf) return;
@@ -243,6 +265,13 @@ async function boot() {
     }
     if (e.code === 'KeyE' && !e.repeat) ePressed = true;
     if (e.code === 'KeyF' && !e.repeat && state === 'play' && !menu.open && !chart.open) story.askGuide(player);
+    if (e.code === 'KeyQ' && !e.repeat && state === 'play' && !menu.open && !chart.open && wisp.awake) {
+      if (nightmares.flare(camera.position)) {
+        wisp.speak(1.2, 'star');
+        flareFlash = 1;
+        audio.chime(5);
+      }
+    }
     if (e.code === 'KeyM' && !e.repeat && state === 'play' && !menu.open) {
       if (chart.open) {
         chart.hide();
@@ -283,7 +312,7 @@ async function boot() {
     // Console handle for art direction: lapis.view(x, z, yaw, pitch), lapis.player, etc.
     Object.assign(window, {
       lapis: {
-        player, input, camera, hf, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones, fauna, wonders,
+        player, input, camera, hf, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones, fauna, wonders, nightmares, puzzles, climb,
         get post() {
           return post;
         },
@@ -334,13 +363,17 @@ async function boot() {
 
   const menu = new PauseMenu();
   const chart = new JournalMap(hf);
+  let flareFlash = 0;
+  nightmares.onCatch = () => story.caught();
+  nightmares.onSighted = () => story.nightmaresSighted();
+  story.onNewNight = () => nightmares.clear();
   chart.markers = () => [
     ...landmarks.beacons.map((b, i) => ({ kind: landmarks.isLit(i) ? 'beaconLit' : 'beacon', x: b.placed.x, z: b.placed.z }) as const),
     ...LAGOONS.flatMap((L, i) => (story.hasSeen(`lagoon-${i}`) ? [{ kind: 'lagoon' as const, x: L.x, z: L.z, label: 'secret lagoon' }] : [])),
     ...wonders.list.map((w) =>
       story.hasSeen(`wonder-${w.id}`) ? { kind: 'wonder' as const, x: w.x, z: w.z, label: w.name } : { kind: 'mystery' as const, x: w.x, z: w.z },
     ),
-    ...story.waitingStars.map((p) => ({ kind: 'star' as const, x: p.x, z: p.z })),
+    ...puzzleSites.filter((p) => story.hasSeen(p.id)).map((p) => ({ kind: 'lagoon' as const, x: p.x, z: p.z, label: 'lanterns' })),
   ];
   const openMenu = () => {
     if (menu.open || state !== 'play') return;
@@ -464,7 +497,7 @@ async function boot() {
     post.frost.value += (Math.max(0, (frostTarget - 0.55) / 0.45) - post.frost.value) * Math.min(1, dt * 0.8);
     const memTarget = performance.now() / 1000 < memoryUntil ? 1 : 0;
     post.memoryMix.value += (memTarget - post.memoryMix.value) * Math.min(1, dt * (memTarget ? 1.2 : 0.7));
-    const mix = story.audioMix(player);
+    const mix = { ...story.audioMix(player), dread: nightmares.dread };
     audio.update(mix);
     // Score follows where you are; the opening theme carries the first half-minute of play.
     const area =
@@ -493,6 +526,17 @@ async function boot() {
     wildlife.update(dt, focus, camera, player.mode === 'boat' || story.audioMix(player).sea > 0.55);
     fauna.update(dt, focus, player.mode === 'walk' ? player.speed : 0);
     wonders.update(dt, focus);
+    if (state === 'play') {
+      const lights: LightSource[] = [];
+      landmarks.beacons.forEach((b, i) => landmarks.isLit(i) && lights.push({ x: b.placed.x, z: b.placed.z, r: 55 }));
+      for (const p of landmarks.placed)
+        if (p.type === 'StoneLantern' || p.type === 'Hut' || p.type === 'Cairn') lights.push({ x: p.x, z: p.z, r: p.type === 'Hut' ? 12 : 8 });
+      for (const p of puzzleSites) if (story.hasSeen(p.id)) lights.push({ x: p.x, z: p.z, r: 16 });
+      const threat = settings.nights ? Math.min(1, Math.max(0, (story.night.progress - 0.45) / 0.4)) : 0;
+      nightmares.update(dt, camera.position, player.mode === 'walk' ? player.speed : 0, player.mode === 'boat' ? 0 : threat, lights);
+    }
+    flareFlash = Math.max(0, flareFlash - dt * 2.5);
+    post.nightmare.value += (Math.max(nightmares.dread, 0) * (1 - flareFlash) - post.nightmare.value) * Math.min(1, dt * 2);
     if (state === 'play') chart.reveal(player.x, player.z, dt);
     water.update(focus);
     camera.updateMatrixWorld();

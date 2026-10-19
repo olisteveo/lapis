@@ -1,6 +1,9 @@
 // Deterministic placement of the prologue around the spawn beach, read from the heightfield
 // so it survives any retune of the world generator.
-import { LAGOONS, type Heightfield } from '../world/heightfield';
+import { BIOMES, LAGOONS, mulberry32, type Heightfield } from '../world/heightfield';
+import type { Wonder } from '../world/wonders';
+import type { PuzzleSite } from '../world/puzzles';
+import { CONSTELLATIONS } from './content';
 
 export interface P {
   x: number;
@@ -160,4 +163,61 @@ export function layoutPrologue(hf: Heightfield, spawn: P): PrologueLayout {
     search(s, 40 + i * 10, 90, (x, z) => h(x, z) > 0.1 && h(x, z) < 0.8, (x, z) => dist({ x, z }, spawn)) ?? s);
 
   return { spawn, seaward: sea, boat, note, footprints, stars, figureSpots };
+}
+
+// Each region's constellation wonder: its hidden star lies at the wonder's feet.
+const REGION_WONDER = { meadow: 'moontree', lantern: 'ring', dunes: 'whale', drowned: 'bell' } as const;
+
+/**
+ * Where every regional star lies, by fragment id. Open stars are scattered through the region,
+ * well apart and preferring awkward places (hilltops, the far side of things) so they take finding.
+ */
+export function layoutRegionStars(hf: Heightfield, wonders: Wonder[], puzzles: PuzzleSite[]): Record<string, P> {
+  const out: Record<string, P> = {};
+  const rnd = mulberry32(9001);
+  for (const c of CONSTELLATIONS) {
+    if (!c.region) continue;
+    const B = BIOMES[c.region];
+    const wonder = wonders.find((w) => w.id === REGION_WONDER[c.region!]);
+    const regionPuzzles = puzzles.filter((p) => p.region === c.region);
+    const taken: P[] = [...regionPuzzles, ...(wonder ? [wonder] : [])];
+    let puzzleSlot = 0;
+    for (const f of c.fragments) {
+      if (f.source === 'wonder' && wonder) {
+        const a = rnd() * Math.PI * 2;
+        const r = wonder.id === 'whale' ? 6 : wonder.id === 'bell' ? 9 : 12;
+        out[f.id] = { x: wonder.x + Math.sin(a) * r, z: wonder.z + Math.cos(a) * r };
+        continue;
+      }
+      if (f.source === 'puzzle') {
+        const p = regionPuzzles[puzzleSlot++];
+        if (p) out[f.id] = { x: p.x, z: p.z };
+        continue;
+      }
+      let best: P | null = null;
+      let bestScore = -Infinity;
+      for (let k = 0; k < 220; k++) {
+        const a = rnd() * Math.PI * 2;
+        const d = Math.sqrt(rnd()) * B.r * 0.9;
+        const x = B.x + Math.sin(a) * d;
+        const z = B.z + Math.cos(a) * d;
+        const h = hf.height(x, z);
+        if (h < (c.region === 'drowned' ? -1.1 : 0.6)) continue;
+        const gap = Math.min(...taken.map((t) => dist(t, { x, z })), 1e9);
+        if (gap < 110) continue;
+        // Prefer high ground over its surroundings: hilltops and ledges you have to climb to.
+        const rise = h - (hf.height(x + 25, z) + hf.height(x - 25, z) + hf.height(x, z + 25) + hf.height(x, z - 25)) / 4;
+        const score = Math.min(gap, 400) * 0.02 + rise * 0.6 + rnd() * 2;
+        if (score > bestScore) {
+          bestScore = score;
+          best = { x, z };
+        }
+      }
+      if (best) {
+        out[f.id] = best;
+        taken.push(best);
+      }
+    }
+  }
+  return out;
 }

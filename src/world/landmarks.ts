@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { color, float, hash, positionWorld, sin, time, uniform, uv, vertexColor, normalWorld, saturate, dot, vec3 } from 'three/tsl';
+import { color, float, hash, mix, positionWorld, sin, time, uniform, uv, vertexColor, normalWorld, saturate, dot, vec3 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE, SKY } from '../config';
 import { BIOMES, LIGHTHOUSE, WORLD_HALF, type Heightfield } from './heightfield';
@@ -77,7 +77,23 @@ export function layoutLandmarks(hf: Heightfield, spawn: { x: number; z: number }
     if (!c) continue;
     const x = c.x - c.sea.x * 7;
     const z = c.z - c.sea.z * 7;
-    out.push({ type: 'Beacon', x, y: h(x, z) - 0.3, z, yaw: Math.atan2(c.sea.z, c.sea.x), scale: 0.55 });
+    out.push({ type: 'Beacon', x, y: h(x, z) - 0.3, z, yaw: Math.atan2(c.sea.z, c.sea.x), scale: 1 });
+  }
+
+  // One lighthouse in the heart of each region, so every constellation has a light to carry stars to.
+  for (const B of [BIOMES.meadow, BIOMES.lantern, BIOMES.dunes, { ...BIOMES.drowned, r: 520 }]) {
+    let best: { x: number; z: number; s: number } | null = null;
+    for (let k = 0; k < 500; k++) {
+      const a = k * 2.39996;
+      const d = Math.sqrt(k / 500) * B.r * 0.7 + 60;
+      const x = B.x + Math.cos(a) * d;
+      const z = B.z + Math.sin(a) * d;
+      const v = h(x, z);
+      if (v < 0.8 || !out.filter((p) => p.type === 'Beacon').every((p) => Math.hypot(p.x - x, p.z - z) > 500)) continue;
+      const s = slope(x, z) + d * 0.002;
+      if (!best || s < best.s) best = { x, z, s };
+    }
+    if (best) out.push({ type: 'Beacon', x: best.x, y: h(best.x, best.z) - 0.2, z: best.z, yaw: rand(Math.round(best.x), 9) * 6.28, scale: 1 });
   }
 
   const quotas: [string, number, number][] = [
@@ -155,9 +171,9 @@ export function layoutLandmarks(hf: Heightfield, spawn: { x: number; z: number }
 }
 
 // Footprint radius per landmark for collision (scaled by placement scale).
-const SOLID: Record<string, number> = { Lighthouse: 4.2, Beacon: 4.2, Hut: 2.2, Cairn: 0.5, StoneLantern: 0.35, Wreck: 0, RuinColumn: 0.7, RuinColumnBroken: 0.7 };
+const SOLID: Record<string, number> = { Lighthouse: 0, Beacon: 0, Hut: 2.2, Cairn: 0.5, StoneLantern: 0.35, Wreck: 0, RuinColumn: 0.7, RuinColumnBroken: 0.7 };
 /** Lamp-room height of the lighthouse model, before placement scale. */
-const LAMP_Y = 23.5;
+const LAMP_Y = 24.4;
 const LIGHTS: Record<string, [number, number, number]> = {
   // [height of the light, intensity, range]
   Hut: [1.6, 2.4, 14],
@@ -182,7 +198,7 @@ export class Landmarks implements Colliders {
   }
 
   /** Beacons (and the home lighthouse): the lights you save at. */
-  readonly beacons: { placed: Placed; lit: { value: number }; litTarget: number; beam: THREE.Group; lampY: number }[] = [];
+  readonly beacons: { placed: Placed; lit: { value: number }; litTarget: number; beam: THREE.Group; lampY: number; crystal: THREE.Object3D | null }[] = [];
 
   private material(name: string, lamp?: { value: number }) {
     const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
@@ -190,7 +206,25 @@ export class Landmarks implements Colliders {
     const lambert = saturate(dot(normalWorld, key).mul(0.6).add(0.4));
     const variety = hash(positionWorld.x.mul(0.31).add(positionWorld.z.mul(0.17)).floor());
     const vc = vertexColor();
-    const glow = name.includes('glow') || name === 'lamp_glass';
+    const L: any = lamp ?? this.lamp;
+    if (name === 'lamp_glass') {
+      // See-through glass with a faint sheen that warms as the lamp is lit; the crystal shows inside.
+      const glass = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+      glass.colorNode = mix(color(0x6a7ac8).mul(0.08), color(PALETTE.starGold).mul(0.35), L);
+      return glass;
+    }
+    if (name === 'star_crystal') {
+      const pulse = sin(time.mul(1.6)).mul(0.15).add(1);
+      mat.colorNode = mix(color(0x9fb4ff).mul(0.9), color(0xfff0d0).mul(4.5), L).mul(pulse);
+      return mat;
+    }
+    if (name === 'rune_glow') {
+      // Runes crawl with a slow light even when the lamp is cold; lit, they blaze.
+      const crawl = sin(positionWorld.y.mul(0.6).sub(time.mul(1.4))).mul(0.3).add(0.75);
+      mat.colorNode = mix(color(0x7a8cff).mul(0.9), color(0xb8fff4).mul(2.4), L).mul(crawl);
+      return mat;
+    }
+    const glow = name.includes('glow');
     if (glow) {
       // Candle and lamp glass: warm, flickering, bright enough to bloom into grain.
       const flicker = sin(time.mul(9).add(variety.mul(40))).mul(0.08).add(sin(time.mul(23).add(variety.mul(13))).mul(0.05)).add(0.9);
@@ -223,7 +257,7 @@ export class Landmarks implements Colliders {
     }
     for (const p of this.placed) {
       const isLight = p.type === 'Beacon' || p.type === 'Lighthouse';
-      const t = templates.get(p.type === 'Beacon' ? 'Lighthouse' : p.type);
+      const t = isLight ? templates.get('DreamLighthouse') ?? templates.get('Lighthouse') : templates.get(p.type);
       if (!t) continue;
       const obj = t.clone(true);
       const lamp = isLight ? uniform(0) : undefined;
@@ -231,8 +265,8 @@ export class Landmarks implements Colliders {
         const m = o as THREE.Mesh;
         if (!m.isMesh) return;
         const name = ((Array.isArray(m.material) ? m.material[0] : m.material) as THREE.Material).name || 'wood';
-        // Each light has its own lamp glass so they can be lit one at a time.
-        if (lamp && name === 'lamp_glass') {
+        // Each light has its own lamp glass, crystal and runes so they can be lit one at a time.
+        if (lamp && (name === 'lamp_glass' || name === 'star_crystal' || name === 'rune_glow')) {
           m.material = this.material(name, lamp);
           return;
         }
@@ -245,13 +279,15 @@ export class Landmarks implements Colliders {
         beam.position.set(p.x, lampY, p.z);
         beam.visible = false;
         this.group.add(beam);
-        this.beacons.push({ placed: p, lit: lamp, litTarget: 0, beam, lampY });
+        this.beacons.push({ placed: p, lit: lamp, litTarget: 0, beam, lampY, crystal: obj.getObjectByName('StarCrystal') ?? null });
       }
       obj.position.set(p.x, p.y, p.z);
       obj.rotation.set(0, p.yaw, 0);
       obj.scale.setScalar(p.scale);
       obj.matrixAutoUpdate = false;
       obj.updateMatrix();
+      // The crystal spins, so its own matrix must keep updating.
+      obj.getObjectByName('StarCrystal')?.traverse((c) => (c.matrixAutoUpdate = true));
       this.group.add(obj);
     }
     return [...templates.keys()];
@@ -320,6 +356,10 @@ export class Landmarks implements Colliders {
       b.lit.value += (b.litTarget - b.lit.value) * Math.min(1, dt * 0.8);
       b.beam.visible = b.lit.value > 0.05;
       b.beam.rotation.y += dt * 0.35;
+      if (b.crystal) {
+        b.crystal.rotation.y += dt * (0.25 + b.lit.value * 0.6);
+        b.crystal.position.y = 24.4 + Math.sin(performance.now() / 900) * 0.15;
+      }
       b.beam.scale.setScalar(Math.min(1, b.lit.value * 1.2));
     }
     const lit = this.placed

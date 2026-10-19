@@ -48,10 +48,13 @@ export function createWater() {
   // Cream foam: a hard lip at the shoreline plus soft bands rolling in, broken by noise.
   const fn = mx_noise_float(vec3(p.mul(0.18), t.mul(0.25)));
   const bands = sin(depth.mul(2.6).sub(t.mul(1.3)).add(fn.mul(3))).mul(0.5).add(0.5);
-  const lip = smoothstep(0.55, 0.05, depth.add(fn.mul(0.15)));
+  // Far terrain is coarse: whole triangles sit just under the surface and would foam as flat
+  // polygons, so the lip is thin, noise-broken, and fades out with distance.
+  const lipBreak = mx_noise_float(vec3(p.mul(0.9), t.mul(0.4)));
+  const lip = smoothstep(0.28, 0.03, depth.add(fn.mul(0.12)).add(lipBreak.mul(0.1))).mul(smoothstep(260, 60, dist));
   const rolling = smoothstep(0.62, 0.92, bands).mul(smoothstep(3.2, 0.4, depth)).mul(smoothstep(-0.3, 0.3, fn));
   const foam = saturate(max(lip, rolling.mul(0.85)));
-  col = mix(col, color(PALETTE.foam).mul(1.1), foam);
+  col = mix(col, color(PALETTE.foam).mul(0.9), foam);
 
   // Secret lagoons: still, luminous turquoise water, lit from below.
   let lagoon: any = float(0);

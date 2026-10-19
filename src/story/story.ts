@@ -6,20 +6,23 @@ import type { PlayerController } from '../game/player';
 import type { Audio } from '../audio/audio';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { Narrative } from './narrative';
-import { THE_BOAT, LINES } from './content';
-import { LAGOONS } from '../world/heightfield';
+import { THE_BOAT, LINES, CONSTELLATIONS, TOTAL_STARS, ENDING } from './content';
+import { BIOMES, LAGOONS, RIVER } from '../world/heightfield';
 import { Constellation } from './constellation';
 import { FallenStars } from './fallenStars';
 import { createFootprints, createNote, DistantFigure } from './prologue';
-import type { PrologueLayout } from './placement';
+import type { P, PrologueLayout } from './placement';
+import type { Puzzles, PuzzleSite } from '../world/puzzles';
 import { Echoes, type EchoDef } from './echoes';
 import type { Landmarks } from '../world/landmarks';
+import type { LighthouseClimb } from '../world/lighthouseClimb';
 import type { Wonders } from '../world/wonders';
 import { NightClock, type NightCue } from './night';
 import { settings } from '../settings';
 import type { Wisp, WispCall, WispMood } from '../game/wisp';
 
 const SAVE_KEY = 'lapis.save.v1';
+const REGION_WONDER = { meadow: 'moontree', lantern: 'ring', dunes: 'whale', drowned: 'bell' } as const;
 
 interface Save {
   /** Banked stars: carried to a lighthouse, lit in the sky for good. */
@@ -46,7 +49,9 @@ export class Story {
   readonly narrative = new Narrative();
   readonly group = new THREE.Group();
   private save = loadSave();
-  private boat: Constellation;
+  private skies: Constellation[];
+  /** Fragment id -> which constellation, which of its stars. */
+  private starRef = new Map<string, { c: number; i: number }>();
   private stars: FallenStars;
   private figure: DistantFigure;
   private prompt = '';
@@ -58,6 +63,8 @@ export class Story {
   onMemory: ((seconds: number) => void) | null = null;
   /** Night progress 0..1 each frame (drives frost and dimming). */
   onNight: ((progress: number) => void) | null = null;
+  /** A new night begins (rest or wake): the nightmares sink away. */
+  onNewNight: (() => void) | null = null;
   /** She wakes: move the Keeper to this spot (the last lit light, or the first beach). */
   onWake: ((spot: { x: number; z: number }) => void) | null = null;
   readonly night = new NightClock(20 * 60);
@@ -73,27 +80,72 @@ export class Story {
     private flora: Flora,
     private shooting: ShootingStar,
     private audio: Audio,
+    sites: Record<string, P>,
+    private puzzles: Puzzles,
   ) {
     this.group.name = 'story';
     const h = (x: number, z: number) => hf.height(x, z);
-    // Hang The Boat over the open sea as seen from where you wake.
+    // Hang The Boat over the open sea as seen from where you wake; the rest over their regions.
     const seaAz = THREE.MathUtils.radToDeg(Math.atan2(layout.seaward.x, -layout.seaward.z));
-    this.boat = new Constellation({ ...THE_BOAT, azimuth: seaAz });
-    this.stars = new FallenStars(THE_BOAT.fragments.map((f) => f.id), layout.stars, h);
+    this.skies = CONSTELLATIONS.map((c) => new Constellation(c === THE_BOAT ? { ...c, azimuth: seaAz } : c));
+    const entries: { id: string; pos: P; beacon: boolean }[] = [];
+    CONSTELLATIONS.forEach((c, ci) =>
+      c.fragments.forEach((f, i) => {
+        const pos = ci === 0 ? layout.stars[i] : sites[f.id];
+        if (!pos) return;
+        this.starRef.set(f.id, { c: ci, i });
+        entries.push({ id: f.id, pos, beacon: ci === 0 });
+      }),
+    );
+    this.stars = new FallenStars(entries, h);
     this.figure = new DistantFigure(layout.figureSpots, h);
-    this.group.add(this.boat.group, this.stars.group, createFootprints(layout, h), createNote(layout.note, h), this.figure.group);
+    this.group.add(...this.skies.map((c) => c.group), this.stars.group, createFootprints(layout, h), createNote(layout.note, h), this.figure.group);
 
     const done = new Set(this.save.collected);
     this.stars.markCollected(done);
-    THE_BOAT.fragments.forEach((f, i) => done.has(f.id) && this.boat.light(i, true));
-    if (this.boat.isComplete) this.glowTarget = 1.35;
+    for (const id of done) {
+      const r = this.starRef.get(id);
+      if (r) this.skies[r.c].light(r.i, true);
+    }
+    // Stars inside wonders and behind puzzles stay hidden until those are found or solved.
+    for (const c of CONSTELLATIONS) {
+      if (!c.region) continue;
+      let slot = 0;
+      for (const f of c.fragments) {
+        if (done.has(f.id)) continue;
+        if (f.source === 'wonder' && !this.save.seen.includes(`wonder-${REGION_WONDER[c.region]}`)) this.stars.hold(this.stars.indexOf(f.id));
+        if (f.source === 'puzzle' && !this.save.seen.includes(`puzzle-${c.region}-${slot}`)) this.stars.hold(this.stars.indexOf(f.id));
+        if (f.source === 'puzzle') slot++;
+      }
+    }
+    this.glowTarget = 1 + this.skies.filter((c) => c.isComplete).length * 0.12;
     for (let i = 0; i < Math.min(2, Math.floor(done.size / 2)); i++) this.figure.advance();
 
-    this.stars.onArrive = (i) => {
-      this.boat.light(i);
-      if (this.boat.isComplete) this.onConstellationComplete();
+    this.stars.onArrive = (id) => {
+      const r = this.starRef.get(id);
+      if (!r) return;
+      this.skies[r.c].light(r.i);
+      if (this.skies[r.c].isComplete) this.onConstellationComplete(r.c);
+    };
+    puzzles.onSolve = (site) => this.solvePuzzle(site);
+    puzzles.onDiscover = () => {
+      if (!this.seen('puzzleHint')) this.guide('Hey! A circle of lanterns. Stand in the middle and listen, then light them in the same order.', 'hey');
+      else this.guide('Listen! More lanterns. I think they want to sing.', 'listen');
+    };
+    puzzles.onNote = (k) => this.audio.note(k);
+    puzzles.onFail = () => {
+      this.audio.discord();
+      this.guide("Hmm? That's not how it went. Listen again.", 'hmm');
     };
     this.night.onCue = (cue) => this.nightCue(cue);
+  }
+
+  get litTotal() {
+    return this.save.collected.length;
+  }
+
+  get allLit() {
+    return this.skies.every((c) => c.isComplete);
   }
 
   /** Opening: hide the first star until it's seen to fall, and keep pillars dark. */
@@ -121,8 +173,11 @@ export class Story {
   }
 
   /** Beacons exist once the props have loaded; re-light the ones lit in earlier sessions. */
-  attachBeacons(landmarks: Landmarks) {
+  private climb: LighthouseClimb | null = null;
+
+  attachBeacons(landmarks: Landmarks, climb: LighthouseClimb) {
     this.landmarks = landmarks;
+    this.climb = climb;
     for (const i of this.save.lit ?? []) landmarks.lightBeacon(i, true);
   }
 
@@ -137,6 +192,24 @@ export class Story {
 
   get waitingStars() {
     return this.stars.waiting;
+  }
+
+  /** The constellation for wherever the player is standing: its region's, or The Boat on the shore. */
+  private regionSky(player: { x: number; z: number }) {
+    const s = this.hf.sample(player.x, player.z);
+    const w = { meadow: s.meadow, lantern: s.lantern, dunes: s.dunes, drowned: s.drowned * 1.5 };
+    const best = (Object.keys(w) as (keyof typeof w)[]).sort((a, b) => w[b] - w[a])[0];
+    if (w[best] < 0.35) return 0;
+    return CONSTELLATIONS.findIndex((c) => c.region === best);
+  }
+
+  private solvePuzzle(site: PuzzleSite) {
+    this.seen(site.id);
+    this.audio.chime(5);
+    const c = CONSTELLATIONS.find((k) => k.region === site.region)!;
+    const f = c.fragments.filter((k) => k.source === 'puzzle')[site.slot];
+    if (f) this.stars.land(this.stars.indexOf(f.id));
+    this.guide('Oh! The lanterns are singing! A star is falling, right there!', 'oh', 'star');
   }
 
   /** Has this place been found (a lagoon, a wonder)? */
@@ -178,24 +251,41 @@ export class Story {
         return;
       }
     }
+    const regionName = { meadow: 'the meadows', lantern: 'the Lantern Wood', dunes: 'the dunes', drowned: 'the drowned town' } as const;
+    // The opening's six stars are marked and easy; after that the light only knows roughly.
+    const marked = this.stars.nearest(player.x, player.z, true);
+    if (marked) {
+      this.point(marked.pos.clone());
+      this.guide(`Look! There's a fallen star ${compass(marked.pos)}.`, 'look', 'star');
+      return;
+    }
     const star = this.stars.nearest(player.x, player.z);
-    // An unfound wonder nearer than the next star gets a mention: a reason to wander off the path.
-    const wonder = this.wonders?.list
-      .filter((w) => !this.save.seen.includes(`wonder-${w.id}`))
-      .map((w) => ({ w, d: Math.hypot(w.x - player.x, w.z - player.z) }))
+    if (star && star.dist < 150) {
+      this.guide(star.dist < 50 ? "Oh! It's really close now. Look carefully!" : "Hmm... I can feel one nearby. Keep looking!", star.dist < 50 ? 'oh' : 'hmm', 'star');
+      return;
+    }
+    if (this.allLit) {
+      this.guide('Look! Follow the River of Light north, to the brightest star!', 'look', 'star');
+      return;
+    }
+    // Point at the nearest region whose constellation is still dark, never at the star itself.
+    const dark = CONSTELLATIONS.map((c, ci) => ({ c, ci }))
+      .filter(({ c, ci }) => c.region && !this.skies[ci].isComplete)
+      .map(({ c }) => ({ c, d: Math.hypot(BIOMES[c.region!].x - player.x, BIOMES[c.region!].z - player.z) }))
       .sort((a, b) => a.d - b.d)[0];
-    const rumour = wonder && (!star || wonder.d < star.dist) ? ` And something strange is humming ${compass(wonder.w)}...` : '';
-    if (star) {
-      this.point(star.pos.clone());
-      this.guide(`Look! There's a fallen star ${compass(star.pos)}.${rumour}`, 'look', 'star');
+    const here = this.regionSky(player);
+    if (here > 0 && !this.skies[here].isComplete) {
+      const c = CONSTELLATIONS[here];
+      const left = c.fragments.length - this.skies[here].litCount;
+      this.guide(`Listen! ${left} of ${c.name}'s stars are still lost somewhere in ${regionName[c.region!]}. Some hide in strange places...`, 'listen');
       return;
     }
-    if (wonder) {
-      this.point(new THREE.Vector3(wonder.w.x, wonder.w.y + 4, wonder.w.z));
-      this.guide(`Hmm? Something strange is humming ${compass(wonder.w)}. Let's go and see!`, 'hmm');
+    if (dark) {
+      const B = BIOMES[dark.c.region!];
+      this.guide(`Hey! ${dark.c.name} is still dark. Its stars fell in ${regionName[dark.c.region!]}, ${compass(B)}.`, 'hey');
       return;
     }
-    this.guide("Hey! The brightest star's in the north, past the lake. Follow it.", 'hey');
+    this.guide('Hmm? Look up. Which shapes are still dark?', 'hmm');
   }
 
   private point(at: THREE.Vector3) {
@@ -207,7 +297,7 @@ export class Story {
   private wispTarget(player: PlayerController) {
     if (this.wispForced && performance.now() < this.wispTargetUntil) return this.wispForced;
     const s = this.stars.nearest(player.x, player.z);
-    if (s && s.dist < 35) return s.pos;
+    if (s && s.dist < (s.beacon ? 35 : 10)) return s.pos;
     if (this.landmarks) {
       const nb = this.landmarks.nearestBeacon(player.x, player.z);
       if (nb.index >= 0 && nb.dist < 40 && !this.landmarks.isLit(nb.index)) {
@@ -235,8 +325,10 @@ export class Story {
     const carried = this.stars.carriedIds;
     for (const id of carried) this.stars.drop(id);
     this.night.reset();
+    this.onNewNight?.();
     const b = this.save.lastBeacon;
-    const spot = this.landmarks && b !== undefined && b >= 0 ? this.landmarks.beaconRestSpot(b) : this.layout.spawn;
+    // You wake where you last rested: up on the gallery of that lighthouse.
+    const spot = this.climb && b !== undefined && b >= 0 ? this.climb.gallerySpot(b) : this.layout.spawn;
     this.onWake?.(spot);
     setTimeout(() => {
       this.narrative.say(LINES.waking);
@@ -257,14 +349,30 @@ export class Story {
     this.save.lastBeacon = i;
     this.bankCarried();
     this.night.reset();
+    this.onNewNight?.();
     if (!first) this.narrative.say(LINES.rest);
     this.persist();
   }
 
+  /** A nightmare reached you: whatever you carried falls back, and she sleeps a little worse. */
+  caught() {
+    const carried = this.stars.carriedIds;
+    for (const id of carried) this.stars.drop(id);
+    this.night.progress = Math.min(0.97, this.night.progress + 0.08);
+    this.audio.discord();
+    if (carried.length) this.guide(`Oh no! It took ${carried.length > 1 ? 'the stars' : 'the star'}! ${carried.length > 1 ? "They've" : "It's"} fallen back where we found ${carried.length > 1 ? 'them' : 'it'}.`, 'watch', 'warn');
+    else this.guide("Watch out! Don't let them touch you!", 'watch', 'warn');
+  }
+
+  nightmaresSighted() {
+    if (this.seen('nightmareHint')) this.guide('Watch out! Nightmares!', 'watch', 'warn');
+    else this.guide("Watch out! Nightmares! They hate the light. Stay near a lamp, or press Q and I'll flare!", 'watch', 'warn');
+  }
+
   private bankCarried() {
     for (const id of this.stars.carriedIds) {
-      const index = THE_BOAT.fragments.findIndex((f) => f.id === id);
-      this.stars.collect(id, this.boat.dirs[index]);
+      const r = this.starRef.get(id)!;
+      this.stars.collect(id, this.skies[r.c].dirs[r.i]);
       if (!this.save.collected.includes(id)) this.save.collected.push(id);
     }
     this.persist();
@@ -347,7 +455,8 @@ export class Story {
 
   update(dt: number, player: PlayerController, camera: THREE.Camera, playing: boolean) {
     this.narrative.update(dt);
-    this.boat.update(dt, camera);
+    for (const c of this.skies) c.update(dt, camera);
+    if (playing) this.puzzles.update(dt, player);
     if (playing) this.echoes?.update(dt, camera.position);
     this.stars.update(dt, camera);
     if (this.wisp) {
@@ -371,14 +480,21 @@ export class Story {
       settings.nights ? this.night.phrase : '',
       found ? `secret lagoons ${found} / ${LAGOONS.length}` : '',
       wonders ? `wonders ${wonders} / ${this.wonders!.list.length}` : '',
+      `stars in her sky ${this.save.collected.length} / ${TOTAL_STARS}`,
     ].filter(Boolean).join('   ·   ');
     const w = this.wonders?.at(player.x, player.z, player.y);
     if (w && !this.seen(`wonder-${w.id}`)) {
       this.guide(w.line, w.id === 'bell' ? 'listen' : w.id === 'rocks' ? 'look' : 'oh', 'star');
       setTimeout(() => this.narrative.say(w.name, 'title'), 4800);
       this.audio.chime(5);
+      // The region's hidden star was waiting inside.
+      const c = CONSTELLATIONS.find((k) => k.region && REGION_WONDER[k.region] === w.id);
+      const f = c?.fragments.find((k) => k.source === 'wonder');
+      if (f && this.stars.isHeld(f.id)) setTimeout(() => this.stars.land(this.stars.indexOf(f.id)), 2500);
     }
-    this.narrative.objective(THE_BOAT.name, this.save.collected.length, THE_BOAT.fragments.length, extra, carried);
+    const sky = this.skies[this.regionSky(player)];
+    this.narrative.objective(sky.def.name, sky.litCount, sky.def.stars.length, extra, carried);
+    if (this.allLit && player.z < RIVER.zEnd + 400 && !this.ending) this.beginEnding();
     LAGOONS.forEach((L, i) => {
       if (Math.hypot(L.x - player.x, L.z - player.z) < L.r - 6 && !this.seen(`lagoon-${i}`)) {
         this.guide('Oh! A hidden lagoon. Look how the water glows!', 'oh');
@@ -420,17 +536,27 @@ export class Story {
     if (this.landmarks && walking) {
       const nb = this.landmarks.nearestBeacon(px, pz);
       if (nb.index >= 0 && nb.dist < 60 && !this.landmarks.isLit(nb.index) && !this.seen('lightHint'))
-        this.guide('Look! A lighthouse. Light its lamp, and you can rest there.', 'look');
-      if (nb.index >= 0 && nb.dist < 7.5) {
-        const lit = this.landmarks.isLit(nb.index);
+        this.guide('Look! A lighthouse. Climb the stair to the lamp room at the top. Light it, and you can rest there.', 'look');
+      const lamp = this.climb?.atLamp(px, pz, player.y) ?? -1;
+      if (lamp >= 0) {
+        const lit = this.landmarks.isLit(lamp);
         const n = this.stars.carriedIds.length;
-        this.prompt = !lit ? 'E   light the lamp' : n ? `E   rest by the light  ·  ${n} star${n > 1 ? 's' : ''} carried` : 'E   rest by the light';
-        this.pendingAction = () => this.rest(nb.index);
+        this.prompt = !lit ? 'E   light the lamp' : n ? `E   lift ${n} star${n > 1 ? 's' : ''} into her sky, and rest` : 'E   rest by the light';
+        this.pendingAction = () => this.rest(lamp);
+      } else if (nb.index >= 0 && nb.dist < 9 && player.y - this.landmarks.beacons[nb.index].placed.y < 2) {
+        this.prompt = 'climb the stair to the lamp room';
       }
+    }
+
+    const puzzle = walking ? this.puzzles.interaction(px, pz) : null;
+    if (puzzle) {
+      this.prompt = puzzle.prompt;
+      this.pendingAction = puzzle.act;
     }
 
     const star = this.stars.nearest(px, pz);
     if (star && this.save.collected.length === 0 && star.dist < 18 && !this.seen('warm')) this.guide("Look! A fallen star. It's still warm!", 'look', 'star');
+    if (star && !star.beacon && star.dist < 14 && !this.seen(`near-${star.id}`)) this.guide('Oh! Do you see that glint? A star!', 'oh', 'star');
     if (star && star.dist < (walking ? 2.6 : 4.2)) {
       this.prompt = 'E   gather the fallen star';
       this.pendingAction = () => this.gather(star.id, star.index);
@@ -450,39 +576,58 @@ export class Story {
   }
 
   private gather(id: string, index: number) {
-    const fragment = THE_BOAT.fragments[index];
+    const r = this.starRef.get(id)!;
+    const fragment = CONSTELLATIONS[r.c].fragments[r.i];
     if (settings.nights) {
       // Carried until you reach a lighthouse; lost if she wakes first.
       this.stars.carry(id);
       if (!this.seen('carryHint')) setTimeout(() => this.guide("Listen! Carry it to a lighthouse before the night runs out, or it'll fall back.", 'listen'), 7000);
     } else {
-      this.stars.collect(id, this.boat.dirs[index]);
+      this.stars.collect(id, this.skies[r.c].dirs[r.i]);
       this.save.collected.push(id);
       this.persist();
     }
-    this.audio.chime(index);
+    this.audio.chime(index % 6);
     this.audio.memory();
     this.narrative.say(fragment.line, 'memory');
     this.audio.voice(fragment.id).catch(() => {});
     this.onMemory?.(8);
+    if (r.c !== 0) return;
     const n = this.save.collected.length + this.stars.carriedIds.length;
     if (n === 1) setTimeout(() => this.guide('Look up! Six stars fell along this shore. You can see their light rising.', 'look'), 15000);
     if (n === 3) this.guide("Listen! Some fell out at sea. The boat's waiting.", 'listen');
     if (n === 2 || n === 4) this.figure.advance();
   }
 
-  private onConstellationComplete() {
-    if (this.seen('boatDone')) return;
-    this.glowTarget = 1.35;
+  private onConstellationComplete(c: number) {
+    const def = CONSTELLATIONS[c];
+    if (this.seen(`${def.id}Done`)) return;
+    this.glowTarget = 1 + this.skies.filter((k) => k.isComplete).length * 0.12;
     this.audio.chime(5);
-    this.narrative.say(THE_BOAT.name.toUpperCase(), 'title');
-    this.narrative.say(LINES.boatDone);
-    this.narrative.say(LINES.next);
+    this.narrative.say(def.name.toUpperCase(), 'title');
+    if (this.allLit) {
+      this.narrative.say(LINES.allDone);
+      setTimeout(() => this.guide('Look! The brightest star! Follow the River of Light north, all the way to the end!', 'look', 'star'), 6000);
+    } else {
+      this.narrative.say(c === 0 ? LINES.boatDone : LINES.constellationDone);
+      const left = this.skies.filter((k) => !k.isComplete).length;
+      setTimeout(() => this.guide(`Listen! ${left === 1 ? 'One more constellation is' : `${left} more constellations are`} still dark. Look up, you can see their shapes!`, 'listen'), 6000);
+    }
   }
 
-  /** Where the glitter path should point: the nearest fallen star still waiting. */
+  private ending = false;
+  /** Fired when the ending finishes, to roll the title. */
+  onEnding: (() => void) | null = null;
+
+  private beginEnding() {
+    this.ending = true;
+    this.audio.memory();
+    this.narrative.storybook(ENDING, () => this.onEnding?.());
+  }
+
+  /** Where the glitter path should point: only the opening's marked stars, or nowhere. */
   guideTarget(player: PlayerController) {
-    return this.stars.nearest(player.x, player.z)?.pos ?? null;
+    return this.stars.nearest(player.x, player.z, true)?.pos ?? null;
   }
 
   /** Lean on the heightfield for the audio mix around the listener. */

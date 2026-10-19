@@ -15,8 +15,10 @@ export interface Colliders {
 
 /** Standable surfaces above the terrain: stepping stones. */
 export interface Platforms {
-  /** Highest standable top at (x, z), or -Infinity. */
-  top(x: number, z: number): number;
+  /** Highest standable top at (x, z) within a step of height y (stacked surfaces, like a stair), or -Infinity. */
+  top(x: number, z: number, y?: number): number;
+  /** Optionally push a walker at (x, z, y) back inside walls and rails. */
+  confine?(x: number, z: number, y: number, body: number): { x: number; z: number } | null;
   /** True if something solid in the water blocks a hull at (x, z). */
   blocksBoat(x: number, z: number, radius: number): boolean;
 }
@@ -93,12 +95,17 @@ export class PlayerController {
 
   constructor(private world: WorldQuery) {}
 
-  private ground(x: number, z: number) {
-    return Math.max(this.world.height(x, z), this.platforms?.top(x, z) ?? -Infinity);
+  private ground(x: number, z: number, yRef = this.y) {
+    return Math.max(this.world.height(x, z), this.platforms?.top(x, z, yRef) ?? -Infinity);
   }
 
   /** Push the walker out of trunks and the boat hull, sliding along them rather than stopping. */
   private resolve() {
+    const c = this.platforms?.confine?.(this.x, this.z, this.y, BODY_RADIUS);
+    if (c) {
+      this.x = c.x;
+      this.z = c.z;
+    }
     this.colliders?.near(this.x, this.z, 3, (cx, cz, r) => {
       const dx = this.x - cx;
       const dz = this.z - cz;
@@ -129,7 +136,7 @@ export class PlayerController {
   place(x: number, z: number, heading: number) {
     this.x = x;
     this.z = z;
-    this.y = Math.max(this.ground(x, z), WADE_DEPTH);
+    this.y = Math.max(this.ground(x, z, Infinity), WADE_DEPTH);
     this.heading = heading;
     this.airborne = false;
     this.vy = 0;

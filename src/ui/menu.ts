@@ -11,6 +11,7 @@ const CONTROLS: [string, string][] = [
   ['E', 'gather, read, light a lamp, step into or out of the boat'],
   ['F', 'ask the little light what to do next'],
   ['M', 'the chart: everywhere you have been'],
+  ['Q', 'the little light flares: nightmares nearby burst'],
   ['Hold E', 'at the water’s edge: call the boat'],
   ['Esc', 'pause'],
 ];

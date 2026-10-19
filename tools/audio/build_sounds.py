@@ -467,6 +467,43 @@ def loop_jungle(seconds=24.0):
     return reverb(out, 0.35, 2.4, circular=True)
 
 
+def loop_dread(seconds=32.0):
+    """Nightmares near: a low minor-second drone beating against itself, a slow heartbeat,
+    scraped metal swells and breath. Everything periodic over the loop so it repeats cleanly."""
+    n = int(seconds * SR)
+    t = np.arange(n) / SR
+    # Frequencies snapped to whole cycles per loop so the drone is seamless.
+    snap = lambda f: round(f * seconds) / seconds
+    drone = np.zeros(n)
+    for f, a in ((43.65, 1.0), (46.25, 0.8), (65.4, 0.45), (92.5, 0.3), (97.99, 0.22)):
+        f = snap(f)
+        drone += a * np.sin(2 * np.pi * f * t + 0.3 * np.sin(2 * np.pi * t / seconds * 3))
+    drone *= 0.55 + 0.45 * np.sin(2 * np.pi * 2 * t / seconds) ** 2
+    rumble = shaped_noise(n, mul_shape(tilt(1.2), band(25, 160))) * 0.5
+    # Heartbeat: lub-dub, 50 bpm, slightly irregular so it feels alive.
+    beat = np.zeros(n)
+    period = seconds / round(seconds * 50 / 60)
+    k = 0
+    while k * period < seconds:
+        at = k * period + rng.uniform(-0.03, 0.03)
+        place(beat, thump(int(0.25 * SR), 0, 52, 0.12) * 0.9, int(at * SR) % n, wrap=True)
+        place(beat, thump(int(0.25 * SR), 0, 46, 0.1) * 0.55, int((at + 0.28) * SR) % n, wrap=True)
+        k += 1
+    # Scrapes: a bowed-metal cluster that swells and falls a few times per loop.
+    scrape = np.zeros(n)
+    for c in range(4):
+        m = int(rng.uniform(4, 7) * SR)
+        tt = np.arange(m) / SR
+        f0 = rng.uniform(380, 900)
+        tone = sum(np.sin(2 * np.pi * f0 * r * tt + rng.uniform(0, 6)) / (i + 1) for i, r in enumerate((1, 1.06, 2.13, 2.97)))
+        grit = shaped_noise(m, band(f0 * 0.8, f0 * 3, 3))
+        sw = np.sin(np.pi * tt / tt[-1]) ** 3
+        place(scrape, (tone * 0.3 + grit * 0.5) * sw * rng.uniform(0.25, 0.45), int(rng.uniform(0, seconds) * SR), wrap=True)
+    breath = shaped_noise(n, band(300, 1800, 2)) * (0.5 + 0.5 * np.sin(2 * np.pi * 7 * t / seconds)) ** 4 * 0.12
+    out = drone * 0.5 + rumble + beat * 0.8 + scrape + breath
+    return reverb(out, 0.4, 3.4, circular=True, damp=2.4)
+
+
 def loop_music(seconds=48.0):
     """Slow dream pad: D lydian colours, each chord breathing into the next."""
     n = int(seconds * SR)
@@ -524,6 +561,7 @@ def main():
     write("loop_wind", loop_wind(), -3)
     write("loop_jungle", loop_jungle(), -3)
     write("loop_music", loop_music(), -3)
+    write("loop_dread", loop_dread(), -3)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ import { MusicDirector } from './music';
 
 type Surface = 'sand' | 'wet' | 'water' | 'jungle';
 
-const LOOPS = ['surf', 'lapping', 'wind', 'jungle', 'music'] as const;
+const LOOPS = ['surf', 'lapping', 'wind', 'jungle', 'music', 'dread'] as const;
 type LoopName = (typeof LOOPS)[number];
 
 export interface AudioMix {
@@ -15,6 +15,8 @@ export interface AudioMix {
   /** Metres above sea level. */
   altitude: number;
   inBoat: boolean;
+  /** 0..1 how close the nearest nightmare is. */
+  dread?: number;
 }
 
 export class Audio {
@@ -54,6 +56,14 @@ export class Audio {
     ];
     await Promise.all(
       names.map(async (n) => {
+        // A composed nightmare track (no vocals) replaces the synthesised dread when present.
+        if (n === 'loop_dread') {
+          const composed = await fetch('/audio/music/nightmare.mp3').catch(() => null);
+          if (composed?.ok && composed.headers.get('content-type')?.includes('audio')) {
+            this.buffers.set(n, await ctx.decodeAudioData(await composed.arrayBuffer()));
+            return;
+          }
+        }
         const res = await fetch(`/audio/${n}.wav`);
         this.buffers.set(n, await ctx.decodeAudioData(await res.arrayBuffer()));
       }),
@@ -64,7 +74,7 @@ export class Audio {
       src.loop = true;
       const g = ctx.createGain();
       g.gain.value = 0;
-      src.connect(g).connect(l === 'music' ? this.musicBus : this.sfxBus);
+      src.connect(g).connect(l === 'music' || l === 'dread' ? this.musicBus : this.sfxBus);
       // Offset start points so loops of similar length don't phase together audibly.
       src.start(0, Math.random() * src.buffer.duration);
       this.loops.set(l, g);
@@ -113,6 +123,17 @@ export class Audio {
 
   chime(index: number) {
     this.one(`chime_${index % 6}`, 0.7);
+  }
+
+  /** A lantern's note: eight steps, the top two an octave-ish above. */
+  note(k: number) {
+    this.one(`chime_${k % 6}`, 0.7, k >= 6 ? 1.5 : 1);
+  }
+
+  /** A wrong note: two chimes slowed into a sour low clash. */
+  discord() {
+    this.one('chime_0', 0.5, 0.5);
+    this.one('chime_3', 0.4, 0.53);
   }
 
   memory() {
@@ -258,6 +279,10 @@ export class Audio {
     set('wind', 0.12 + Math.min(0.6, mix.altitude / 400) + (mix.inBoat ? 0.15 : 0));
     set('jungle', mix.jungle * 0.6 * (1 - mix.sea * 0.4));
     // The generated pad only fills in when no composed track is sounding.
-    set('music', this.music.active ? 0 : 0.2 * this.musicDuck);
+    const dread = mix.dread ?? 0;
+    set('music', this.music.active ? 0 : 0.2 * this.musicDuck * (1 - dread));
+    // Nightmares near: the dread rises and the score sinks under it.
+    this.loops.get('dread')!.gain.setTargetAtTime(Math.pow(dread, 0.7) * 0.95, now, dread > 0.05 ? 0.8 : 2.5);
+    this.music.setDread(dread);
   }
 }

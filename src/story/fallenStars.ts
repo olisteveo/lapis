@@ -16,6 +16,10 @@ interface Star {
   landT: number;
   collected: boolean;
   carried: boolean;
+  /** Tutorial stars send up a column of light; the rest must be found. */
+  beacon: boolean;
+  /** Hidden until revealed (inside a wonder, behind a puzzle, or still to fall in the opening). */
+  held: boolean;
   flightFrom: THREE.Vector3;
   flight: number;
   target: THREE.Vector3;
@@ -30,13 +34,12 @@ export class FallenStars {
   private stars: Star[] = [];
   private light = new THREE.PointLight(PALETTE.starGold, 3, 22, 1.6);
   private pillarTarget = 0;
-  onArrive: ((index: number) => void) | null = null;
+  onArrive: ((id: string) => void) | null = null;
 
-  constructor(ids: string[], spots: P[], height: (x: number, z: number) => number) {
+  constructor(entries: { id: string; pos: P; beacon: boolean }[], height: (x: number, z: number) => number) {
     this.group.name = 'fallenStars';
     this.group.add(this.light);
-    ids.forEach((id, i) => {
-      const s = spots[i];
+    entries.forEach(({ id, pos: s, beacon }, i) => {
       const y = Math.max(height(s.x, s.z), 0) + 1.1;
       const home = new THREE.Vector3(s.x, y, s.z);
       const alpha = uniform(1);
@@ -46,9 +49,11 @@ export class FallenStars {
 
       const coreMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
       const tw = sin(time.mul(2.3).add(i * 1.7)).mul(0.15).add(1);
-      coreMat.colorNode = vec4(mix(color(PALETTE.starWhite), color(PALETTE.starGold), 0.4).mul(starShape(uv(), float(0.9), float(0.5))).mul(tw).mul(2.6).mul(alpha), 1);
+      // Unmarked stars only show themselves when you are close: a glint in the undergrowth, not a beacon.
+      const seen: any = beacon ? float(1) : smoothstep(75, 25, length(positionWorld.sub(cameraPosition)));
+      coreMat.colorNode = vec4(mix(color(PALETTE.starWhite), color(PALETTE.starGold), 0.4).mul(starShape(uv(), float(0.9), float(0.5))).mul(tw).mul(beacon ? 2.6 : 1.6).mul(alpha).mul(seen), 1);
       const core = new THREE.Sprite(coreMat);
-      core.scale.setScalar(1.3);
+      core.scale.setScalar(beacon ? 1.3 : 0.9);
 
       const pillarMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
       const d = length(positionWorld.xz.sub(cameraPosition.xz));
@@ -63,9 +68,10 @@ export class FallenStars {
       pillar.scale.set(2.2, 90, 1);
       pillar.position.y = -1;
 
+      pillar.visible = beacon;
       group.add(core, pillar);
       this.group.add(group);
-      this.stars.push({ id, index: i, home, group, core, pillar, alpha, pillarAlpha, landT: -1, collected: false, carried: false, flightFrom: new THREE.Vector3(), flight: -1, target: new THREE.Vector3() });
+      this.stars.push({ id, index: i, home, group, core, pillar, alpha, pillarAlpha, landT: -1, collected: false, carried: false, beacon, held: false, flightFrom: new THREE.Vector3(), flight: -1, target: new THREE.Vector3() });
     });
   }
 
@@ -81,7 +87,18 @@ export class FallenStars {
   /** Keep a star out of the world until the opening shows it falling. */
   hold(index: number) {
     const s = this.stars[index];
-    if (s && !s.collected) s.group.visible = false;
+    if (s && !s.collected) {
+      s.group.visible = false;
+      s.held = true;
+    }
+  }
+
+  indexOf(id: string) {
+    return this.stars.findIndex((s) => s.id === id);
+  }
+
+  isHeld(id: string) {
+    return !!this.stars.find((s) => s.id === id)?.held;
   }
 
   position(index: number) {
@@ -92,7 +109,8 @@ export class FallenStars {
   land(index: number) {
     const s = this.stars[index];
     // Already down (seen falling in the opening): don't replay the arrival.
-    if (!s || s.collected || (s.group.visible && s.pillarAlpha.value > 0.5)) return;
+    if (!s || s.collected || (!s.held && s.group.visible && s.pillarAlpha.value > 0.5)) return;
+    s.held = false;
     s.group.visible = true;
     s.landT = 0;
   }
@@ -107,22 +125,22 @@ export class FallenStars {
 
   /** Where the uncollected, not carried stars lie (for the map). */
   get waiting() {
-    return this.stars.filter((s) => !s.collected && !s.carried).map((s) => s.home);
+    return this.stars.filter((s) => !s.collected && !s.carried && !s.held).map((s) => s.home);
   }
 
-  /** Nearest uncollected star to the player. */
-  nearest(x: number, z: number) {
+  /** Nearest uncollected, revealed star to the player (optionally only the tutorial ones). */
+  nearest(x: number, z: number, beaconsOnly = false) {
     let best: Star | null = null;
     let bd = Infinity;
     for (const s of this.stars) {
-      if (s.collected) continue;
+      if (s.collected || s.held || (beaconsOnly && !s.beacon)) continue;
       const d = Math.hypot(s.home.x - x, s.home.z - z);
       if (d < bd) {
         bd = d;
         best = s;
       }
     }
-    return best ? { id: best.id, index: best.index, dist: bd, pos: best.home } : null;
+    return best ? { id: best.id, index: best.index, dist: bd, pos: best.home, beacon: best.beacon } : null;
   }
 
   /** Lift the star away toward its place in the constellation. */
@@ -152,8 +170,8 @@ export class FallenStars {
     if (!s || !s.carried) return;
     s.carried = false;
     s.collected = false;
-    s.core.scale.setScalar(1.3);
-    s.pillar.visible = true;
+    s.core.scale.setScalar(s.beacon ? 1.3 : 0.9);
+    s.pillar.visible = s.beacon;
     s.group.visible = true;
     s.group.position.copy(s.home);
     s.landT = 0;
@@ -181,7 +199,7 @@ export class FallenStars {
         if (s.flight >= 1) {
           s.flight = -1;
           s.group.visible = false;
-          this.onArrive?.(s.index);
+          this.onArrive?.(s.id);
         }
         continue;
       }
