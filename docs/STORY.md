@@ -87,8 +87,9 @@ These clues are non-negotiable. The twist only works if a second playthrough rev
 Memory age progression: Coral Shore (age 5-8) -> Sparkling Lake (9-12) -> Karst Peaks (13-17) -> River of Light (the storm night).
 
 ### Prologue -- the beach
-- Opening shot: looking straight up at the sky. A star falls, streaks across and hits the sea.
-- Camera tilts down to the Keeper lying in the surf.
+- Storybook on black, lines accumulating like a page: "Every night, she asked for the same story. / The one about the islands where the stars fall into the sea, / and the palms glow pink from drinking their light. / It always ended the same way. / If you're ever lost, find the bright one."
+- First person: on your back in the surf, looking straight up. A star falls and lands on the sand in front of you; its light rises.
+- You sit up facing the sea: the fallen star, the footprints, the boat's lantern, The Boat faint overhead.
 - Discover: the boat with the carved seat, the note, the small footprints into the sea.
 - First falling-star event teaches that the sky is going out.
 

@@ -12,6 +12,8 @@ interface Star {
   core: THREE.Sprite;
   pillar: THREE.Sprite;
   alpha: { value: number };
+  pillarAlpha: { value: number };
+  landT: number;
   collected: boolean;
   flight: number;
   target: THREE.Vector3;
@@ -25,6 +27,7 @@ export class FallenStars {
   readonly group = new THREE.Group();
   private stars: Star[] = [];
   private light = new THREE.PointLight(PALETTE.starGold, 3, 22, 1.6);
+  private pillarTarget = 0;
   onArrive: ((index: number) => void) | null = null;
 
   constructor(ids: string[], spots: P[], height: (x: number, z: number) => number) {
@@ -35,6 +38,7 @@ export class FallenStars {
       const y = Math.max(height(s.x, s.z), 0) + 1.1;
       const home = new THREE.Vector3(s.x, y, s.z);
       const alpha = uniform(1);
+      const pillarAlpha = uniform(0);
       const group = new THREE.Group();
       group.position.copy(home);
 
@@ -51,7 +55,7 @@ export class FallenStars {
       const across = exp(abs(uv().x.sub(0.5)).mul(-14));
       const up = float(1).sub(uv().y).pow(1.6);
       const shimmer = sin(uv().y.mul(40).sub(time.mul(1.5))).mul(0.15).add(0.85);
-      pillarMat.colorNode = vec4(color(PALETTE.starGold).mul(across.mul(up).mul(shimmer).mul(reach).mul(0.55)).mul(alpha), 1);
+      pillarMat.colorNode = vec4(color(PALETTE.starGold).mul(across.mul(up).mul(shimmer).mul(reach).mul(0.55)).mul(alpha).mul(pillarAlpha), 1);
       const pillar = new THREE.Sprite(pillarMat);
       pillar.center.set(0.5, 0);
       pillar.scale.set(2.2, 90, 1);
@@ -59,8 +63,36 @@ export class FallenStars {
 
       group.add(core, pillar);
       this.group.add(group);
-      this.stars.push({ id, index: i, home, group, core, pillar, alpha, collected: false, flight: -1, target: new THREE.Vector3() });
+      this.stars.push({ id, index: i, home, group, core, pillar, alpha, pillarAlpha, landT: -1, collected: false, flight: -1, target: new THREE.Vector3() });
     });
+  }
+
+  private pillarHeight() {
+    return this.pillarTarget > 0 ? 90 : 7;
+  }
+
+  /** Pillars stay dark through the opening and rise once you're up and exploring. */
+  showPillars(on: boolean) {
+    this.pillarTarget = on ? 1 : 0;
+  }
+
+  /** Keep a star out of the world until the opening shows it falling. */
+  hold(index: number) {
+    const s = this.stars[index];
+    if (s && !s.collected) s.group.visible = false;
+  }
+
+  position(index: number) {
+    return this.stars[index]?.home;
+  }
+
+  /** The star arrives: a flash where it lands, then its column of light climbs. */
+  land(index: number) {
+    const s = this.stars[index];
+    // Already down (seen falling in the opening): don't replay the arrival.
+    if (!s || s.collected || (s.group.visible && s.pillarAlpha.value > 0.5)) return;
+    s.group.visible = true;
+    s.landT = 0;
   }
 
   markCollected(ids: Set<string>) {
@@ -118,6 +150,19 @@ export class FallenStars {
         continue;
       }
       if (s.collected) continue;
+      if (s.landT >= 0) {
+        s.landT += dt;
+        const k = s.landT;
+        // A bright flash that settles, and the pillar growing up out of it.
+        s.alpha.value = 1 + Math.max(0, 3.5 * Math.exp(-k * 2.5));
+        s.pillar.scale.y = this.pillarHeight() * Math.min(1, k / 2.5) ** 0.6;
+        s.pillarAlpha.value = Math.min(1, k / 1.2);
+        if (k > 4) s.landT = -1;
+      } else {
+        // Short while you lie watching it land; full height once you're up and exploring.
+        s.pillar.scale.y += (this.pillarHeight() - s.pillar.scale.y) * Math.min(1, dt * 0.6);
+        s.pillarAlpha.value += (Math.max(this.pillarTarget, s.pillarAlpha.value > 0.99 ? 1 : 0) - s.pillarAlpha.value) * Math.min(1, dt * 0.8);
+      }
       s.group.position.set(s.home.x, s.home.y + Math.sin(t * 1.2 + s.index) * 0.12, s.home.z);
       const d = camera.position.distanceTo(s.home);
       if (d < ld) {

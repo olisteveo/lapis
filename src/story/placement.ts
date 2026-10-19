@@ -83,14 +83,14 @@ export function layoutPrologue(hf: Heightfield, spawn: P): PrologueLayout {
   const note = search({ x: (spawn.x + boat.x) / 2, z: (spawn.z + boat.z) / 2 }, 0, 10,
     (x, z) => h(x, z) > 0.2 && h(x, z) < 1.2, (x, z) => -Math.abs(dist({ x, z }, spawn) - 5)) ?? { x: spawn.x + side.x * 4, z: spawn.z + side.z * 4 };
 
-  const land = { x: -sea.x, z: -sea.z };
   const stars: P[] = [];
   const used = (x: number, z: number) => stars.every((s) => dist(s, { x, z }) > 60);
   const pushStar = (p: P | null, fallback: P) => stars.push(p ?? fallback);
 
-  // 1: right in front of you when you sit up, on the sand by the palms.
-  pushStar(search(spawn, 22, 45, (x, z) => h(x, z) > 0.4 && h(x, z) < 4 && slope(x, z) < 1.5,
-    (x, z) => (x - spawn.x) * land.x + (z - spawn.z) * land.z), { x: spawn.x + land.x * 30, z: spawn.z + land.z * 30 });
+  // 1: the star you watch fall in the opening. It lands on the sand in front of you, toward the sea.
+  pushStar(search(spawn, 14, 30, (x, z) => h(x, z) > 0.15 && h(x, z) < 2.5 && slope(x, z) < 1.5,
+    (x, z) => ((x - spawn.x) * sea.x + (z - spawn.z) * sea.z) / Math.hypot(x - spawn.x, z - spawn.z) - Math.abs(Math.hypot(x - spawn.x, z - spawn.z) - 20) * 0.02),
+    { x: spawn.x + sea.x * 20, z: spawn.z + sea.z * 20 });
   // 2: in the shallows by the boat, so you meet the boat while chasing it.
   pushStar(search(boat, 5, 14, (x, z) => h(x, z) < -0.15 && h(x, z) > -0.7, (x, z) => -dist({ x, z }, boat)), { x: boat.x + side.x * 6, z: boat.z + side.z * 6 });
   // 3: along the beach.
@@ -98,7 +98,7 @@ export function layoutPrologue(hf: Heightfield, spawn: P): PrologueLayout {
     (x, z) => Math.abs((x - spawn.x) * side.x + (z - spawn.z) * side.z)), { x: spawn.x + side.x * 150, z: spawn.z + side.z * 150 });
   // 4: in the grove, under the glowing palms.
   pushStar(search(spawn, 80, 170, (x, z) => { const s = hf.sample(x, z); return s.grove > 0.45 && s.height > 3 && s.height < 30 && slope(x, z) < 2 && used(x, z); },
-    (x, z) => hf.sample(x, z).grove), { x: spawn.x + land.x * 120, z: spawn.z + land.z * 120 });
+    (x, z) => hf.sample(x, z).grove), { x: spawn.x - sea.x * 120, z: spawn.z - sea.z * 120 });
   // 5: across the water, on a far shore. Walk around or row.
   pushStar(search(spawn, 260, 480, (x, z) => {
     if (h(x, z) < 0.2 || h(x, z) > 1.6 || !used(x, z)) return false;

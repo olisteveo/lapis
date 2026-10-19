@@ -15,6 +15,8 @@ type N = any;
 const SWATCHES = [
   0x0b0e07, 0x0e1b2e, 0x132340, 0x1e3156, 0x173b73, 0x27538e, 0x2846c8, 0x4b6ea1,
   0x8196b8, 0x815f5e, 0xb35d3d, 0xbf7e77, 0xff6e50, 0xffb866, 0xc9a2a3, 0xd6cbcb, 0xf2e6d8,
+  // Jungle greens from refs 2 and 3, so the forest doesn't collapse into navy.
+  0x0f2620, 0x1c3d33, 0x2f5a4c,
 ];
 
 function srgbToOklab(hex: number): [number, number, number] {
@@ -67,10 +69,17 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const dist = length(viewPos) as N;
   const isSky = depth.greaterThan(0.99999);
   const drift = mx_fractal_noise_float(vec3(world.x.mul(0.004), time.mul(0.015), world.z.mul(0.004)), 3) as N;
-  const layer = exp(max(world.y.sub(drift.mul(10).add(2)), 0).div(-16));
-  const mistAmt = select(isSky, float(0), float(1).sub(exp(dist.mul(-0.0014))).mul(layer).mul(0.3));
+  // Ground mist hugs whatever ground you're on (not just sea level), so near layers of
+  // jungle separate into paler blues as they recede.
+  const camY = uniform(camera.position, 'vec3').y as N;
+  const localFloor = mix(drift.mul(10).add(2), camY.sub(1.6).add(drift.mul(3)), smoothstep(400, 80, dist));
+  const layer = exp(max(world.y.sub(localFloor), 0).div(-14));
+  const mistAmt = select(isSky, float(0), float(1).sub(exp(dist.mul(-0.0045))).mul(layer).mul(0.38));
   const mistCol = mix(vec3(0.07, 0.1, 0.32), vec3(0.2, 0.2, 0.42), drift.mul(0.5).add(0.5));
-  const hdr = mix(sceneColor.rgb, mistCol, mistAmt).add(glow.rgb);
+  // Luminous grain: glow arrives as coarse printed grain, not a smooth lens haze.
+  const gcell = floor(px.div(2)) as N;
+  const grainy = hash(gcell.x.add(gcell.y.mul(6151)).add(boil.mul(3.7))).mul(1.5).add(0.25);
+  const hdr = mix(sceneColor.rgb, mistCol, mistAmt).add(glow.rgb.mul(mix(float(1), grainy, 0.75)));
   const mapped = renderOutput(vec4(hdr, 1)).rgb as N;
   // Paint contrast: deepen the darks and lift the lights, the paintings never sit in mid-grey.
   const curved = mapped.mul(mapped).mul(float(3).sub(mapped.mul(2))).mul(0.55).add(mapped.mul(0.45));
@@ -193,12 +202,28 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const relief = chx.sub(ch).mul(-0.7).add(chy.sub(ch).mul(0.7));
   c = c.mul(relief.mul(0.9).add(1)).mul(ch.mul(0.16).add(0.9));
 
-  // ---- 8. Vignette and grain.
+  // ---- 8. Ordered dither in the deepest shadows: dark jungle reads as printed texture.
+  const bayer2 = (a: N) => fract(a.x.mul(0.5).add(a.y.mul(a.y).mul(0.75)));
+  const bayer4 = (a: N) => bayer2(a.mul(0.5)).mul(0.25).add(bayer2(a));
+  const dl = luminance(c);
+  const levels = float(7);
+  const ditherStep = select(fract(dl.mul(levels)).greaterThan(bayer4(floor(px))), float(1), float(-1));
+  c = c.mul(ditherStep.mul(0.07).mul(smoothstep(0.22, 0.04, dl)).mul(paint).add(1));
+
+  // ---- 9. Memory: while her voice plays the world washes into a grainy indigo duotone,
+  // like a risograph print of something remembered rather than seen.
+  const memoryMix = uniform(0);
+  const rcell = floor(px.div(1.5)) as N;
+  const riso = hash(rcell.x.add(rcell.y.mul(3967)).add(boil.mul(5.3))).sub(0.5).mul(0.12);
+  const duo = mix(pow(color(0x161a52), vec3(1 / 2.2)), pow(color(0xc4c8f4), vec3(1 / 2.2)), smoothstep(0.04, 0.85, luminance(c).add(riso)));
+  c = mix(c, duo, memoryMix.mul(0.85));
+
+  // ---- 10. Vignette and grain.
   const v = length(screenUV.sub(0.5).mul(vec2(1.1, 1)));
   c = mix(pow(color(PALETTE.zenith), vec3(1 / 2.2)).mul(0.7), c, smoothstep(0.9, 0.3, v).mul(0.3).add(0.7));
   c = c.add(hash(px.x.add(px.y.mul(4096)).add(boil.mul(31))).sub(0.5).mul(0.025));
 
   pipeline.outputNode = vec4(min(c, vec3(1)), 1);
   pipeline.outputColorTransform = false;
-  return { pipeline, paint, boilRate };
+  return { pipeline, paint, boilRate, memoryMix };
 }

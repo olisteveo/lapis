@@ -23,16 +23,16 @@ const TYPES: Record<string, TypeCfg> = {
   PalmLean: { hi: FLORA.hiRadius, far: 1200, sway: 0.45 },
   PalmYoung: { hi: FLORA.hiRadius, far: 500, sway: 0.35 },
   // Beyond ~700m the terrain's jungle shading and the fog carry the canopy on their own.
-  CanopyA: { hi: 120, far: 700, sway: 0.25 },
-  CanopyB: { hi: 120, far: 700, sway: 0.25 },
-  Understory: { hi: 80, far: 260, sway: 0.2 },
-  TreeFern: { hi: 80, far: 260, sway: 0.25 },
+  CanopyA: { hi: 70, far: 480, sway: 0.25 },
+  CanopyB: { hi: 70, far: 480, sway: 0.25 },
+  Understory: { hi: 50, far: 220, sway: 0.2 },
+  TreeFern: { hi: 50, far: 220, sway: 0.25 },
   Banana: { hi: 70, far: 220, sway: 0.3 },
   Vines: { hi: 70, far: 140, sway: 0.4 },
-  FernA: { hi: 45, far: 110, sway: 0.15 },
-  FernB: { hi: 45, far: 110, sway: 0.15 },
+  FernA: { hi: 30, far: 90, sway: 0.15 },
+  FernB: { hi: 30, far: 90, sway: 0.15 },
   Groundcover: { hi: 40, far: 90, sway: 0.1 },
-  Bush0: { hi: 60, far: 250, sway: 0.1 },
+  Bush0: { hi: 45, far: 170, sway: 0.1 },
   Bush1: { hi: 60, far: 300, sway: 0.1 },
 };
 
@@ -204,14 +204,15 @@ export class Flora implements Colliders {
     } else {
       const dark = partName.includes('core') || partName.includes('bark') || partName === 'trunk_dark';
       const baseCol = mix(color(PALETTE.jungle), color(PALETTE.jungleLit), vc.r.mul(0.6).add(variety.mul(0.4)));
-      col = baseCol.mul(lambert.mul(0.75).add(0.2)).mul(dark ? 0.55 : 1);
-      // Cool moon sheen on upward-facing leaves.
-      col = col.add(vec3(0.05, 0.08, 0.2).mul(saturate(n.y)).mul(0.25));
+      // Keep foliage low and green: lit faces only lift a little, so the jungle reads as a
+      // dark green mass (refs 2, 3) instead of frosted blue leaves.
+      col = baseCol.mul(lambert.mul(0.45).add(0.22)).mul(dark ? 0.55 : 1);
+      col = col.add(vec3(0.02, 0.05, 0.08).mul(saturate(n.y)).mul(0.25));
       if (partName === 'fern' || partName === 'leaf_broad') {
         // Faint starlight caught in the frond tips: lets you read the jungle floor in the dark.
         const tip = vc.r.mul(vc.r).mul(vc.r).mul(vc.g);
         const pulse = sin(time.mul(0.8).add(variety.mul(30))).mul(0.25).add(0.75);
-        col = col.add(vec3(0.12, 0.3, 0.75).mul(tip).mul(pulse).mul(partName === 'fern' ? 0.55 : 0.2));
+        col = col.add(vec3(0.2, 0.6, 0.85).mul(tip).mul(pulse).mul(partName === 'fern' ? 1.1 : 0.35));
       }
     }
     mat.colorNode = col.mul(fade.mul(0.3).add(0.7));

@@ -43,6 +43,8 @@ export class Story {
   private skyTimer = 90;
   private glowTarget = 1;
   private wasBoat = false;
+  /** Fired when a memory plays, with its duration in seconds (drives the duotone wash). */
+  onMemory: ((seconds: number) => void) | null = null;
 
   constructor(
     private layout: PrologueLayout,
@@ -70,6 +72,25 @@ export class Story {
       this.boat.light(i);
       if (this.boat.isComplete) this.onConstellationComplete();
     };
+  }
+
+  /** Opening: hide the first star until it's seen to fall, and keep pillars dark. */
+  prepareOpening() {
+    if (!this.save.collected.includes(THE_BOAT.fragments[0].id)) this.stars.hold(0);
+    this.stars.showPillars(false);
+  }
+
+  get firstStarPosition() {
+    return this.stars.position(0);
+  }
+
+  landFirstStar() {
+    this.stars.land(0);
+  }
+
+  beginPlay() {
+    this.stars.showPillars(true);
+    this.stars.land(0);
   }
 
   /** Yaw that faces the sea from the spawn: the boat, the footprints and The Boat overhead. */
@@ -173,6 +194,7 @@ export class Story {
     this.audio.chime(index);
     this.audio.memory();
     this.narrative.say(fragment.line, 'memory');
+    this.onMemory?.(8);
     const n = this.save.collected.length;
     if (n === 1) this.narrative.say(LINES.firstStar);
     if (n === 3) this.narrative.say(LINES.atSea);

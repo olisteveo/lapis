@@ -7,6 +7,7 @@ import { createWater } from './world/water';
 import { createSky } from './world/sky';
 import { createSparkles } from './world/sparkles';
 import { createMotes } from './world/motes';
+import { Moonbeams } from './world/moonbeams';
 import { Flora } from './world/flora';
 import { createPost } from './render/post';
 import { PlayerController } from './game/player';
@@ -52,10 +53,11 @@ async function boot() {
   const sky = createSky();
   const sparkles = createSparkles();
   const motes = createMotes();
+  const beams = new Moonbeams(hf);
   const flora = new Flora(pool, SEED);
   const avatar = new Avatar();
   // First person: the Keeper's body is never added to the scene.
-  scene.add(sky.group, terrain.group, water.mesh, water.target, sparkles.group, flora.group, avatar.boat, motes);
+  scene.add(sky.group, terrain.group, water.mesh, water.target, sparkles.group, flora.group, avatar.boat, motes, beams.group);
 
   const spawn = findSpawn(hf);
   const layout = layoutPrologue(hf, spawn);
@@ -76,6 +78,7 @@ async function boot() {
     const mirror = cam !== camera;
     sparkles.group.visible = !mirror;
     motes.visible = !mirror;
+    beams.group.visible = !mirror;
     flora.setMirror(mirror);
     proxy.node.value = mirror || settleFrames > 0 ? proxy.dummy : water.reflection.value;
   };
@@ -83,6 +86,7 @@ async function boot() {
     if (cam !== camera) {
       sparkles.group.visible = true;
       motes.visible = true;
+      beams.group.visible = true;
       flora.setMirror(false);
       proxy.node.value = settleFrames > 0 ? proxy.dummy : water.reflection.value;
     }
@@ -91,6 +95,8 @@ async function boot() {
   const input = new Input(renderer.domElement);
   const rig = new CameraRig(camera, hf);
   const post = createPost(renderer, scene, camera);
+  let memoryUntil = 0;
+  story.onMemory = (seconds) => (memoryUntil = performance.now() / 1000 + seconds);
 
   await Promise.all([
     avatar.load('/models/keeper.glb', '/models/boat.glb').then(() => avatar.keeperGltf && story.loadFigure(avatar.keeperGltf)),
@@ -123,6 +129,14 @@ async function boot() {
   input.yaw = story.wakeYaw;
   input.pitch = -0.04;
   const fade = $('fade');
+  story.prepareOpening();
+  if (state === 'play') story.beginPlay();
+  const beginWake = () => {
+    INTRO_DARK = introT + 0.4;
+    INTRO_END = INTRO_DARK + WAKE_LEN;
+    fade.style.transitionDuration = '2.5s';
+    fade.style.opacity = '0';
+  };
   input.onFirstGesture = () => {
     if (state !== 'title') return;
     state = 'intro';
@@ -131,17 +145,20 @@ async function boot() {
     $('title').style.opacity = '0';
     fade.style.transitionDuration = '0.8s';
     fade.style.opacity = '1';
-    setTimeout(() => STORYBOOK.forEach((line) => story.narrative.say(line, 'whisper')), 1200);
+    setTimeout(() => story.narrative.storybook(STORYBOOK, beginWake), 900);
   };
   const skipIntro = () => {
-    INTRO_DARK = Math.min(INTRO_DARK, introT);
-    INTRO_END = INTRO_DARK + WAKE_LEN;
+    if (story.narrative.inStorybook) {
+      story.narrative.skipStorybook();
+      return;
+    }
+    if (INTRO_DARK > 900) beginWake();
     introT = INTRO_END;
     fade.style.opacity = '0';
   };
   let ePressed = false;
   addEventListener('keydown', (e) => {
-    if (e.code === 'Escape' && state === 'intro') skipIntro();
+    if ((e.code === 'Escape' || e.code === 'Space') && state === 'intro') skipIntro();
     if (e.code === 'KeyE' && !e.repeat) ePressed = true;
   });
   rig.onStep = (speed) => {
@@ -179,7 +196,9 @@ async function boot() {
   const clock = new THREE.Timer();
   const focus = new THREE.Vector3();
 
-  renderer.setAnimationLoop(() => {
+  let lastFrame = 0;
+  const frame = () => {
+    lastFrame = performance.now();
     if (settleFrames > 0) settleFrames--;
     fitCanvas();
     clock.update();
@@ -192,18 +211,16 @@ async function boot() {
       if (state === 'intro') introT += dt;
       rig.intro(Math.max(0, introT - INTRO_DARK), player, input);
       if (state === 'intro') {
-        if (INTRO_DARK > 900 && introT > 3 && !story.narrative.busy) {
-          INTRO_DARK = introT + 0.8;
-          INTRO_END = INTRO_DARK + WAKE_LEN;
-          setTimeout(() => {
-            fade.style.transitionDuration = '2.5s';
-            fade.style.opacity = '0';
-          }, 600);
-        }
         if (!shot && introT > INTRO_DARK + 2.6) {
           shot = true;
-          sky.shooting.fire(new THREE.Vector3(-0.55, 0.85, -0.6), new THREE.Vector3(0.25, 0.08, -1));
+          // The star you watch fall comes down onto the beach in front of you.
+          const land = story.firstStarPosition;
+          const to = land ? land.clone().sub(camera.position).normalize() : new THREE.Vector3(0.25, 0.08, -1);
+          to.y = Math.max(to.y, 0.02);
+          const from = to.clone().multiplyScalar(-0.35).add(new THREE.Vector3(0, 1, 0)).normalize();
+          sky.shooting.fire(from, to);
           audio.starFall();
+          setTimeout(() => story.landFirstStar(), 1500);
         }
         if (!titleShown && introT > INTRO_DARK + 4) {
           titleShown = true;
@@ -213,7 +230,8 @@ async function boot() {
         if (introT >= INTRO_END) {
           state = 'play';
           $('title').style.opacity = '0';
-          story.narrative.say('WASD  walk      mouse  look      shift  run      E  use', 'hint', 7);
+          story.beginPlay();
+          story.narrative.say('WASD walk  ·  mouse look  ·  shift run  ·  E use', 'hint', 7);
           story.narrative.say(LINES.stakes);
         }
       }
@@ -236,6 +254,8 @@ async function boot() {
       }
     }
     story.update(dt, player, camera, state === 'play');
+    const memTarget = performance.now() / 1000 < memoryUntil ? 1 : 0;
+    post.memoryMix.value += (memTarget - post.memoryMix.value) * Math.min(1, dt * (memTarget ? 1.2 : 0.7));
     audio.update(story.audioMix(player));
     const promptEl = $('prompt');
     const prompt = story.currentPrompt || player.prompt;
@@ -247,6 +267,7 @@ async function boot() {
     focus.copy(camera.position);
     terrain.update(focus);
     flora.update(focus, now);
+    beams.update(dt, focus);
     water.update(focus);
     camera.updateMatrixWorld();
     // A hidden or collapsed canvas has zero size; rendering then invalidates every target.
@@ -261,7 +282,11 @@ async function boot() {
       frames = 0;
       fpsT = 0;
     }
-  });
+  };
+  renderer.setAnimationLoop(frame);
+  // Debug only: hidden or occluded windows stop getting animation frames; keep ticking so
+  // tooling can still watch the game.
+  if (debug) setInterval(() => performance.now() - lastFrame > 120 && frame(), 33);
 }
 
 boot().catch((err) => {

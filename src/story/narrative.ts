@@ -50,6 +50,56 @@ export class Narrative {
     return this.center.phase !== 'idle' || this.center.queue.length > 0;
   }
 
+  private book: { el: HTMLElement; lines: string[]; shown: number; t: number; done: () => void; closing: number } | null = null;
+
+  /**
+   * The bedtime story, told as a page: each line fades in and stays, then the page goes.
+   * Calls `done` when it has faded out (or been skipped).
+   */
+  storybook(lines: string[], done: () => void) {
+    const el = document.createElement('div');
+    el.id = 'storybook';
+    document.body.appendChild(el);
+    this.book = { el, lines, shown: 0, t: 0.6, done, closing: -1 };
+  }
+
+  skipStorybook() {
+    if (this.book && this.book.closing < 0) this.book.closing = 0;
+  }
+
+  get inStorybook() {
+    return this.book !== null;
+  }
+
+  private stepBook(dt: number) {
+    const b = this.book;
+    if (!b) return;
+    b.t += dt;
+    if (b.closing < 0) {
+      if (b.shown < b.lines.length && b.t > 2.7) {
+        const p = document.createElement('p');
+        p.textContent = b.lines[b.shown];
+        // The last line is the rule; set it apart.
+        if (b.shown === b.lines.length - 1) p.className = 'rule';
+        b.el.appendChild(p);
+        void p.offsetWidth;
+        p.style.opacity = '1';
+        b.shown++;
+        b.t = 0;
+      } else if (b.shown === b.lines.length && b.t > 3.6) {
+        b.closing = 0;
+      }
+      return;
+    }
+    if (b.closing === 0) b.el.style.opacity = '0';
+    b.closing += dt;
+    if (b.closing > 1.8) {
+      b.el.remove();
+      this.book = null;
+      b.done();
+    }
+  }
+
   /** Quiet objective in the corner of the screen. */
   objective(title: string, done: number, total: number) {
     let el = document.getElementById('objective');
@@ -89,6 +139,7 @@ export class Narrative {
       this.noteT += dt;
       if (this.noteT > 9) this.dismiss();
     }
+    this.stepBook(dt);
     for (const ch of [this.center, this.lower]) this.step(ch, dt);
   }
 
