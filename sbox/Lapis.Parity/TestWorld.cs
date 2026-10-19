@@ -94,10 +94,19 @@ public sealed class TestWorld : IWorldQuery, IColliders, IPlatforms
         return best;
     }
 
-    public bool Blocked(double x, double z, double y)
+    public double Ceiling(double x, double z, double y)
+    {
+        if (!TowerLocal(x, z, out var r, out var phi)) return double.PositiveInfinity;
+        var h = y - Tower.Y;
+        var best = double.PositiveInfinity;
+        foreach (var s in TowerSurfaces(r, phi))
+            if (s - 0.32 > h + 0.55 && s - 0.32 < best) best = s - 0.32;
+        return Tower.Y + best;
+    }
+
+    public bool Blocked(double x, double z, double y, double b = 0.35)
     {
         if (!TowerLocal(x, z, out var r, out var phi)) return false;
-        const double b = 0.35;
         var h = y - Tower.Y;
         if (r < Newel + b && h < 12) return true;
         if (r > WallIn - b && r < WallOut + b && h < 12)

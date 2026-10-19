@@ -3,6 +3,7 @@ import { color, float, hash, length, mix, positionLocal, positionWorld, sin, smo
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE } from '../config';
 import { drawnSurface } from '../render/drawn';
+import { interiorShade, masonry } from '../render/lighthouseShading';
 import { BIOMES, LIGHTHOUSE, WORLD_HALF, type Heightfield } from '../core/heightfield';
 import type { Colliders } from '../core/player';
 
@@ -51,7 +52,7 @@ export function layoutLandmarks(hf: Heightfield, spawn: { x: number; z: number }
   const slope = (x: number, z: number) => Math.abs(h(x + 2, z) - h(x - 2, z)) + Math.abs(h(x, z + 2) - h(x, z - 2));
   const far = (x: number, z: number, d: number) => out.every((p) => Math.hypot(p.x - x, p.z - z) > d);
 
-  out.push({ type: 'Lighthouse', x: LIGHTHOUSE.x, y: h(LIGHTHOUSE.x, LIGHTHOUSE.z) - 0.4, z: LIGHTHOUSE.z, yaw: 0.6, scale: 1 });
+  out.push({ type: 'Lighthouse', x: LIGHTHOUSE.x, y: h(LIGHTHOUSE.x, LIGHTHOUSE.z) - 0.1, z: LIGHTHOUSE.z, yaw: 0.6, scale: 1 });
 
   // Coastal candidates on a jittered grid; spawn's own coast gets denser coverage.
   const coast: { x: number; z: number; sea: { x: number; z: number } }[] = [];
@@ -233,23 +234,35 @@ export class Landmarks implements Colliders {
     }
     const base: Record<string, number> = {
       wood: 0x6b5450, thatch: 0x7a6650, stone: 0x5b6890, rope: 0x8a7a68, sail: 0xe8dfd0,
-      lighthouse_white: 0xd9d2c6, lighthouse_band: PALETTE.coral,
+      lighthouse_white: 0xc9c0b0, lighthouse_band: PALETTE.coral,
       ruin_stone: 0x8a90b8, ruin_moss: 0x3f6a7a, marble: 0xb8b8d8,
     };
-    const tint = color(base[name] ?? 0x34405e);
+    let tint: any = color(base[name] ?? 0x34405e);
+    if (lighthouse && name === 'lighthouse_white') {
+      // The doorway's wall patch is modelled in white to the ground; the base course is stone all round.
+      const lp = positionLocal as any;
+      const course = smoothstep(1.62, 1.58, lp.y).mul(smoothstep(2.95, 3.05, length(lp.xz)));
+      tint = mix(tint, color(base.stone), course);
+    }
     // A cool moonlit lift on top faces so built things read against the dark jungle.
     const moonlit = saturate(normalWorld.y).mul(0.12);
     // Painted colour first, then inked like the rest of the world: flat tones and pen hatching.
     const painted = tint.mul(variety.mul(0.2).add(0.85)).mul(vc.r.mul(0.25).add(0.8)).mul(0.85);
     let col: any = drawnSurface(painted, normalWorld, positionWorld).add(vec3(0.08, 0.1, 0.22).mul(moonlit));
     if (lighthouse) {
-      // Inside the hollow tower no moonlight reaches; the lanterns and windows warm it instead.
       const lp = positionLocal as any;
+      const masoned = name === 'lighthouse_white' || name === 'stone';
+      const ink: any = masoned ? masonry(lp, normalWorld, positionWorld) : float(0);
+      // Weathered at the foot, where spray and moss reach: a darker wash up the first few metres.
+      const foot = smoothstep(0.2, 4.5, lp.y).mul(0.22).add(0.78);
+      col = mix(col.mul(foot), color(0x0b1030), ink.mul(0.42));
+      // Inside the hollow tower no moonlight reaches; the stair lanterns light it in pools.
       const wallR = float(3.2).sub(lp.y.clamp(0, 22).mul(0.8 / 22));
-      const inside = smoothstep(wallR.sub(0.2), wallR.sub(0.45), length(lp.xz)).mul(smoothstep(23.2, 22.8, lp.y));
-      const flicker = sin(time.mul(3.1).add(lp.y.mul(0.7))).mul(0.06).add(0.94);
-      const warm = tint.mul(0.36).add(color(PALETTE.starGold).mul(0.07)).mul(flicker);
-      col = mix(col, warm, inside);
+      const tower = smoothstep(wallR.sub(0.12), wallR.sub(0.3), length(lp.xz)).mul(smoothstep(23.2, 22.8, lp.y));
+      // The lamp room above, inside its glazing and the doorway's wall bay.
+      const lampRoom = smoothstep(2.14, 2.1, length(lp.xz)).mul(smoothstep(22.8, 23.0, lp.y)).mul(smoothstep(26.5, 26.2, lp.y));
+      const inside = tower.max(lampRoom);
+      col = mix(col, interiorShade(tint, lp, positionWorld, ink), inside);
     }
     mat.colorNode = col;
     return mat;

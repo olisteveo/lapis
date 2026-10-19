@@ -152,6 +152,7 @@ npm run build      # typecheck and production build into dist/
 npm run assets     # regenerate every model with headless Blender
 npm run playtest   # headless simulated playtesters (optional run count, e.g. 200)
 npm run check:core # fail if src/core imports anything engine-specific
+npm run probe:lighthouse  # walk the player into every lighthouse wall, stair and rail looking for gaps
 dotnet run --project sbox/Lapis.Parity   # C# port parity against the TypeScript traces
 ```
 

@@ -58,7 +58,7 @@ static Result RunPlayer(JsonElement root)
     var boat = Triple("boat");
     var place = Triple("place");
     p.PlaceBoat(boat[0], boat[1], boat[2]);
-    p.Place(place[0], place[1], place[2]);
+    p.Place(place[0], place[1], place[2], place.Length > 3 ? place[3] : double.PositiveInfinity);
     var events = new List<string>();
     p.Event += e => events.Add(Camel(e));
 
