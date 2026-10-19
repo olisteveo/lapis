@@ -301,6 +301,8 @@ export function createHeightfield(seed = 1337): Heightfield {
     return { meadow: w(BIOMES.meadow), lantern: w(BIOMES.lantern), dunes: w(BIOMES.dunes), drowned };
   }
 
+  const isleTop = 9 + fbm(nDetail, LAKE.x / 12, LAKE.z / 12, 2) * 2.5;
+
   function sample(x: number, z: number): TerrainSample {
     let m = baseMask(x, z);
     m += fbm(nDetail, x / 180, z / 180, 3) * 0.06;
@@ -334,6 +336,8 @@ export function createHeightfield(seed = 1337): Heightfield {
     // The home lighthouse's islet: a rocky knoll in the middle of the lake.
     const isle = smoothstep(70, 18, dLake + fbm(nDetail, x / 25, z / 25, 2) * 8);
     h = Math.max(h, lerp(-16, 9 + fbm(nDetail, x / 12, z / 12, 2) * 2.5, isle));
+    // A level apron for the lighthouse to stand on, so the knoll never pushes up through its plinth.
+    h = lerp(h, isleTop, smoothstep(10, 6, dLake));
 
     // Domes go on after the sea and lake so they can rise straight out of the water.
     const dm = domes(x, z);

@@ -14,7 +14,8 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), '../../sbox/parity');
 const DT = 1 / 60;
 
 interface Setup {
-  place: [number, number, number];
+  /** x, z, heading, and optionally the level on stacked surfaces. */
+  place: [number, number, number] | [number, number, number, number];
   boat: [number, number, number];
   canGlide?: boolean;
 }
@@ -89,6 +90,17 @@ run('spiral_stair', { place: [-14, 0.4, -Math.PI / 2], boat: farBoat }, 14, (p) 
   const tx = oz / r - (ox / r) * (r - 1.5) * 1.5;
   const tz = -ox / r - (oz / r) * (r - 1.5) * 1.5;
   return { moveY: 1, cameraYaw: yawToward(tx, tz) };
+});
+
+// Under the stair: hop until your head bonks the tread above, then shuffle along under lower treads.
+const under = { phi: 4.84, r: 1.5 };
+run('stair_bonk', { place: [TOWER.x + Math.cos(under.phi) * under.r, TOWER.z - Math.sin(under.phi) * under.r, 0, TOWER.y], boat: farBoat }, 8, (p, _i, t) => {
+  const ox = p.x - TOWER.x;
+  const oz = p.z - TOWER.z;
+  const r = Math.hypot(ox, oz);
+  const jump = t % 1 < 0.1;
+  if (t < 4) return { jump };
+  return { moveY: 1, jump, cameraYaw: yawToward(-oz / r, ox / r) };
 });
 
 // Wade out to waist depth, sprint through the shallows, stop at the deep edge, come back.

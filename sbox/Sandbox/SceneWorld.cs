@@ -82,14 +82,21 @@ public sealed class SceneWorld : IWorldQuery, IColliders, IPlatforms
         return tr.Hit ? LapisSpace.FromWorld(tr.HitPosition, _waterLevel).Y : double.NegativeInfinity;
     }
 
-    public bool Blocked(double x, double z, double y)
+    public bool Blocked(double x, double z, double y, double body = PlayerController.BodyRadius)
     {
         // Sweep the body from knee to head; a hit there is a wall, rail or low tread.
-        var radius = (float)PlayerController.BodyRadius * LapisSpace.UnitsPerMetre;
+        var radius = (float)body * LapisSpace.UnitsPerMetre;
         var knee = LapisSpace.ToWorld(x, y + 0.6, z, _waterLevel);
         var head = LapisSpace.ToWorld(x, y + 1.75, z, _waterLevel);
         var tr = _scene.Trace.Sphere(radius, knee, head).WithAnyTags("solid", "platform").IgnoreGameObjectHierarchy(_ignore).Run();
         return tr.Hit || tr.StartedSolid;
+    }
+
+    public double Ceiling(double x, double z, double y)
+    {
+        var head = LapisSpace.ToWorld(x, y + PlayerController.Head, z, _waterLevel);
+        var tr = _scene.Trace.Ray(head, head + Vector3.Up * 4 * LapisSpace.UnitsPerMetre).WithAnyTags("solid", "platform").IgnoreGameObjectHierarchy(_ignore).Run();
+        return tr.Hit ? LapisSpace.FromWorld(tr.HitPosition, _waterLevel).Y : double.PositiveInfinity;
     }
 
     public bool BlocksBoat(double x, double z, double radius)

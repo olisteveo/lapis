@@ -98,7 +98,9 @@ async function boot() {
   player.platforms = {
     top: (x, z, y) => Math.max(stones.top(x, z), climb.top(x, z, y)),
     blocksBoat: (x, z, r) => stones.blocksBoat(x, z, r),
-    blocked: (x, z, y) => climb.blocked(x, z, y),
+    blocked: (x, z, y, body) => climb.blocked(x, z, y, body),
+    ceiling: (x, z, y) => climb.ceiling(x, z, y),
+    push: (x, z, y, body) => climb.push(x, z, y, body),
   };
   const wildlife = new Wildlife(hf);
   const fauna = new Fauna(hf);

@@ -17,6 +17,7 @@ public sealed class PlayerController
     public const double MaxClimb = 1.05; // rise per metre travelled
     public const double StepUp = 0.5; // a ledge you can step onto without jumping
     public const double JumpVelocity = 5.4;
+    public const double Head = 1.75;
     public const double Gravity = 14;
     public const double BoatDraft = -0.4;
     public const double StrokePeriod = 1.7;
@@ -65,9 +66,19 @@ public sealed class PlayerController
     private double Ground(double x, double z, double yRef) =>
         Math.Max(_world.Height(x, z), Platforms?.Top(x, z, yRef) ?? double.NegativeInfinity);
 
-    /// <summary>Push the walker out of trunks and the boat hull, sliding along them rather than stopping.</summary>
+    private void PushOutOfWalls()
+    {
+        if (Platforms?.Push(X, Z, Y, BodyRadius) is { } p)
+        {
+            X = p.X;
+            Z = p.Z;
+        }
+    }
+
+    /// <summary>Push the walker out of walls, trunks and the boat hull, sliding along them rather than stopping.</summary>
     private void Resolve()
     {
+        PushOutOfWalls();
         Colliders?.Near(X, Z, 3, (cx, cz, r) =>
         {
             var dx = X - cx;
@@ -97,11 +108,12 @@ public sealed class PlayerController
         }
     }
 
-    public void Place(double x, double z, double heading)
+    /// <summary>y picks the level on stacked surfaces (a stair): the default is the highest.</summary>
+    public void Place(double x, double z, double heading, double y = double.PositiveInfinity)
     {
         X = x;
         Z = z;
-        Y = Math.Max(Ground(x, z, double.PositiveInfinity), WadeDepth);
+        Y = Math.Max(Ground(x, z, y), WadeDepth);
         Heading = heading;
         Airborne = false;
         VerticalVelocity = 0;
@@ -141,7 +153,7 @@ public sealed class PlayerController
             Speed = 0;
             if (Falling <= 0)
             {
-                Place(_safe.X, _safe.Z, Heading);
+                Place(_safe.X, _safe.Z, Heading, _safe.Y);
                 Event?.Invoke(PlayerEvent.Respawn);
             }
             Prompt = "";
@@ -216,7 +228,13 @@ public sealed class PlayerController
                 VerticalVelocity = -1.6;
                 Speed = Math.Max(Speed, 5.5);
             }
+            var ceiling = VerticalVelocity > 0 ? Platforms?.Ceiling(X, Z, Y) ?? double.PositiveInfinity : double.PositiveInfinity;
             Y += VerticalVelocity * dt;
+            if (Y + Head > ceiling)
+            {
+                Y = Math.Max(ceiling - Head, Y - VerticalVelocity * dt);
+                VerticalVelocity = 0;
+            }
             if (Y <= g && VerticalVelocity <= 0)
             {
                 if (g < WadeDepth)
@@ -231,6 +249,7 @@ public sealed class PlayerController
                 VerticalVelocity = 0;
                 Event?.Invoke(PlayerEvent.Land);
             }
+            PushOutOfWalls();
         }
         else
         {
@@ -279,8 +298,14 @@ public sealed class PlayerController
 
     private bool CanMoveTo(double x, double z, double len)
     {
-        // Never trap anyone: if you are already somewhere counted as blocked, any move is allowed.
-        if (Platforms != null && Platforms.Blocked(x, z, Y) && !Platforms.Blocked(X, Z, Y)) return false;
+        // Never trap anyone: already overlapping something (a respawn, a jump's arc), you may move
+        // anywhere that overlaps no deeper, which lets you slide out but never through a wall.
+        if (Platforms != null && Platforms.Blocked(x, z, Y))
+        {
+            var clear = BodyRadius;
+            while (clear > 0.04 && Platforms.Blocked(X, Z, Y, clear)) clear -= 0.05;
+            if (clear >= BodyRadius || Platforms.Blocked(x, z, Y, clear)) return false;
+        }
         var g = Ground(x, z);
         if (Airborne) return g <= Y + 0.15; // only a wall stops you mid-air
         if (g < WadeDepth) return false; // deep water: jump it or stay out

@@ -84,10 +84,9 @@ export const platforms: Platforms = {
     }
     return best;
   },
-  blocked(x, z, y) {
+  blocked(x, z, y, b = 0.35) {
     const L = towerLocal(x, z);
     if (!L) return false;
-    const b = 0.35;
     const h = y - TOWER.y;
     if (L.r < NEWEL + b && h < 12) return true;
     if (L.r > WALL_IN - b && L.r < WALL_OUT + b && h < 12) {
@@ -96,6 +95,14 @@ export const platforms: Platforms = {
     }
     for (const s of towerSurfaces(L.r, L.phi)) if (s > h + 0.55 && s - 0.32 < h + 1.75) return true;
     return false;
+  },
+  ceiling(x, z, y) {
+    const L = towerLocal(x, z);
+    if (!L) return Infinity;
+    const h = y - TOWER.y;
+    let best = Infinity;
+    for (const s of towerSurfaces(L.r, L.phi)) if (s - 0.32 > h + 0.55 && s - 0.32 < best) best = s - 0.32;
+    return TOWER.y + best;
   },
   blocksBoat(x, z, radius) {
     return Math.hypot(x - ROCK.x, z - ROCK.z) < ROCK.r + radius;

@@ -17,8 +17,12 @@ export interface Colliders {
 export interface Platforms {
   /** Highest standable top at (x, z) within a step of height y (stacked surfaces, like a stair), or -Infinity. */
   top(x: number, z: number, y?: number): number;
-  /** Optionally: is a walker at (x, z, y) inside a wall, rail or under a low ceiling? */
-  blocked?(x: number, z: number, y: number): boolean;
+  /** Optionally: is a walker (body radius, default 0.35) at (x, z, y) inside a wall, rail or under a low ceiling? */
+  blocked?(x: number, z: number, y: number, body?: number): boolean;
+  /** Optionally: where a walker at (x, z, y) overlapping a wall should be slid to, or null if clear. */
+  push?(x: number, z: number, y: number, body: number): { x: number; z: number } | null;
+  /** Optionally: height of the lowest thing overhead at (x, z) for a walker at y, where a jump bonks. */
+  ceiling?(x: number, z: number, y: number): number;
   /** True if something solid in the water blocks a hull at (x, z). */
   blocksBoat(x: number, z: number, radius: number): boolean;
 }
@@ -47,6 +51,7 @@ const WADE_DEPTH = -0.85;
 const MAX_CLIMB = 1.05; // rise per metre travelled
 const STEP_UP = 0.5; // a ledge you can step onto without jumping
 const JUMP_V = 5.4;
+const HEAD = 1.75;
 const GRAVITY = 14;
 const BOAT_DRAFT = -0.4;
 const STROKE_PERIOD = 1.7;
@@ -101,8 +106,17 @@ export class PlayerController {
     return Math.max(this.world.height(x, z), this.platforms?.top(x, z, yRef) ?? -Infinity);
   }
 
-  /** Push the walker out of trunks and the boat hull, sliding along them rather than stopping. */
+  private pushOutOfWalls() {
+    const out = this.platforms?.push?.(this.x, this.z, this.y, BODY_RADIUS);
+    if (out) {
+      this.x = out.x;
+      this.z = out.z;
+    }
+  }
+
+  /** Push the walker out of walls, trunks and the boat hull, sliding along them rather than stopping. */
   private resolve() {
+    this.pushOutOfWalls();
     this.colliders?.near(this.x, this.z, 3, (cx, cz, r) => {
       const dx = this.x - cx;
       const dz = this.z - cz;
@@ -130,10 +144,11 @@ export class PlayerController {
     }
   }
 
-  place(x: number, z: number, heading: number) {
+  /** y picks the level on stacked surfaces (a stair): the default is the highest. */
+  place(x: number, z: number, heading: number, y = Infinity) {
     this.x = x;
     this.z = z;
-    this.y = Math.max(this.ground(x, z, Infinity), WADE_DEPTH);
+    this.y = Math.max(this.ground(x, z, y), WADE_DEPTH);
     this.heading = heading;
     this.airborne = false;
     this.vy = 0;
@@ -164,7 +179,7 @@ export class PlayerController {
       this.y -= dt * 0.9;
       this.speed = 0;
       if (this.falling <= 0) {
-        this.place(this.safe.x, this.safe.z, this.heading);
+        this.place(this.safe.x, this.safe.z, this.heading, this.safe.y);
         this.onEvent?.('respawn');
       }
       this.prompt = '';
@@ -188,8 +203,14 @@ export class PlayerController {
     const mx = Math.sin(this.heading) * step;
     const mz = Math.cos(this.heading) * step;
     const canMoveTo = (x: number, z: number, len2: number) => {
-      // Never trap anyone: if you are already somewhere counted as blocked, any move is allowed.
-      if (this.platforms?.blocked?.(x, z, this.y) && !this.platforms.blocked(this.x, this.z, this.y)) return false;
+      // Never trap anyone: already overlapping something (a respawn, a jump's arc), you may move
+      // anywhere that overlaps no deeper, which lets you slide out but never through a wall.
+      const P = this.platforms;
+      if (P?.blocked?.(x, z, this.y)) {
+        let clear = BODY_RADIUS;
+        while (clear > 0.04 && P.blocked(this.x, this.z, this.y, clear)) clear -= 0.05;
+        if (clear >= BODY_RADIUS || P.blocked(x, z, this.y, clear)) return false;
+      }
       const g = this.ground(x, z);
       if (this.airborne) return g <= this.y + 0.15; // only a wall stops you mid-air
       if (g < WADE_DEPTH) return false; // deep water: jump it or stay out
@@ -233,7 +254,12 @@ export class PlayerController {
         this.vy = -1.6;
         this.speed = Math.max(this.speed, 5.5);
       }
+      const ceiling = this.vy > 0 ? (this.platforms?.ceiling?.(this.x, this.z, this.y) ?? Infinity) : Infinity;
       this.y += this.vy * dt;
+      if (this.y + HEAD > ceiling) {
+        this.y = Math.max(ceiling - HEAD, this.y - this.vy * dt);
+        this.vy = 0;
+      }
       if (this.y <= g && this.vy <= 0) {
         if (g < WADE_DEPTH) {
           this.falling = 1.3;
@@ -246,6 +272,7 @@ export class PlayerController {
         this.vy = 0;
         this.onEvent?.('land');
       }
+      this.pushOutOfWalls();
     } else {
       this.y += (Math.max(g, WADE_DEPTH) - this.y) * Math.min(1, dt * 18);
       // Remember solid footing so a missed jump puts you back somewhere sensible.
