@@ -327,6 +327,74 @@ def whale_song(i):
     return reverb(out, 0.6, 5.0, damp=1.4)
 
 
+# ---------------------------------------------------------------- the companion's calls
+# Tiny formant-synthesised "words" sung high and quick, Navi-style: a pitched glide through
+# vowel formants with a breathy onset and a sparkle on top. Cute rather than intelligible.
+
+VOWELS = {
+    'a': (800, 1200, 2500), 'e': (450, 2100, 2800), 'i': (300, 2400, 3100),
+    'o': (480, 850, 2500), 'u': (330, 900, 2300), 'ei': (420, 2200, 2900),
+}
+
+
+def formant_voice(segments, f0_start, f0_end, breath=0.25, dur=None):
+    """segments: [(vowel, seconds, gain)] sung over a pitch glide f0_start -> f0_end."""
+    total = sum(s[1] for s in segments) if dur is None else dur
+    n = int(total * SR)
+    t = np.arange(n) / SR
+    f0 = f0_start + (f0_end - f0_start) * (t / total) ** 0.8
+    f0 = f0 * (1 + 0.012 * np.sin(2 * np.pi * 7 * t))  # a little vibrato
+    phase = 2 * np.pi * np.cumsum(f0) / SR
+    # Glottal-ish source: a bright sawtooth sum.
+    src = np.zeros(n)
+    for k in range(1, 18):
+        src += np.sin(k * phase) / k
+    src += shaped_noise(n, band(1500, 8000)) * breath
+    out = np.zeros(n)
+    pos = 0
+    for vowel, length, gain in segments:
+        m = int(length * SR)
+        seg = src[pos:pos + m]
+        spec = np.fft.rfft(seg)
+        f = np.fft.rfftfreq(len(seg), 1 / SR)
+        F = VOWELS[vowel]
+        shape = sum(np.exp(-((f - fc * 1.35) / (90 + fc * 0.08)) ** 2) * w for fc, w in zip(F, (1.0, 0.7, 0.35)))
+        y = np.fft.irfft(spec * shape, len(seg))
+        env = np.clip(np.arange(m) / (0.015 * SR), 0, 1) * np.clip((m - np.arange(m)) / (0.03 * SR), 0, 1)
+        out[pos:pos + m] += y * env * gain
+        pos += m
+    return out
+
+
+def sparkle(n):
+    out = np.zeros(n)
+    for _ in range(5):
+        place(out, droplet(rng.uniform(3000, 6500), 0.05) * rng.uniform(0.1, 0.25), int(rng.uniform(0, 0.15) * SR))
+    return out
+
+
+def fairy(name):
+    if name == 'hey':
+        v = formant_voice([('ei', 0.26, 1.0)], 760, 980, breath=0.45)
+        v[: int(0.04 * SR)] += shaped_noise(int(0.04 * SR), band(1500, 6000)) * 0.4  # the "h"
+    elif name == 'listen':
+        v = np.concatenate([formant_voice([('i', 0.12, 0.9)], 820, 900), formant_voice([('e', 0.18, 1.0)], 880, 700)])
+    elif name == 'look':
+        v = formant_voice([('u', 0.22, 1.0)], 720, 900, breath=0.2)
+        v[-int(0.02 * SR):] += shaped_noise(int(0.02 * SR), band(2000, 5000)) * 0.3  # the "k"
+    elif name == 'oh':
+        v = formant_voice([('o', 0.3, 1.0)], 950, 700, breath=0.3)
+    elif name == 'hmm':
+        v = formant_voice([('u', 0.35, 0.8)], 700, 820, breath=0.15)
+    else:  # 'watch' -- two quick rising notes, an alarm
+        v = np.concatenate([formant_voice([('a', 0.13, 1.0)], 900, 1000), formant_voice([('a', 0.16, 1.0)], 1050, 1150)])
+    n = len(v) + int(0.5 * SR)
+    out = np.zeros(n)
+    out[: len(v)] = v
+    out += sparkle(n) * 0.6
+    return reverb(out, 0.25, 1.2)
+
+
 # ---------------------------------------------------------------- ambience loops
 
 def loop_surf(seconds=24.0):
@@ -448,6 +516,8 @@ def main():
         write(f"splash_small_{i}", splash_small(i), -5)
     write("splash_big", splash_big(0), -3)
     write("whale_song", whale_song(0), -4)
+    for name in ('hey', 'listen', 'look', 'oh', 'hmm', 'watch'):
+        write(f"fairy_{name}", fairy(name), -3)
     write("star_fall", star_fall(0), -4)
     write("loop_surf", loop_surf(), -3)
     write("loop_lapping", loop_lapping(), -3)

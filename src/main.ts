@@ -20,6 +20,7 @@ import { PlayerController } from './game/player';
 import { Input } from './game/input';
 import { Avatar } from './game/avatar';
 import { CameraRig } from './game/cameraRig';
+import { Wisp } from './game/wisp';
 import { Audio } from './audio/audio';
 import { Story } from './story/story';
 import { layoutPrologue } from './story/placement';
@@ -83,7 +84,9 @@ async function boot() {
 
   const audio = new Audio();
   const story = new Story(layout, hf, flora, sky.shooting, audio);
-  scene.add(story.group);
+  const wisp = new Wisp();
+  story.wisp = wisp;
+  scene.add(story.group, wisp.group);
 
   // Reflection pass rules: the Keeper casts no reflection (twist clue #1), sparkles stay out
   // of the mirror, and terrain must not sample the render target it is being drawn into.
@@ -182,7 +185,10 @@ async function boot() {
   input.pitch = -0.04;
   const fade = $('fade');
   story.prepareOpening();
-  if (state === 'play') story.beginPlay();
+  if (state === 'play') {
+    story.beginPlay();
+    wisp.wake(new THREE.Vector3(player.x + 1.5, 1, player.z + 1.5));
+  }
   const beginWake = () => {
     INTRO_DARK = introT + 0.4;
     INTRO_END = INTRO_DARK + WAKE_LEN;
@@ -221,6 +227,7 @@ async function boot() {
       else openMenu();
     }
     if (e.code === 'KeyE' && !e.repeat) ePressed = true;
+    if (e.code === 'KeyF' && !e.repeat && state === 'play' && !menu.open) story.askGuide(player);
   });
   rig.onStep = (speed) => {
     const h = hf.height(player.x, player.z);
@@ -370,8 +377,12 @@ async function boot() {
           state = 'play';
           $('title').style.opacity = '0';
           story.beginPlay();
+          // The little light rises out of the surf beside you.
+          wisp.wake(new THREE.Vector3(player.x + 1.5, Math.max(hf.height(player.x, player.z), 0) - 0.3, player.z + 1.5));
+          setTimeout(() => story.guide("Hey! You're awake!", 'hey'), 1200);
+          setTimeout(() => story.guide("Listen! Stars fell all along this shore. Let's find them.", 'listen'), 6500);
           playStarted = performance.now();
-          story.narrative.say('WASD walk  ·  mouse look  ·  shift run  ·  space jump  ·  E use', 'hint', 7);
+          story.narrative.say('WASD walk  ·  mouse look  ·  shift run  ·  space jump  ·  E use  ·  F ask the light', 'hint', 8);
           story.narrative.say('Esc  ·  menu and settings', 'hint', 4);
           story.narrative.say(LINES.stakes);
         }
@@ -393,11 +404,11 @@ async function boot() {
       if (player.mode === 'boat') {
         if (!strokeHinted) {
           strokeHinted = true;
-          story.narrative.say(LINES.strokeHint, 'hint', 6);
+          story.guide('Hey! Press Space as the oars dip, for a long stroke!', 'hey');
         }
         if (!currentHinted && player.boat.current > 0.4) {
           currentHinted = true;
-          story.narrative.say(LINES.currentHint);
+          story.guide('Oh! A current of starlight. Let it carry you!', 'oh');
         }
       }
       if (player.mode === 'boat' && player.boat.rowing) {

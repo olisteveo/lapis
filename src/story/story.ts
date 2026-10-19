@@ -16,6 +16,7 @@ import { Echoes, type EchoDef } from './echoes';
 import type { Landmarks } from '../world/landmarks';
 import { NightClock, type NightCue } from './night';
 import { settings } from '../settings';
+import type { Wisp, WispCall, WispMood } from '../game/wisp';
 
 const SAVE_KEY = 'lapis.save.v1';
 
@@ -60,6 +61,9 @@ export class Story {
   onWake: ((spot: { x: number; z: number }) => void) | null = null;
   readonly night = new NightClock(20 * 60);
   private landmarks: Landmarks | null = null;
+  wisp: Wisp | null = null;
+  private wispTargetUntil = 0;
+  private wispForced: THREE.Vector3 | null = null;
 
   constructor(
     private layout: PrologueLayout,
@@ -120,14 +124,78 @@ export class Story {
     for (const i of this.save.lit ?? []) landmarks.lightBeacon(i, true);
   }
 
+  /** The companion speaks: a call, its line in the speech box, and it swoops into view. */
+  guide(text: string, call: WispCall = 'hey', mood: WispMood = 'calm') {
+    if (!this.wisp?.awake) {
+      this.narrative.say(text, 'hint');
+      return;
+    }
+    this.narrative.say(text, 'wisp');
+    this.audio.fairy(call).catch(() => {});
+    this.wisp.speak(4.5, mood);
+  }
+
+  /** F: ask the light what to do next. */
+  askGuide(player: PlayerController) {
+    if (!this.wisp?.awake) return;
+    const lm = this.landmarks;
+    const carried = this.stars.carriedIds.length;
+    const compass = (to: { x: number; z: number }) => {
+      const dx = to.x - player.x;
+      const dz = to.z - player.z;
+      const names = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+      const az = (Math.atan2(dx, -dz) + Math.PI * 2) % (Math.PI * 2);
+      const d = Math.hypot(dx, dz);
+      const dist = d < 60 ? 'close by' : `about ${Math.round(d / 50) * 50} metres away`;
+      return `to the ${names[Math.round(az / (Math.PI / 4)) % 8]}, ${dist}`;
+    };
+    if (carried && settings.nights && lm) {
+      const nb = lm.nearestBeacon(player.x, player.z);
+      if (nb.index >= 0) {
+        const spot = lm.beacons[nb.index].placed;
+        this.point(new THREE.Vector3(spot.x, spot.y + 8, spot.z));
+        this.guide(`Listen! You're carrying ${carried > 1 ? 'stars' : 'a star'}. There's a lighthouse ${compass(spot)}. Get there before she wakes!`, 'listen', 'warn');
+        return;
+      }
+    }
+    const star = this.stars.nearest(player.x, player.z);
+    if (star) {
+      this.point(star.pos.clone());
+      this.guide(`Look! There's a fallen star ${compass(star.pos)}.`, 'look', 'star');
+      return;
+    }
+    this.guide("Hey! The bright one's in the north, past the lake. Follow it.", 'hey');
+  }
+
+  private point(at: THREE.Vector3) {
+    this.wispForced = at;
+    this.wispTargetUntil = performance.now() + 9000;
+  }
+
+  /** What the light should hover over right now. */
+  private wispTarget(player: PlayerController) {
+    if (this.wispForced && performance.now() < this.wispTargetUntil) return this.wispForced;
+    const s = this.stars.nearest(player.x, player.z);
+    if (s && s.dist < 35) return s.pos;
+    if (this.landmarks) {
+      const nb = this.landmarks.nearestBeacon(player.x, player.z);
+      if (nb.index >= 0 && nb.dist < 40 && !this.landmarks.isLit(nb.index)) {
+        const p = this.landmarks.beacons[nb.index].placed;
+        return new THREE.Vector3(p.x, p.y + 6, p.z);
+      }
+    }
+    return null;
+  }
+
   private nightCue(cue: NightCue) {
-    if (cue === 'late') this.narrative.say(LINES.late);
+    if (cue === 'late') this.guide("Hey! The night's getting late. Find a light!", 'watch', 'warn');
     else if (cue === 'cold') {
       this.narrative.say(LINES.cold, 'whisper');
       this.audio.voice('night-cold').catch(() => {});
     } else if (cue === 'eyes') {
       this.narrative.say(LINES.eyes, 'whisper');
       this.audio.voice('night-eyes').catch(() => {});
+      setTimeout(() => this.guide('Hurry! She’s falling asleep. Find a lighthouse!', 'watch', 'warn'), 5000);
     } else this.wake();
   }
 
@@ -251,6 +319,10 @@ export class Story {
     this.boat.update(dt, camera);
     if (playing) this.echoes?.update(dt, camera.position);
     this.stars.update(dt, camera);
+    if (this.wisp) {
+      this.wisp.target = playing ? this.wispTarget(player) : null;
+      this.wisp.update(dt, camera, settings.nights && this.night.progress > 0.75 ? 'warn' : 'calm');
+    }
     if (this.figure.update(dt, camera) && !this.seen('figure')) this.narrative.say(LINES.figure);
     this.flora.glow.value += (this.glowTarget - this.flora.glow.value) * Math.min(1, dt * 0.4);
 
@@ -267,12 +339,12 @@ export class Story {
     this.narrative.objective(THE_BOAT.name, this.save.collected.length, THE_BOAT.fragments.length, extra, carried);
     LAGOONS.forEach((L, i) => {
       if (Math.hypot(L.x - player.x, L.z - player.z) < L.r - 6 && !this.seen(`lagoon-${i}`)) {
-        this.narrative.say(LINES.lagoon);
+        this.guide('Oh! A hidden lagoon. Look how the water glows!', 'oh');
         this.audio.chime(3);
       }
       // Near a lagoon's stones for the first time: teach the jump.
       if (Math.hypot(L.x - player.x, L.z - player.z) < L.r + 55 && Math.hypot(L.x - player.x, L.z - player.z) > L.r + 20 && !this.seen('stones')) {
-        this.narrative.say(LINES.stonesHint, 'hint', 7);
+        this.guide('Hey! Stones lead through the rocks. Space to jump, and run to jump further!', 'hey');
       }
     });
 
@@ -305,7 +377,8 @@ export class Story {
     // Lighthouses: light the lamp, or rest by it.
     if (this.landmarks && walking) {
       const nb = this.landmarks.nearestBeacon(px, pz);
-      if (nb.index >= 0 && nb.dist < 60 && !this.landmarks.isLit(nb.index) && !this.seen('lightHint')) this.narrative.say(LINES.lightHint);
+      if (nb.index >= 0 && nb.dist < 60 && !this.landmarks.isLit(nb.index) && !this.seen('lightHint'))
+        this.guide('Look! A lighthouse. Light its lamp, and you can rest there.', 'look');
       if (nb.index >= 0 && nb.dist < 7.5) {
         const lit = this.landmarks.isLit(nb.index);
         const n = this.stars.carriedIds.length;
@@ -315,7 +388,7 @@ export class Story {
     }
 
     const star = this.stars.nearest(px, pz);
-    if (star && this.save.collected.length === 0 && star.dist < 18 && !this.seen('warm')) this.narrative.say(LINES.warm);
+    if (star && this.save.collected.length === 0 && star.dist < 18 && !this.seen('warm')) this.guide("Look! A fallen star. It's still warm!", 'look', 'star');
     if (star && star.dist < (walking ? 2.6 : 4.2)) {
       this.prompt = 'E   gather the fallen star';
       this.pendingAction = () => this.gather(star.id, star.index);
@@ -339,7 +412,7 @@ export class Story {
     if (settings.nights) {
       // Carried until you reach a lighthouse; lost if she wakes first.
       this.stars.carry(id);
-      if (!this.seen('carryHint')) setTimeout(() => this.narrative.say(LINES.carryHint), 7000);
+      if (!this.seen('carryHint')) setTimeout(() => this.guide("Listen! Carry it to a lighthouse before the night runs out, or it'll fall back.", 'listen'), 7000);
     } else {
       this.stars.collect(id, this.boat.dirs[index]);
       this.save.collected.push(id);
@@ -351,8 +424,8 @@ export class Story {
     this.audio.voice(fragment.id).catch(() => {});
     this.onMemory?.(8);
     const n = this.save.collected.length + this.stars.carriedIds.length;
-    if (n === 1) this.narrative.say(LINES.firstStar);
-    if (n === 3) this.narrative.say(LINES.atSea);
+    if (n === 1) setTimeout(() => this.guide('Look up! Six stars fell along this shore. You can see their light rising.', 'look'), 15000);
+    if (n === 3) this.guide("Listen! Some fell out at sea. The boat's waiting.", 'listen');
     if (n === 2 || n === 4) this.figure.advance();
   }
 

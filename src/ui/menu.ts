@@ -8,7 +8,8 @@ const CONTROLS: [string, string][] = [
   ['Mouse', 'look'],
   ['Shift', 'run'],
   ['Space', 'jump  ·  long stroke in the boat, as the oars dip'],
-  ['E', 'gather, read, step into or out of the boat'],
+  ['E', 'gather, read, light a lamp, step into or out of the boat'],
+  ['F', 'ask the little light what to do next'],
   ['Hold E', 'at the water’s edge: call the boat'],
   ['Esc', 'pause'],
 ];

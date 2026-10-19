@@ -3,7 +3,7 @@
 
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
-export type LineKind = 'memory' | 'whisper' | 'title' | 'observation' | 'hint';
+export type LineKind = 'memory' | 'whisper' | 'title' | 'observation' | 'hint' | 'wisp';
 
 interface Line {
   text: string;
@@ -19,8 +19,8 @@ interface Channel {
   phase: 'idle' | 'in' | 'hold' | 'out';
 }
 
-const FADE = { memory: 1.6, whisper: 1.4, title: 2.5, observation: 1.0, hint: 0.8 } as const;
-const HOLD = { memory: 5.5, whisper: 2.6, title: 4, observation: 4.5, hint: 6 } as const;
+const FADE = { memory: 1.6, whisper: 1.4, title: 2.5, observation: 1.0, hint: 0.8, wisp: 0.35 } as const;
+const HOLD = { memory: 5.5, whisper: 2.6, title: 4, observation: 4.5, hint: 6, wisp: 4.2 } as const;
 
 export class Narrative {
   private center: Channel;
@@ -42,7 +42,7 @@ export class Narrative {
   }
 
   say(text: string, kind: LineKind = 'observation', hold?: number) {
-    const ch = kind === 'observation' || kind === 'hint' ? this.lower : this.center;
+    const ch = kind === 'observation' || kind === 'hint' || kind === 'wisp' ? this.lower : this.center;
     ch.queue.push({ text, kind, hold: hold ?? HOLD[kind] });
   }
 
@@ -151,6 +151,7 @@ export class Narrative {
       ch.el.className = `line ${next.kind}`;
       // Memories are her voice; say so, quietly, so they never read as the player's thoughts.
       if (next.kind === 'memory') ch.el.innerHTML = `<span class="caption">her voice</span>${escapeHtml(next.text)}`;
+      else if (next.kind === 'wisp') ch.el.innerHTML = `<span class="orb"></span>${escapeHtml(next.text)}`;
       else ch.el.textContent = next.text;
       ch.el.style.transitionDuration = `${FADE[next.kind]}s`;
       // Force a style flush so the fade-in transition runs from zero.

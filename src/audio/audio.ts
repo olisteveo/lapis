@@ -49,6 +49,7 @@ export class Audio {
       ...['sand', 'wet', 'water', 'jungle'].flatMap((s) => [0, 1, 2, 3, 4, 5].map((i) => `step_${s}_${i}`)),
       'oar_dip_0', 'oar_dip_1', 'oar_dip_2', 'oar_drip_0', 'oar_drip_1',
       ...[0, 1, 2, 3, 4, 5].map((i) => `chime_${i}`),
+      'fairy_hey', 'fairy_listen', 'fairy_look', 'fairy_oh', 'fairy_hmm', 'fairy_watch',
       'memory_swell', 'star_fall', 'splash_small_0', 'splash_small_1', 'splash_small_2', 'splash_big', 'whale_song',
     ];
     await Promise.all(
@@ -176,6 +177,33 @@ export class Audio {
     lfo.start();
     src.start(ctx.currentTime + 0.6);
     src.onended = () => lfo.stop();
+  }
+
+  private fairyOverride = new Map<string, AudioBuffer | null>();
+
+  /** The companion's call. A recorded public/audio/voice/fairy-<call>.mp3 wins over the synth. */
+  async fairy(call: string) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    if (!this.fairyOverride.has(call)) {
+      this.fairyOverride.set(call, null);
+      try {
+        const res = await fetch(`/audio/voice/fairy-${call}.mp3`);
+        if (res.ok && (res.headers.get('content-type') ?? '').startsWith('audio'))
+          this.fairyOverride.set(call, await ctx.decodeAudioData(await res.arrayBuffer()));
+      } catch {
+        // No recording: use the synthesised call.
+      }
+    }
+    const rec = this.fairyOverride.get(call);
+    if (rec) {
+      const src = ctx.createBufferSource();
+      src.buffer = rec;
+      const g = ctx.createGain();
+      g.gain.value = 0.8;
+      src.connect(g).connect(this.sfxBus);
+      src.start();
+    } else this.one(`fairy_${call}`, 0.55, 0.97 + Math.random() * 0.06);
   }
 
   /** Composed score, routed through the music volume. */

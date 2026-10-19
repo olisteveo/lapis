@@ -55,3 +55,21 @@ Played late in each night, before she wakes. Barely awake, almost asleep.
 |---|---|---|
 | `night-cold.mp3` | I'm so cold. | Small, shivering, not complaining, just noticing. |
 | `night-eyes.mp3` | I'll just close my eyes for a bit. | Drowsy, trailing off at the end. |
+
+### The little light (the companion's calls)
+
+Short Navi-style calls that open each of its lines. Synthesised chirps are used by default; recorded files below replace them automatically. Bright, tiny, quick, playful; half a second each.
+
+ElevenLabs Voice Design prompt:
+```
+a tiny bright fairy voice, high and quick, playful and warm, light breathy sparkle, very short exclamations
+```
+
+| File | Say | Direction |
+|---|---|---|
+| `fairy-hey.mp3` | Hey! | Getting your attention, friendly. |
+| `fairy-listen.mp3` | Listen! | Urgent but cheerful. |
+| `fairy-look.mp3` | Look! | Excited, pointing something out. |
+| `fairy-oh.mp3` | Oh! | Delighted surprise. |
+| `fairy-hmm.mp3` | Hmm? | Curious. |
+| `fairy-watch.mp3` | Watch out! | Worried, quicker. |
