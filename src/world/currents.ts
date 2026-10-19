@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { abs, attribute, color, fract, mix, mx_noise_float, sin, smoothstep, time, vec2 } from 'three/tsl';
-import { LAKE, RIVER, type Heightfield } from './heightfield';
+import { LAKE, RIVER, type Heightfield } from '../core/heightfield';
 
 type N = any;
 

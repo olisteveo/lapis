@@ -1,6 +1,6 @@
 # Lapis -- Simulated playtests
 
-`lapis.playtest(runs)` in the browser console (with `?debug`) plays every puzzle with four skill profiles and prints a table. Source: `src/debug/playtest.ts`.
+`lapis.playtest(runs)` in the browser console (with `?debug`) plays every puzzle with four skill profiles and prints a table. Source: `src/core/playtest.ts`; `npm run playtest` runs the same bots headless in Node.
 
 ## What the bots are
 

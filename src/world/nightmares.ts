@@ -4,35 +4,23 @@ import {
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SKY } from '../config';
-import type { Heightfield } from './heightfield';
+import type { Heightfield } from '../core/heightfield';
 import { BlobShadows } from '../render/blobShadows';
+import { NightmareBrain, type LightSource, type NightmareKind, type NightmareState } from '../core/nightmareBrain';
 
 type N = any;
-type Kind = 'wraith' | 'crawler';
+type Kind = NightmareKind;
 
-interface Nightmare {
-  kind: Kind;
+interface View {
   obj: THREE.Object3D;
   thorns: THREE.Object3D;
-  x: number;
-  z: number;
-  yaw: number;
-  /** 0 = just emerging, 1 = fully here; dissolving runs it back down. */
-  presence: number;
-  dissolving: boolean;
   phase: { value: number };
   fade: { value: number };
-  lunge: number;
-  rest: number;
 }
 
 const key = vec3(SKY.keyLight.x, SKY.keyLight.y, SKY.keyLight.z);
 
-export interface LightSource {
-  x: number;
-  z: number;
-  r: number;
-}
+export type { LightSource } from '../core/nightmareBrain';
 
 /**
  * Her despair, given shape. As the night grows late, ink creatures crawl out of thorn patches in
@@ -41,17 +29,14 @@ export interface LightSource {
 export class Nightmares {
   readonly group = new THREE.Group();
   private templates = new Map<string, THREE.Object3D>();
-  private live: Nightmare[] = [];
-  private spawnT = 8;
-  private flareT = 0;
+  /** What they do lives in src/core; this class only draws it. */
+  readonly brain: NightmareBrain;
+  private views = new Map<number, View>();
   private rnd = Math.random;
-  /** 0..1: how close the nearest one is, for the curdled post-process and the music. */
-  dread = 0;
   /** Called when one reaches the Keeper. */
   onCatch: ((kind: Kind) => void) | null = null;
   /** Called when one first comes into view, for a warning. */
   onSighted: (() => void) | null = null;
-  private sighted = false;
   /** Pools of ink under each nightmare and its thorns. */
   private pools = new BlobShadows(24, true);
   /** Ink smoke left behind as they move: x, y, z, age 0..1 (1 = gone). */
@@ -62,6 +47,7 @@ export class Nightmares {
 
   constructor(private hf: Heightfield) {
     this.group.name = 'nightmares';
+    this.brain = new NightmareBrain((x, z) => hf.height(x, z));
     this.group.add(this.pools.mesh);
     const n = Nightmares.SMOKE;
     const a = new Float32Array(n * 4);
@@ -92,11 +78,11 @@ export class Nightmares {
     const emit = this.emitT > 0.05;
     if (emit) this.emitT = 0;
     let p = 0;
-    for (const n of this.live) {
+    for (const n of this.brain.live) {
       const ground = this.hf.height(n.x, n.z);
       const pr = Math.max(0, n.presence);
       if (p < 24) this.pools.set(p++, n.x, ground, n.z, (n.kind === 'wraith' ? 2.6 : 1.9) * pr);
-      if (p < 24) this.pools.set(p++, n.thorns.position.x, n.thorns.position.y, n.thorns.position.z, 2.4 * pr);
+      if (p < 24) this.pools.set(p++, n.thorns.x, this.hf.height(n.thorns.x, n.thorns.z), n.thorns.z, 2.4 * pr);
       if (emit && pr > 0.5 && !n.dissolving) {
         const i = this.smokeNext;
         this.smokeNext = (this.smokeNext + 1) % Nightmares.SMOKE;
@@ -176,127 +162,72 @@ export class Nightmares {
     return obj;
   }
 
+  /** 0..1: how close the nearest one is, for the curdled post-process and the music. */
+  get dread() {
+    return this.brain.dread;
+  }
+
+  get live() {
+    return this.brain.live;
+  }
+
   /** Q: the little light flares; every nightmare within reach bursts. Returns false on cooldown. */
   flare(at: THREE.Vector3) {
-    if (this.flareT > 0) return false;
-    this.flareT = 20;
-    for (const n of this.live) if (Math.hypot(n.x - at.x, n.z - at.z) < 26) n.dissolving = true;
-    return true;
+    return this.brain.flare(at);
   }
 
   get flareReady() {
-    return this.flareT <= 0;
+    return this.brain.flareReady;
   }
 
   /** Resting at a light or waking: the night's nightmares all sink away. */
   clear() {
-    for (const n of this.live) n.dissolving = true;
-    this.spawnT = 20;
+    this.brain.clear();
   }
 
-  private spawn(kind: Kind, player: THREE.Vector3, lights: LightSource[]) {
-    const body = this.templates.get(kind === 'wraith' ? 'Wraith' : 'Crawler');
+  /** Debug: bring one out now. */
+  spawn(kind: Kind, player: THREE.Vector3, lights: LightSource[]) {
+    const n = this.brain.spawn(kind, player, lights);
+    if (n) this.makeView(n);
+  }
+
+  private makeView(n: NightmareState) {
+    const body = this.templates.get(n.kind === 'wraith' ? 'Wraith' : 'Crawler');
     const thornT = this.templates.get('NightmareThorns');
     if (!body || !thornT) return;
-    for (let tries = 0; tries < 20; tries++) {
-      const a = this.rnd() * Math.PI * 2;
-      const d = 45 + this.rnd() * 35;
-      const x = player.x + Math.sin(a) * d;
-      const z = player.z + Math.cos(a) * d;
-      if (this.hf.height(x, z) < 0.3) continue;
-      if (lights.some((l) => Math.hypot(l.x - x, l.z - z) < l.r + 10)) continue;
-      const phase = uniform(0);
-      const fade = uniform(0);
-      const obj = this.dress(body, kind, phase, fade);
-      const thorns = this.dress(thornT, 'thorns', phase, fade);
-      const y = this.hf.height(x, z);
-      thorns.position.set(x, y, z);
-      thorns.rotation.y = this.rnd() * 6.28;
-      thorns.scale.setScalar(0.9 + this.rnd() * 0.6);
-      this.group.add(obj, thorns);
-      this.live.push({ kind, obj, thorns, x, z, yaw: 0, presence: 0, dissolving: false, phase, fade, lunge: 0, rest: 2 + this.rnd() * 3 });
-      return;
-    }
+    const phase = uniform(0);
+    const fade = uniform(0);
+    const obj = this.dress(body, n.kind, phase, fade);
+    const thorns = this.dress(thornT, 'thorns', phase, fade);
+    thorns.position.set(n.thorns.x, this.hf.height(n.thorns.x, n.thorns.z), n.thorns.z);
+    thorns.rotation.y = n.thorns.yaw;
+    thorns.scale.setScalar(n.thorns.scale);
+    this.group.add(obj, thorns);
+    this.views.set(n.id, { obj, thorns, phase, fade });
   }
 
   /**
    * threat: 0 (none) to 1 (deep night). The player is caught on contact; lights repel.
    */
   update(dt: number, player: THREE.Vector3, playerSpeed: number, threat: number, lights: LightSource[]) {
-    this.flareT = Math.max(0, this.flareT - dt);
-    const wanted = threat <= 0 ? 0 : Math.round(1 + threat * 4);
-    const alive = this.live.filter((n) => !n.dissolving).length;
-    this.spawnT -= dt;
-    if (alive < wanted && this.spawnT <= 0 && this.templates.size) {
-      this.spawn(this.rnd() < 0.35 + threat * 0.25 ? 'crawler' : 'wraith', player, lights);
-      this.spawnT = 14 - threat * 8;
+    const ev = this.brain.update(dt, player, playerSpeed, threat, lights, this.templates.size > 0);
+    for (const n of ev.spawned) this.makeView(n);
+    for (const n of ev.removed) {
+      const v = this.views.get(n.id);
+      if (v) this.group.remove(v.obj, v.thorns);
+      this.views.delete(n.id);
     }
-    if (threat <= 0) for (const n of this.live) n.dissolving = true;
-
-    let dread = 0;
-    for (const n of this.live) {
-      const dx = player.x - n.x;
-      const dz = player.z - n.z;
-      const d = Math.hypot(dx, dz);
-      // Light burns them: any nightmare that strays inside a light's reach comes apart.
-      if (lights.some((l) => Math.hypot(l.x - n.x, l.z - n.z) < l.r)) n.dissolving = true;
-      if (d > 160) n.dissolving = true;
-      n.presence = n.dissolving ? n.presence - dt * 0.7 : Math.min(1, n.presence + dt * 0.35);
-      n.fade.value = Math.max(0, n.presence);
-      if (n.presence <= 0 && n.dissolving) {
-        this.group.remove(n.obj, n.thorns);
-        continue;
-      }
-      if (n.presence < 0.9 || n.dissolving) {
-        // Still emerging from the thorns.
-        n.obj.position.set(n.x, this.hf.height(n.x, n.z), n.z);
-        continue;
-      }
-      let speed: number;
-      if (n.kind === 'wraith') speed = 2.4 + threat * 0.8;
-      else {
-        // Crawlers stalk at a distance, then lunge, then have to rest.
-        if (n.lunge > 0) {
-          n.lunge -= dt;
-          speed = 8.5;
-        } else if (n.rest > 0) {
-          n.rest -= dt;
-          speed = d > 25 ? 3.2 : 0.6;
-        } else {
-          n.lunge = 1.8;
-          n.rest = 4 + this.rnd() * 3;
-          speed = 8.5;
-        }
-      }
-      const want = Math.atan2(dx, dz);
-      let diff = want - n.yaw;
-      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-      n.yaw += diff * Math.min(1, dt * (n.kind === 'crawler' ? 5 : 2));
-      const nx = n.x + Math.sin(n.yaw) * speed * dt;
-      const nz = n.z + Math.cos(n.yaw) * speed * dt;
-      // Wraiths drift over anything; crawlers keep to dry land.
-      if (n.kind === 'wraith' || this.hf.height(nx, nz) > 0.1) {
-        n.x = nx;
-        n.z = nz;
-      }
-      n.phase.value += dt * speed * (n.kind === 'crawler' ? 3.2 : 0.6);
-      const ground = Math.max(this.hf.height(n.x, n.z), n.kind === 'wraith' ? 0 : -5);
-      const bob = n.kind === 'wraith' ? 0.35 + Math.sin(performance.now() / 700 + n.x) * 0.15 : 0;
-      n.obj.position.set(n.x, ground + bob, n.z);
+    if (ev.sighted) this.onSighted?.();
+    for (const kind of ev.caught) this.onCatch?.(kind);
+    for (const n of this.brain.live) {
+      const v = this.views.get(n.id);
+      if (!v) continue;
+      v.fade.value = Math.max(0, n.presence);
+      v.phase.value = n.phase;
+      v.obj.position.set(n.x, n.y, n.z);
       // Models face +X; heading 0 faces +Z.
-      n.obj.rotation.y = n.yaw - Math.PI / 2;
-      dread = Math.max(dread, Math.min(1, (45 - d) / 35));
-      if (!this.sighted && d < 45) {
-        this.sighted = true;
-        this.onSighted?.();
-      }
-      if (d < (n.kind === 'crawler' ? 1.6 : 1.4) + (playerSpeed > 0 ? 0 : 0.2)) {
-        n.dissolving = true;
-        this.onCatch?.(n.kind);
-      }
+      v.obj.rotation.y = n.yaw - Math.PI / 2;
     }
-    this.live = this.live.filter((n) => !(n.dissolving && n.presence <= 0));
     this.trails(dt);
-    this.dread += (Math.max(0, dread) - this.dread) * Math.min(1, dt * 1.5);
   }
 }

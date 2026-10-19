@@ -2,7 +2,7 @@
 // node tools/map.ts <out.png> [size]
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
-import { createHeightfield, findSpawn, WORLD_HALF } from '../src/world/heightfield.ts';
+import { createHeightfield, findSpawn, WORLD_HALF } from '../src/core/heightfield.ts';
 
 const out = process.argv[2] ?? 'map.png';
 const N = Number(process.argv[3] ?? 768);

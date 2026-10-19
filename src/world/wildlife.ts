@@ -5,7 +5,7 @@ import {
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE, SKY } from '../config';
-import type { Heightfield } from './heightfield';
+import type { Heightfield } from '../core/heightfield';
 
 type N = any;
 

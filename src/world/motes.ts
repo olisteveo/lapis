@@ -3,7 +3,7 @@ import {
   cameraPosition, color, float, fract, instancedBufferAttribute, mix, mod, sin, smoothstep, time, uv, vec2, vec3, vec4, length, exp,
 } from 'three/tsl';
 import { PALETTE, QUALITY, onQualityChange } from '../config';
-import { mulberry32 } from './heightfield';
+import { mulberry32 } from '../core/heightfield';
 
 /**
  * Dream motes. Fireflies: warm points drifting and blinking at head height around you.

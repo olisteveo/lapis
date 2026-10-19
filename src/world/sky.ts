@@ -4,7 +4,7 @@ import {
   normalize, positionGeometry, positionLocal, pow, saturate, sin, smoothstep, step, time, uniform, uv, vec2, vec3, vec4, abs, max,
 } from 'three/tsl';
 import { PALETTE, SKY } from '../config';
-import { mulberry32 } from './heightfield';
+import { mulberry32 } from '../core/heightfield';
 import { starShape } from '../render/starShape';
 
 const SKY_RADIUS = 15000;

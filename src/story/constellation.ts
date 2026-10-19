@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { color, float, mix, sin, time, uniform, uv, vec4 } from 'three/tsl';
 import { PALETTE } from '../config';
 import { starShape } from '../render/starShape';
-import type { ConstellationDef } from './content';
+import type { ConstellationDef } from '../core/content';
 
 const R = 10000;
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { color, dot, mix, normalWorld, saturate, sin, time, uniform } from 'three/tsl';
+import { GlowcapsRule, MirrorsRule } from '../core/puzzleRules';
 import { KEY, stoneMaterial, type PlayerState, type PuzzleHooks, type PuzzleImpl, type PuzzleSite, type Spot } from './puzzles';
 
 const lambert = () => saturate(dot(normalWorld, KEY).mul(0.55).add(0.45));
@@ -46,16 +47,15 @@ function shrine(site: PuzzleSite, glow: { value: number }) {
  */
 export class Glowcaps implements PuzzleImpl {
   readonly group = new THREE.Group();
-  private lit: boolean[];
+  /** The rules (src/core); this class only draws them. */
+  readonly rule: GlowcapsRule;
   private glows: { value: number }[];
   private shrineGlow = uniform(0);
   private crystal: THREE.Mesh;
-  private isSolved: boolean;
 
   constructor(readonly site: PuzzleSite, solved: boolean, private hooks: PuzzleHooks) {
-    this.isSolved = solved;
-    this.lit = solved ? site.caps!.map(() => true) : [...site.start!];
-    this.glows = this.lit.map((l) => uniform(l ? 1 : 0));
+    this.rule = new GlowcapsRule(site, solved);
+    this.glows = this.rule.lit.map((l) => uniform(l ? 1 : 0));
     const rootMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     rootMat.colorNode = color(0x5fe8d8).mul(sin(time.mul(1.2)).mul(0.15).add(0.45));
     site.links!.forEach((ls, i) => ls.forEach((j) => j > i && this.group.add(strip(site.caps![i], site.caps![j], 0.05, 0.12, rootMat))));
@@ -68,7 +68,7 @@ export class Glowcaps implements PuzzleImpl {
   }
 
   get solved() {
-    return this.isSolved;
+    return this.rule.solved;
   }
 
   near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void) {
@@ -77,40 +77,22 @@ export class Glowcaps implements PuzzleImpl {
   }
 
   interaction(x: number, z: number) {
-    if (this.isSolved) return null;
+    if (this.rule.solved) return null;
     const i = this.site.caps!.findIndex((c) => Math.hypot(c.x - x, c.z - z) < 2.4);
     return i >= 0 ? { prompt: 'E   touch the glowcap', act: () => this.touch(i) } : null;
   }
 
-  /** Seconds each cap has been lit; a cap left burning too long gutters out again. */
-  private age: number[] = [];
-  static readonly FADE = 45;
-
   private touch(i: number) {
-    for (const j of [i, ...this.site.links![i]]) {
-      this.lit[j] = !this.lit[j];
-      this.age[j] = 0;
-    }
+    const solved = this.rule.touch(i);
     this.hooks.note(i);
-    if (this.lit.every(Boolean)) {
-      this.isSolved = true;
-      this.hooks.solve(this.site);
-    }
+    if (solved) this.hooks.solve(this.site);
   }
 
   update(dt: number) {
-    if (!this.isSolved)
-      this.lit.forEach((l, i) => {
-        if (!l) return;
-        this.age[i] = (this.age[i] ?? 0) + dt;
-        if (this.age[i] > Glowcaps.FADE) this.lit[i] = false;
-      });
+    this.rule.update(dt);
     // Dimming toward the end of its time, so you can see which caps are about to go out.
-    this.lit.forEach((l, i) => {
-      const fading = l && !this.isSolved ? 1 - Math.max(0, ((this.age[i] ?? 0) - Glowcaps.FADE * 0.6) / (Glowcaps.FADE * 0.4)) * 0.6 : l ? 1 : 0;
-      this.glows[i].value += (fading - this.glows[i].value) * Math.min(1, dt * 6);
-    });
-    if (this.isSolved) this.shrineGlow.value += (1 - this.shrineGlow.value) * Math.min(1, dt);
+    this.glows.forEach((g, i) => (g.value += (this.rule.brightness(i) - g.value) * Math.min(1, dt * 6)));
+    if (this.rule.solved) this.shrineGlow.value += (1 - this.shrineGlow.value) * Math.min(1, dt);
     this.crystal.rotation.y += dt * 0.6;
   }
 }
@@ -121,28 +103,18 @@ export class Glowcaps implements PuzzleImpl {
  */
 export class MirrorCaps implements PuzzleImpl {
   readonly group = new THREE.Group();
-  private aim: number[];
+  /** The rules (src/core); this class only draws them. */
+  readonly rule: MirrorsRule;
   private caps: THREE.Object3D[] = [];
   private beam = new THREE.Group();
   private beamMat: THREE.MeshBasicNodeMaterial;
   private shrineGlow = uniform(0);
   private crystal: THREE.Mesh;
-  private isSolved: boolean;
-  /** The beam reached the shrine but missed some caps: the shrine flickers. */
-  short = false;
 
   constructor(readonly site: PuzzleSite, solved: boolean, private hooks: PuzzleHooks) {
-    this.isSolved = solved;
+    this.rule = new MirrorsRule(site, solved);
     const n = site.nodes!;
     const last = n.length - 1;
-    // Solved: the hidden route. Otherwise every cap starts aimed somewhere other than its next stop.
-    this.aim = n.map((_, i) => {
-      if (i === 0) return 1;
-      if (i === last) return -1;
-      if (solved) return i + 1;
-      const opts = site.aims![i].filter((j) => j !== i + 1);
-      return opts.length ? opts[(i * 3) % opts.length] : i + 1;
-    });
     const src = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 1.1, 7).translate(0, 0.45, 0), stoneMaterial());
     src.position.set(n[0].x, n[0].y, n[0].z);
     const srcGlow = new THREE.MeshBasicNodeMaterial();
@@ -170,7 +142,7 @@ export class MirrorCaps implements PuzzleImpl {
   }
 
   get solved() {
-    return this.isSolved;
+    return this.rule.solved;
   }
 
   near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void) {
@@ -178,7 +150,7 @@ export class MirrorCaps implements PuzzleImpl {
   }
 
   interaction(x: number, z: number) {
-    if (this.isSolved) return null;
+    if (this.rule.solved) return null;
     const n = this.site.nodes!;
     for (let i = 1; i < n.length - 1; i++)
       if (Math.hypot(n[i].x - x, n[i].z - z) < 2.4) return { prompt: 'E   turn the mirror cap', act: () => this.turn(i) };
@@ -186,10 +158,10 @@ export class MirrorCaps implements PuzzleImpl {
   }
 
   private turn(i: number) {
-    const opts = this.site.aims![i];
-    this.aim[i] = opts[(opts.indexOf(this.aim[i]) + 1) % opts.length];
+    const solved = this.rule.turn(i);
     this.hooks.note(i);
     this.trace();
+    if (solved) this.hooks.solve(this.site);
   }
 
   /** Follow the light from the source and redraw it; check whether it reached the shrine through every cap. */
@@ -197,36 +169,18 @@ export class MirrorCaps implements PuzzleImpl {
     const n = this.site.nodes!;
     const last = n.length - 1;
     for (const c of [...this.beam.children]) this.beam.remove(c);
-    const seen = new Set<number>([0]);
-    let cur = 0;
-    let reached = false;
-    while (true) {
-      const next = this.aim[cur];
-      if (next < 0 || next === undefined) break;
-      this.beam.add(strip(n[cur], n[next], 1.55, 0.09, this.beamMat));
-      if (next === last) {
-        reached = true;
-        break;
-      }
-      if (seen.has(next)) break;
-      seen.add(next);
-      cur = next;
-    }
+    const path = this.rule.beam.path;
+    for (let k = 1; k < path.length; k++) this.beam.add(strip(n[path[k - 1]], n[path[k]], 1.55, 0.09, this.beamMat));
     for (let i = 1; i < last; i++) {
       const c = this.caps[i];
-      const t = n[this.aim[i]];
+      const t = n[this.rule.aim[i]];
       if (t) c.rotation.y = Math.atan2(t.x - n[i].x, t.z - n[i].z);
-    }
-    const all = seen.size === last;
-    this.short = reached && !all;
-    if (reached && all && !this.isSolved) {
-      this.isSolved = true;
-      this.hooks.solve(this.site);
     }
   }
 
   update(dt: number, _player: PlayerState) {
-    const want = this.isSolved ? 1 : this.short ? 0.25 + Math.max(0, Math.sin(performance.now() / 90)) * 0.3 : 0;
+    const short = this.rule.beam.reached && !this.rule.beam.complete;
+    const want = this.rule.solved ? 1 : short ? 0.25 + Math.max(0, Math.sin(performance.now() / 90)) * 0.3 : 0;
     this.shrineGlow.value += (want - this.shrineGlow.value) * Math.min(1, dt * 4);
     this.crystal.rotation.y += dt * 0.6;
   }

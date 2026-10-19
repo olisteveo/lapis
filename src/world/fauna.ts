@@ -7,8 +7,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE, SKY } from '../config';
 import { drawnSurface, penLines } from '../render/drawn';
 import { BlobShadows } from '../render/blobShadows';
-import { BIOMES, mulberry32, type Heightfield } from './heightfield';
-import type { Colliders } from '../game/player';
+import { Herd } from '../core/herd';
+import { BIOMES, mulberry32, type Heightfield } from '../core/heightfield';
+import type { Colliders } from '../core/player';
 
 type N = any;
 
@@ -61,27 +62,15 @@ function gait(lp: N, vc: N, phase: N, stride: number, lift: number): N {
   return vec3(lp.x.add(swing), lp.y.add(up), lp.z);
 }
 
-interface Deer {
-  x: number;
-  z: number;
-  yaw: number;
-  speed: number;
-  target: number;
-  phase: number;
-  state: 'graze' | 'walk' | 'flee';
-  timer: number;
-  scale: number;
-}
-
 const DEER = 14;
 const MANTAS = 6;
 
 /** The dream's animals: star deer, sky mantas, lantern moths and the island tortoise. */
 export class Fauna implements Colliders {
   readonly group = new THREE.Group();
-  private deer: Deer[] = [];
+  /** How the herd behaves lives in src/core; this class only poses them. */
+  readonly herd: Herd;
   private deerAttrs: Record<string, THREE.InstancedBufferAttribute> | null = null;
-  private deerHome = new THREE.Vector3(1e9, 0, 1e9);
   private mantaAttrs: Record<string, THREE.InstancedBufferAttribute> | null = null;
   private mantaHome = new THREE.Vector3(1e9, 0, 1e9);
   private tortoise: THREE.Object3D | null = null;
@@ -98,6 +87,7 @@ export class Fauna implements Colliders {
 
   constructor(private hf: Heightfield) {
     this.group.name = 'fauna';
+    this.herd = new Herd(hf, DEER);
     this.group.add(this.shadows.mesh);
     this.buildMoths();
   }
@@ -117,8 +107,6 @@ export class Fauna implements Colliders {
   // ---------------------------------------------------------------- star deer
 
   private buildDeer(parts: { geo: THREE.BufferGeometry; mat: string }[]) {
-    for (let i = 0; i < DEER; i++)
-      this.deer.push({ x: 0, z: 0, yaw: 0, speed: 0, target: 0, phase: this.rnd() * 6, state: 'graze', timer: this.rnd() * 5, scale: 0.85 + this.rnd() * 0.3 });
     let shared: Record<string, THREE.InstancedBufferAttribute> | null = null;
     for (const part of parts) {
       const { geometry, attrs } = instanced(part.geo, DEER, { pose: 4, gaitData: 4 });
@@ -157,86 +145,17 @@ export class Fauna implements Colliders {
     this.deerAttrs = shared;
   }
 
-  private placeHerd(focus: THREE.Vector3) {
-    // A herd lives where the meadows and the wood are; find open ground near you there.
-    for (let tries = 0; tries < 60; tries++) {
-      const a = this.rnd() * Math.PI * 2;
-      const d = 70 + this.rnd() * 160;
-      const x = focus.x + Math.sin(a) * d;
-      const z = focus.z + Math.cos(a) * d;
-      const s = this.hf.sample(x, z);
-      if (s.height < 1 || s.rock > 0.2 || Math.max(s.meadow, s.lantern * 0.6) < 0.35) continue;
-      this.deerHome.set(x, s.height, z);
-      this.deer.forEach((dr, i) => {
-        dr.x = x + Math.cos(i * 2.3) * (3 + i * 1.3);
-        dr.z = z + Math.sin(i * 2.3) * (3 + i * 1.3);
-        dr.yaw = this.rnd() * Math.PI * 2;
-        dr.state = 'graze';
-      });
-      return true;
-    }
-    return false;
-  }
-
   private updateDeer(dt: number, focus: THREE.Vector3, playerSpeed: number) {
     if (!this.deerAttrs) return;
-    const here = this.hf.sample(focus.x, focus.z);
-    if (Math.hypot(this.deerHome.x - focus.x, this.deerHome.z - focus.z) > 450) {
-      if (Math.max(here.meadow, here.lantern) < 0.25 || !this.placeHerd(focus)) {
-        this.deerHome.set(1e9, 0, 1e9);
-        this.deerAttrs.pose.array.fill(0);
-        for (let i = 0; i < DEER; i++) {
-          (this.deerAttrs.pose.array as Float32Array)[i * 4 + 1] = -9999;
-          this.shadows.hide(i);
-        }
-        this.deerAttrs.pose.needsUpdate = true;
-        return;
-      }
-    }
-    let fled = false;
+    const fled = this.herd.update(dt, focus, playerSpeed);
     const pose = this.deerAttrs.pose.array as Float32Array;
     const gd = this.deerAttrs.gaitData.array as Float32Array;
-    this.deer.forEach((d, i) => {
-      const dx = d.x - focus.x;
-      const dz = d.z - focus.z;
-      const dist = Math.hypot(dx, dz);
-      // Startle: a running Keeper, or anyone too close.
-      if (d.state !== 'flee' && (dist < 9 || (dist < 22 && playerSpeed > 5))) {
-        d.state = 'flee';
-        d.timer = 4 + this.rnd() * 2;
-        d.target = Math.atan2(dx, dz);
-        fled = true;
-      }
-      d.timer -= dt;
-      if (d.timer <= 0) {
-        if (d.state === 'flee' || d.state === 'walk') {
-          d.state = 'graze';
-          d.timer = 3 + this.rnd() * 6;
-        } else {
-          d.state = 'walk';
-          d.timer = 2 + this.rnd() * 4;
-          // Wander, drifting back toward the herd's home.
-          const home = Math.atan2(this.deerHome.x - d.x, this.deerHome.z - d.z);
-          d.target = home + (this.rnd() - 0.5) * 2.2;
-        }
-      }
-      const want = d.state === 'flee' ? 8 : d.state === 'walk' ? 1.3 : 0;
-      d.speed += (want - d.speed) * Math.min(1, dt * (d.state === 'flee' ? 4 : 1.5));
-      let diff = d.target - d.yaw;
-      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-      if (d.state !== 'graze') d.yaw += diff * Math.min(1, dt * 3);
-      const nx = d.x + Math.sin(d.yaw) * d.speed * dt;
-      const nz = d.z + Math.cos(d.yaw) * d.speed * dt;
-      if (this.hf.height(nx, nz) > 0.4) {
-        d.x = nx;
-        d.z = nz;
-      } else d.target += Math.PI * 0.5;
-      d.phase += dt * (d.speed * 2.6 + (d.state === 'graze' ? 0 : 0.5));
-      const y = this.hf.height(d.x, d.z);
+    this.herd.deer.forEach((d, i) => {
       // Model faces +X; heading convention faces +Z, so rotate by heading - 90 degrees.
-      pose.set([d.x, y, d.z, d.yaw - Math.PI / 2], i * 4);
-      this.shadows.set(i, d.x, y, d.z, 1.2 * d.scale);
+      pose.set([d.x, d.y, d.z, d.yaw - Math.PI / 2], i * 4);
       gd.set([d.phase, 0, d.scale, d.state === 'graze' ? 1 : 0], i * 4);
+      if (this.herd.present) this.shadows.set(i, d.x, d.y, d.z, 1.2 * d.scale);
+      else this.shadows.hide(i);
     });
     this.deerAttrs.pose.needsUpdate = true;
     this.deerAttrs.gaitData.needsUpdate = true;

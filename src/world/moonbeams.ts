@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { abs, color, exp, float, sin, smoothstep, time, uniform, uv, vec4 } from 'three/tsl';
-import type { Heightfield } from './heightfield';
+import type { Heightfield } from '../core/heightfield';
 
 const CELL = 13;
 const RADIUS = 85;

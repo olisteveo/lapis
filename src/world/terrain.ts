@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { TERRAIN } from '../config';
-import { WORLD_HALF } from './heightfield';
+import { WORLD_HALF } from '../core/heightfield';
 import type { ChunkResult, FloraResult, WorkerRequest } from './terrainWorker';
 
 type DistOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;

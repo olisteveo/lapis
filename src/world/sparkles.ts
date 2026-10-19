@@ -5,7 +5,7 @@ import {
   cameraNear, cameraFar, positionView,
 } from 'three/tsl';
 import { PALETTE, QUALITY, SKY, onQualityChange } from '../config';
-import { mulberry32 } from './heightfield';
+import { mulberry32 } from '../core/heightfield';
 import { starShape } from '../render/starShape';
 
 /**

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { WorldQuery, PlayerController } from './player';
+import type { WorldQuery, PlayerController } from '../core/player';
 import type { Input } from './input';
 
 const ease = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));

@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { color, exp, length, uv, vec4 } from 'three/tsl';
-import type { Anim, PlayerController } from './player';
+import type { Anim, PlayerController } from '../core/player';
 
 // Boat-local seat for the rower (three.js axes, bow toward +X), tuned against the mesh.
 const SEAT = new THREE.Vector3(-0.07, -0.52, 0);

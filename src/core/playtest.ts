@@ -1,14 +1,10 @@
 // Simulated playtesters: skill-profiled bots that play the real puzzle logic in fast-forward.
 // Movement, presses and puzzle state are real; what a human would perceive (a reflection, a
 // constellation, which footprints are hers) is modelled as a chance of noticing or misreading.
-import { mulberry32 } from '../world/heightfield';
-import type { PuzzleHooks, PuzzleSite, SkyFeature } from '../world/puzzles';
-import { StoneRing } from '../world/puzzleStones';
-import { BellPool } from '../world/puzzleBells';
-import { Fireflies } from '../world/puzzleMeadow';
-import { Glowcaps, MirrorCaps } from '../world/puzzleWood';
+import { mulberry32 } from './heightfield';
+import type { PuzzleSite, SkyFeature } from './puzzles';
+import { BellsRule, FirefliesRule, GlowcapsRule, MirrorsRule, StonesRule } from './puzzleRules';
 
-type N = any;
 
 export interface Skill {
   name: string;
@@ -41,13 +37,6 @@ export interface Run {
 }
 
 const WALK = 3.2;
-/** Press E at (x, z) if the puzzle offers anything there; false once it is solved or out of reach. */
-const press = (p: N, x: number, z: number) => {
-  const i = p.interaction(x, z);
-  if (!i) return false;
-  i.act();
-  return true;
-};
 const dist = (a: { x: number; z: number }, b: { x: number; z: number }) => Math.hypot(a.x - b.x, a.z - b.z);
 
 interface Ctx {
@@ -56,7 +45,6 @@ interface Ctx {
   t: number;
   mistakes: number;
   solved: boolean;
-  hooks: PuzzleHooks;
   out(): boolean;
 }
 
@@ -67,7 +55,6 @@ function ctx(skill: Skill, seed: number): Ctx {
     t: 0,
     mistakes: 0,
     solved: false,
-    hooks: { note: () => {}, fail: () => c.mistakes++, solve: () => (c.solved = true) },
     out: () => c.t > skill.patience * 60,
   };
   return c;
@@ -76,7 +63,7 @@ function ctx(skill: Skill, seed: number): Ctx {
 // ---------------------------------------------------------------- firefly jar
 
 function fireflies(site: PuzzleSite, c: Ctx): string {
-  const p = new Fireflies(site, false, c.hooks) as N;
+  const p = new FirefliesRule(site, false);
   const f = site.flower!;
   const j = site.jar!;
   // Working out that the jar wants something sweet: the hint helps, reasoning helps more.
@@ -84,8 +71,8 @@ function fireflies(site: PuzzleSite, c: Ctx): string {
   c.t += twigs ? 20 : 60 + c.rnd() * 240 * (1 - c.skill.perception);
   if (c.out()) return 'never thought to open the jar';
   c.t += (dist(site, f) + dist(f, j)) / WALK + c.skill.think * 2;
-  press(p, f.x, f.z);
-  press(p, j.x, j.z);
+  p.pick();
+  p.open();
   // Herding, simulated with the real swarm. They aim to stay behind it at a chosen distance;
   // the less skilled crowd it, steer badly, and sometimes run.
   const player = { x: 0, y: site.y, z: 0, speed: WALK };
@@ -125,7 +112,9 @@ function fireflies(site: PuzzleSite, c: Ctx): string {
       player.z += (dz / dd) * step;
     }
     player.speed = dd > 0.05 ? speed : 0;
-    p.update(dt, player);
+    const ev = p.update(dt, player);
+    if (ev === 'scattered') c.mistakes++;
+    if (ev === 'solved') c.solved = true;
     c.t += dt;
   }
   return c.solved ? '' : 'could not herd them in';
@@ -170,7 +159,7 @@ function footprints(site: PuzzleSite, c: Ctx): string {
 // ---------------------------------------------------------------- glowcaps
 
 function glowcaps(site: PuzzleSite, c: Ctx): string {
-  const p = new Glowcaps(site, false, c.hooks) as N;
+  const p = new GlowcapsRule(site, false);
   const caps = site.caps!;
   const links = site.links!;
   const flip = (lit: boolean[], i: number) => {
@@ -219,7 +208,7 @@ function glowcaps(site: PuzzleSite, c: Ctx): string {
     // Time passes for the caps too: anything left burning too long gutters out.
     p.update(spent);
     at = caps[i];
-    press(p, caps[i].x, caps[i].z);
+    if (p.touch(i)) c.solved = true;
     presses++;
     seen.add(key(p.lit));
     last = i;
@@ -231,7 +220,7 @@ function glowcaps(site: PuzzleSite, c: Ctx): string {
 // ---------------------------------------------------------------- mirror caps
 
 function mirrors(site: PuzzleSite, c: Ctx): string {
-  const p = new MirrorCaps(site, false, c.hooks) as N;
+  const p = new MirrorsRule(site, false);
   const n = site.nodes!;
   const last = n.length - 1;
   const aims = site.aims!;
@@ -254,7 +243,7 @@ function mirrors(site: PuzzleSite, c: Ctx): string {
   const setAim = (i: number, j: number) => {
     let guard = 0;
     while (p.aim[i] !== j && guard++ < 12 && !c.solved) {
-      if (!press(p, n[i].x, n[i].z)) break;
+      if (p.turn(i)) c.solved = true;
       c.t += 1.2;
     }
     c.t += dist(at, n[i]) / WALK + c.skill.think;
@@ -300,7 +289,7 @@ function mirrors(site: PuzzleSite, c: Ctx): string {
 // ---------------------------------------------------------------- constellation stones
 
 function stones(site: PuzzleSite, c: Ctx, features: SkyFeature[]): string {
-  const p = new StoneRing(site, false, c.hooks, features) as N;
+  const p = new StonesRule(site, features.length, false);
   const st = site.stones!;
   // Getting the idea: stand behind a stone and look where it looks.
   let understood = c.rnd() < 0.3 + 0.35 * c.skill.perception + 0.35 * c.skill.reasoning;
@@ -308,7 +297,7 @@ function stones(site: PuzzleSite, c: Ctx, features: SkyFeature[]): string {
     if (!understood) {
       // Turning dials at random until it clicks (or they give up).
       const i = Math.floor(c.rnd() * st.length);
-      press(p, st[i].x, st[i].z);
+      if (p.turn(i)) c.solved = true;
       c.t += 4 + c.skill.think;
       c.mistakes++;
       if (c.rnd() < 0.004 + 0.01 * c.skill.reasoning) understood = true;
@@ -321,7 +310,7 @@ function stones(site: PuzzleSite, c: Ctx, features: SkyFeature[]): string {
       const want = misread ? (st[i].answer + 1 + Math.floor(c.rnd() * (features.length - 1))) % features.length : st[i].answer;
       let guard = 0;
       while (p.shown[i] !== want && guard++ < features.length && !c.solved) {
-        if (!press(p, st[i].x, st[i].z)) break;
+        if (p.turn(i)) c.solved = true;
         c.t += 1.2;
       }
       if (misread) c.mistakes++;
@@ -333,7 +322,7 @@ function stones(site: PuzzleSite, c: Ctx, features: SkyFeature[]): string {
 // ---------------------------------------------------------------- reflection bells
 
 function bells(site: PuzzleSite, c: Ctx): string {
-  const p = new BellPool(site, false, c.hooks) as N;
+  const p = new BellsRule(site, false);
   const b = site.bells!;
   const order = site.order!;
   // The hint is a riddle now: reading it as "look in the water" takes some insight.
@@ -346,9 +335,12 @@ function bells(site: PuzzleSite, c: Ctx): string {
     for (const i of seq) {
       c.t += dist(at, b[i]) / WALK + 1.5;
       at = b[i];
-      press(p, b[i].x, b[i].z);
-      if (c.solved) return;
-      if (p.step === 0) return; // wrong: the sequence reset
+      const result = p.ring(i);
+      if (result === 'solved') {
+        c.solved = true;
+        return;
+      }
+      if (result === 'wrong') return;
     }
   };
   while (!c.solved && !c.out()) {

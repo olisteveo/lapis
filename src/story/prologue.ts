@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { color, length, max, smoothstep, uniform, uv, vec2 } from 'three/tsl';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
-import type { PrologueLayout, P } from './placement';
+import type { PrologueLayout, P } from '../core/placement';
 
 /** Small footprints walking into the sea: water-filled, catching the starlight. */
 export function createFootprints(layout: PrologueLayout, height: (x: number, z: number) => number) {

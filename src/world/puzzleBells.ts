@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { color, dot, mix, normalWorld, saturate, texture, uniform, vec4 } from 'three/tsl';
+import { BellsRule, type PlayerState } from '../core/puzzleRules';
 import { KEY, stoneMaterial, type PuzzleHooks, type PuzzleImpl, type PuzzleSite } from './puzzles';
 
 /** n dots in a little ring (one in the middle for 1): how many-th to ring this bell. */
@@ -33,12 +34,12 @@ export class BellPool implements PuzzleImpl {
   private lies: THREE.Sprite[] = [];
   private bells: THREE.Object3D[] = [];
   private swing: number[];
-  private step = 0;
-  private isSolved: boolean;
+  /** The rules (src/core); this class only draws them. */
+  readonly rule: BellsRule;
   private glow = uniform(0);
 
   constructor(readonly site: PuzzleSite, solved: boolean, private hooks: PuzzleHooks) {
-    this.isSolved = solved;
+    this.rule = new BellsRule(site, solved);
     if (solved) this.glow.value = 1;
     const stone = stoneMaterial();
     const bronze = new THREE.MeshBasicNodeMaterial();
@@ -88,15 +89,13 @@ export class BellPool implements PuzzleImpl {
   }
 
   get solved() {
-    return this.isSolved;
+    return this.rule.solved;
   }
 
-  /** Seconds the Keeper has stood still: wading makes ripples that break the reflection up. */
-  private still = 0;
-
   setMirror(mirror: boolean) {
-    for (const t of this.truth) t.visible = mirror && !this.isSolved && this.still > 1.5;
-    for (const l of this.lies) l.visible = !mirror && !this.isSolved;
+    // Wading makes ripples that break the reflection up: the true marks need still water.
+    for (const t of this.truth) t.visible = mirror && this.rule.marksVisible;
+    for (const l of this.lies) l.visible = !mirror && !this.rule.solved;
   }
 
   near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void) {
@@ -104,7 +103,7 @@ export class BellPool implements PuzzleImpl {
   }
 
   interaction(x: number, z: number) {
-    if (this.isSolved) return null;
+    if (this.rule.solved) return null;
     const i = this.site.bells!.findIndex((b) => Math.hypot(b.x - x, b.z - z) < 2.2);
     return i >= 0 ? { prompt: 'E   ring the bell', act: () => this.ring(i) } : null;
   }
@@ -112,24 +111,21 @@ export class BellPool implements PuzzleImpl {
   private ring(i: number) {
     this.swing[i] = 1;
     this.hooks.note(i);
-    if (this.site.order![this.step] !== i) {
-      this.step = 0;
+    const result = this.rule.ring(i);
+    if (result === 'wrong') {
       setTimeout(() => this.hooks.fail(this.site), 400);
       return;
     }
-    this.step++;
-    if (this.step >= this.site.order!.length) {
-      this.isSolved = true;
+    if (result === 'solved') {
       this.glow.value = 1;
       this.setMirror(false);
       this.hooks.solve(this.site);
     }
   }
 
-  update(dt: number, player: { x: number; z: number; speed: number }) {
+  update(dt: number, player: PlayerState) {
     const t = performance.now() / 1000;
-    const nearby = Math.hypot(player.x - this.site.x, player.z - this.site.z) < 30;
-    this.still = nearby && player.speed < 0.3 ? this.still + dt : 0;
+    this.rule.update(dt, player);
     this.bells.forEach((b, i) => {
       this.swing[i] = Math.max(0, this.swing[i] - dt * 0.5);
       b.rotation.z = Math.sin(t * 7) * 0.35 * this.swing[i];

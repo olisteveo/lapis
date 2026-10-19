@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { abs, attribute, color, float, length, mix, mx_noise_float, smoothstep, time, uniform, uv, vec2, vec4 } from 'three/tsl';
-import { LAGOONS, type Heightfield } from './heightfield';
+import { LAGOONS, type Heightfield } from '../core/heightfield';
 import { penLines } from '../render/drawn';
 
 type N = any;
