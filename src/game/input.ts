@@ -4,6 +4,8 @@ export class Input {
   pitch = -0.18;
   zoom = 1;
   locked = false;
+  sensitivity = 1;
+  invertY = false;
   onFirstGesture: (() => void) | null = null;
 
   constructor(el: HTMLElement) {
@@ -22,8 +24,9 @@ export class Input {
     document.addEventListener('pointerlockchange', () => (this.locked = document.pointerLockElement === el));
     addEventListener('mousemove', (e) => {
       if (!this.locked) return;
-      this.yaw -= e.movementX * 0.0022;
-      this.pitch = Math.max(-1.25, Math.min(0.9, this.pitch - e.movementY * 0.0022));
+      const k = 0.0022 * this.sensitivity;
+      this.yaw -= e.movementX * k;
+      this.pitch = Math.max(-1.25, Math.min(0.9, this.pitch - e.movementY * k * (this.invertY ? -1 : 1)));
     });
     el.addEventListener('wheel', (e) => (this.zoom = Math.max(0.45, Math.min(2.2, this.zoom * Math.exp(e.deltaY * 0.001)))), {
       passive: true,

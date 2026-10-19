@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import {
   cameraPosition, color, float, fract, instancedBufferAttribute, mix, mod, sin, smoothstep, time, uv, vec2, vec3, vec4, length, exp,
 } from 'three/tsl';
-import { PALETTE, QUALITY } from '../config';
+import { PALETTE, QUALITY, onQualityChange } from '../config';
 import { mulberry32 } from './heightfield';
 
 /**
@@ -55,6 +55,14 @@ function cloud(count: number, span: number, seed: number, kind: 'firefly' | 'ris
 export function createMotes() {
   const group = new THREE.Group();
   group.name = 'motes';
-  group.add(cloud(Math.round(1800 * QUALITY.motes), 70, 21, 'firefly'), cloud(Math.round(1400 * QUALITY.motes), 260, 22, 'rise'));
+  const flies = cloud(1800, 70, 21, 'firefly');
+  const rising = cloud(1400, 260, 22, 'rise');
+  group.add(flies, rising);
+  const apply = () => {
+    flies.count = Math.round(1800 * QUALITY.motes);
+    rising.count = Math.round(1400 * QUALITY.motes);
+  };
+  apply();
+  onQualityChange(apply);
   return group;
 }

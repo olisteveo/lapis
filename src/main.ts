@@ -1,5 +1,7 @@
 import * as THREE from 'three/webgpu';
-import { PALETTE, QUALITY, QUALITY_NAME, RENDER, SKY, cycleQuality } from './config';
+import { PALETTE, QUALITY, RENDER, SKY, getQualityName, onQualityChange } from './config';
+import { settings, onSettingsChange } from './settings';
+import { PauseMenu } from './ui/menu';
 import { createHeightfield, findSpawn } from './world/heightfield';
 import { Terrain, WorkerPool } from './world/terrain';
 import { createReflectionProxy, createTerrainMaterial } from './world/terrainMaterial';
@@ -109,7 +111,8 @@ async function boot() {
 
   const input = new Input(renderer.domElement);
   const rig = new CameraRig(camera, hf);
-  const post = createPost(renderer, scene, camera);
+  let post = createPost(renderer, scene, camera);
+  let postSteps = QUALITY.strokeSteps;
   let memoryUntil = 0;
   story.onMemory = (seconds) => (memoryUntil = performance.now() / 1000 + seconds);
 
@@ -186,6 +189,10 @@ async function boot() {
   let ePressed = false;
   addEventListener('keydown', (e) => {
     if ((e.code === 'Escape' || e.code === 'Space') && state === 'intro') skipIntro();
+    else if (e.code === 'Escape' && state === 'play') {
+      if (menu.open) menu.back();
+      else openMenu();
+    }
     if (e.code === 'KeyE' && !e.repeat) ePressed = true;
   });
   rig.onStep = (speed) => {
@@ -241,10 +248,51 @@ async function boot() {
 
   let lastFrame = 0;
   let lastRender = 0;
-  addEventListener('keydown', (e) => {
-    if (e.code === 'KeyP') cycleQuality();
+  if (debug) console.log('quality', getQualityName(), QUALITY);
+
+  // Settings apply live: resolution, paint detail, volumes, mouse.
+  onQualityChange(() => {
+    renderer.setPixelRatio(Math.min(devicePixelRatio, RENDER.maxPixelRatio));
+    renderer.setSize(innerWidth, innerHeight);
+    settleFrames = 3;
+    if (QUALITY.strokeSteps !== postSteps) {
+      postSteps = QUALITY.strokeSteps;
+      (post.pipeline as unknown as { dispose?: () => void }).dispose?.();
+      post = createPost(renderer, scene, camera);
+    }
   });
-  if (debug) console.log('quality', QUALITY_NAME, QUALITY);
+  const applySettings = () => {
+    audio.setVolumes(settings);
+    input.sensitivity = settings.sensitivity;
+    input.invertY = settings.invertY;
+  };
+  onSettingsChange(applySettings);
+  applySettings();
+
+  const menu = new PauseMenu();
+  const openMenu = () => {
+    if (menu.open || state !== 'play') return;
+    menu.show();
+    audio.setPaused(true);
+    if (document.pointerLockElement) document.exitPointerLock();
+  };
+  menu.onResume = () => {
+    menu.hide();
+    audio.setPaused(false);
+    Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
+  };
+  menu.onStartOver = () => {
+    try {
+      localStorage.removeItem('lapis.save.v1');
+    } catch {
+      // Nothing saved to clear.
+    }
+    location.href = location.pathname;
+  };
+  // The browser swallows Escape when it releases pointer lock, so losing the lock opens the menu.
+  document.addEventListener('pointerlockchange', () => {
+    if (!document.pointerLockElement && state === 'play' && !menu.open) openMenu();
+  });
   let forcedDt = 0;
   let paused = false;
   const frame = () => {
@@ -258,6 +306,12 @@ async function boot() {
 
     const pressed = ePressed;
     ePressed = false;
+    if (menu.open) {
+      // Frozen world behind the menu: keep drawing it, but nothing moves or happens.
+      camera.updateMatrixWorld();
+      if (renderer.domElement.clientWidth > 0 && settleFrames < 3) post.pipeline.render();
+      return;
+    }
     if (state === 'title' || state === 'intro') {
       if (state === 'intro') introT += dt;
       rig.intro(Math.max(0, introT - INTRO_DARK), player, input);
@@ -286,7 +340,7 @@ async function boot() {
           $('title').style.opacity = '0';
           story.beginPlay();
           story.narrative.say('WASD walk  ·  mouse look  ·  shift run  ·  space jump  ·  E use', 'hint', 7);
-          story.narrative.say(`graphics: ${QUALITY_NAME}  ·  P to change`, 'hint', 4);
+          story.narrative.say('Esc  ·  menu and settings', 'hint', 4);
           story.narrative.say(LINES.stakes);
         }
       }
@@ -356,7 +410,7 @@ async function boot() {
   // Capped: a 120Hz display would otherwise render twice as many frames for no visible gain.
   // Unfocused windows drop to a trickle so the game doesn't heat the machine in the background.
   renderer.setAnimationLoop((t: number) => {
-    const cap = document.hasFocus() ? QUALITY.fps : 8;
+    const cap = !document.hasFocus() ? 8 : menu.open ? 30 : QUALITY.fps;
     if (t - lastRender < 1000 / cap - 2) return;
     lastRender = t;
     frame();

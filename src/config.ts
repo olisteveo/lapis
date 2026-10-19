@@ -65,29 +65,33 @@ function pickQuality(): QualityName {
   const q = new URLSearchParams(location.search).get('quality');
   if (q === 'low' || q === 'medium' || q === 'high') return q;
   try {
-    const saved = localStorage.getItem('lapis.quality');
+    const saved = JSON.parse(localStorage.getItem('lapis.settings') ?? '{}').quality;
     if (saved === 'low' || saved === 'medium' || saved === 'high') return saved;
   } catch {
-    // Storage blocked: fall through to the default.
+    // Storage blocked or corrupt: fall through to the default.
   }
   return 'medium';
 }
 
-export const QUALITY_NAME = pickQuality();
-export const QUALITY = QUALITIES[QUALITY_NAME];
+let qualityName = pickQuality();
+/** Live quality values. Mutated in place by setQuality so every reader sees the change. */
+export const QUALITY: Quality = { ...QUALITIES[qualityName] };
+const qualityListeners: (() => void)[] = [];
 
-/** Cycle presets; most of them size GPU resources at startup, so the page reloads. */
-export function cycleQuality() {
-  const order: QualityName[] = ['low', 'medium', 'high'];
-  const next = order[(order.indexOf(QUALITY_NAME) + 1) % order.length];
-  try {
-    localStorage.setItem('lapis.quality', next);
-  } catch {
-    // Ignore; the reload will fall back to the default.
-  }
-  const url = new URL(location.href);
-  url.searchParams.delete('quality');
-  location.href = url.toString();
+export const getQualityName = () => qualityName;
+
+/** Subscribe to quality changes; systems re-apply their own settings live. */
+export function onQualityChange(fn: () => void) {
+  qualityListeners.push(fn);
+}
+
+export function setQuality(name: QualityName) {
+  if (name === qualityName) return;
+  qualityName = name;
+  Object.assign(QUALITY, QUALITIES[name]);
+  TERRAIN.lods.forEach((l, i) => (l[0] = BASE_LODS[i] * QUALITY.terrain));
+  RENDER.maxPixelRatio = QUALITY.pixelRatio;
+  for (const fn of qualityListeners) fn();
 }
 
 export const RENDER = {
@@ -98,9 +102,11 @@ export const RENDER = {
   fogDensity: 0.00034,
 };
 
+const BASE_LODS = [520, 1150, 2300, 4200, Infinity];
+
 export const TERRAIN = {
   chunkSize: 512,
-  /** [max distance, segments per chunk side] from fine to coarse. */
+  /** [max distance, segments per chunk side] from fine to coarse; distances scale with quality. */
   lods: [
     [520 * QUALITY.terrain, 256],
     [1150 * QUALITY.terrain, 128],

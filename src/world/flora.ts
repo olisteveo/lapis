@@ -4,7 +4,7 @@ import {
   step, time, uniform, vec2, vec3, vertexColor, length,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { FLORA, PALETTE, QUALITY, SKY } from '../config';
+import { FLORA, PALETTE, QUALITY, SKY, onQualityChange } from '../config';
 import { WORLD_HALF } from './heightfield';
 import type { WorkerPool } from './terrain';
 import type { FloraResult } from './terrainWorker';
@@ -42,11 +42,18 @@ const TRUNKS: Record<string, number> = {
   CanopyA: 1.3, CanopyB: 1.0, Understory: 0.3, TreeFern: 0.35, Banana: 0.45,
 };
 
-// Lower quality presets pull every draw radius in proportionally.
-for (const cfg of Object.values(TYPES)) {
-  cfg.hi *= QUALITY.flora;
-  cfg.far *= QUALITY.flora;
+// Base radii; the live ones (and the shader uniforms) scale with the quality preset.
+const BASE = Object.fromEntries(Object.entries(TYPES).map(([k, c]) => [k, { hi: c.hi, far: c.far }]));
+const RADII = Object.fromEntries(Object.keys(TYPES).map((k) => [k, { hi: uniform(0), far: uniform(0) }]));
+function applyRadii() {
+  for (const [k, cfg] of Object.entries(TYPES)) {
+    cfg.hi = BASE[k].hi * QUALITY.flora;
+    cfg.far = BASE[k].far * QUALITY.flora;
+    RADII[k].hi.value = cfg.hi;
+    RADII[k].far.value = cfg.far;
+  }
 }
+applyRadii();
 
 const GLOW_PARTS = new Set(['trunk', 'frond', 'fruit', 'flower']);
 
@@ -120,6 +127,11 @@ export class Flora implements Colliders {
 
   constructor(private pool: WorkerPool, private seed: number) {
     this.group.name = 'flora';
+    onQualityChange(() => {
+      applyRadii();
+      this.lastHi.set(1e9, 0, 1e9);
+      this.loDirty = true;
+    });
   }
 
   async load(url: string) {
@@ -151,8 +163,8 @@ export class Flora implements Colliders {
     for (const [type, { hi, lo }] of this.parts) {
       const cfg = TYPES[type];
       const b = {
-        hi: hi.map((p) => new Batch(p, this.material(p.material, cfg, 'hi'))),
-        lo: (lo.length ? lo : hi).map((p) => new Batch(p, this.material(p.material, cfg, 'lo'))),
+        hi: hi.map((p) => new Batch(p, this.material(p.material, cfg, 'hi', type))),
+        lo: (lo.length ? lo : hi).map((p) => new Batch(p, this.material(p.material, cfg, 'lo', type))),
       };
       for (const x of [...b.hi, ...b.lo]) this.group.add(x.mesh);
       if (!type.startsWith('Palm')) this.mirrorHidden.push(...[...b.hi, ...b.lo].map((x) => x.mesh));
@@ -161,7 +173,7 @@ export class Flora implements Colliders {
     return [...this.parts.keys()];
   }
 
-  private material(partName: string, cfg: TypeCfg, lod: 'hi' | 'lo') {
+  private material(partName: string, cfg: TypeCfg, lod: 'hi' | 'lo', type: string) {
     const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
     const inst = attribute<'vec4'>('inst', 'vec4');
     const scl = attribute<'float'>('scl', 'float');
@@ -170,7 +182,8 @@ export class Flora implements Colliders {
     const s = sin(inst.w);
     const lp = positionLocal.mul(scl);
     const d = length(inst.xz.sub(cameraPosition.xz));
-    const keep = lod === 'hi' ? step(d, float(cfg.hi)) : step(float(cfg.hi), d).mul(step(d, float(cfg.far)));
+    const R = RADII[type];
+    const keep = lod === 'hi' ? step(d, R.hi) : step(R.hi, d).mul(step(d, R.far));
 
     // Vine strands are wood-tagged but hang free, so they sway along their whole length.
     const woodSway = partName === 'vine' ? 1 : 0.35;
@@ -194,7 +207,7 @@ export class Flora implements Colliders {
     // Leaves are double-sided cards, so light them by |N.L| with a wrap term.
     const lambert = saturate(abs(dot(n, key)).mul(0.7).add(0.3));
     const variety = hash(inst.x.mul(0.37).add(inst.z.mul(1.91)));
-    const fade = smoothstep(float(cfg.far), float(cfg.far * 0.85), d);
+    const fade = smoothstep(R.far, R.far.mul(0.85), d);
 
     let col;
     if (GLOW_PARTS.has(partName)) {

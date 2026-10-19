@@ -18,6 +18,10 @@ export interface AudioMix {
 export class Audio {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
+  private musicBus!: GainNode;
+  private sfxBus!: GainNode;
+  private volumes = { master: 0.9, music: 0.8, sfx: 0.9 };
+  private pausedDuck = 1;
   private buffers = new Map<string, AudioBuffer>();
   private loops = new Map<LoopName, GainNode>();
   private musicDuck = 1;
@@ -30,7 +34,13 @@ export class Audio {
     this.master = ctx.createGain();
     this.master.gain.value = 0;
     this.master.connect(ctx.destination);
-    this.master.gain.setTargetAtTime(0.9, ctx.currentTime + 0.5, 2.5);
+    this.master.gain.setTargetAtTime(this.volumes.master, ctx.currentTime + 0.5, 2.5);
+    this.musicBus = ctx.createGain();
+    this.sfxBus = ctx.createGain();
+    this.musicBus.gain.value = this.volumes.music;
+    this.sfxBus.gain.value = this.volumes.sfx;
+    this.musicBus.connect(this.master);
+    this.sfxBus.connect(this.master);
 
     const names = [
       ...LOOPS.map((l) => `loop_${l}`),
@@ -51,7 +61,7 @@ export class Audio {
       src.loop = true;
       const g = ctx.createGain();
       g.gain.value = 0;
-      src.connect(g).connect(this.master);
+      src.connect(g).connect(l === 'music' ? this.musicBus : this.sfxBus);
       // Offset start points so loops of similar length don't phase together audibly.
       src.start(0, Math.random() * src.buffer.duration);
       this.loops.set(l, g);
@@ -67,7 +77,7 @@ export class Audio {
     src.playbackRate.value = rate;
     const g = ctx.createGain();
     g.gain.value = gain;
-    src.connect(g).connect(this.master);
+    src.connect(g).connect(this.sfxBus);
     src.start();
   }
 
@@ -105,6 +115,23 @@ export class Audio {
   memory() {
     this.one('memory_swell', 0.55);
     this.duck(10);
+  }
+
+  setVolumes(v: { master: number; music: number; sfx: number }) {
+    this.volumes = { ...v };
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.master.gain.setTargetAtTime(v.master * this.pausedDuck, ctx.currentTime, 0.1);
+    this.musicBus.gain.setTargetAtTime(v.music, ctx.currentTime, 0.1);
+    this.sfxBus.gain.setTargetAtTime(v.sfx, ctx.currentTime, 0.1);
+  }
+
+  /** The world goes quiet behind the pause menu; music stays faintly. */
+  setPaused(paused: boolean) {
+    this.pausedDuck = paused ? 0.35 : 1;
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.master.gain.setTargetAtTime(this.volumes.master * this.pausedDuck, ctx.currentTime, 0.25);
   }
 
   /** Distance-attenuated one-shots for the wildlife. */
