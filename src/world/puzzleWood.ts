@@ -41,8 +41,8 @@ function shrine(site: PuzzleSite, glow: { value: number }) {
 }
 
 /**
- * Glowcaps: six mushrooms joined by roots. Touching one flips it and every mushroom its roots reach.
- * Light all six at once to wake the shrine. The obvious moves undo each other.
+ * Glowcaps: eight mushrooms joined by roots. Touching one flips it and every mushroom its roots reach.
+ * Light them all at once to wake the shrine. The obvious moves undo each other.
  */
 export class Glowcaps implements PuzzleImpl {
   readonly group = new THREE.Group();
@@ -82,8 +82,15 @@ export class Glowcaps implements PuzzleImpl {
     return i >= 0 ? { prompt: 'E   touch the glowcap', act: () => this.touch(i) } : null;
   }
 
+  /** Seconds each cap has been lit; a cap left burning too long gutters out again. */
+  private age: number[] = [];
+  static readonly FADE = 45;
+
   private touch(i: number) {
-    for (const j of [i, ...this.site.links![i]]) this.lit[j] = !this.lit[j];
+    for (const j of [i, ...this.site.links![i]]) {
+      this.lit[j] = !this.lit[j];
+      this.age[j] = 0;
+    }
     this.hooks.note(i);
     if (this.lit.every(Boolean)) {
       this.isSolved = true;
@@ -92,7 +99,17 @@ export class Glowcaps implements PuzzleImpl {
   }
 
   update(dt: number) {
-    this.lit.forEach((l, i) => (this.glows[i].value += ((l ? 1 : 0) - this.glows[i].value) * Math.min(1, dt * 6)));
+    if (!this.isSolved)
+      this.lit.forEach((l, i) => {
+        if (!l) return;
+        this.age[i] = (this.age[i] ?? 0) + dt;
+        if (this.age[i] > Glowcaps.FADE) this.lit[i] = false;
+      });
+    // Dimming toward the end of its time, so you can see which caps are about to go out.
+    this.lit.forEach((l, i) => {
+      const fading = l && !this.isSolved ? 1 - Math.max(0, ((this.age[i] ?? 0) - Glowcaps.FADE * 0.6) / (Glowcaps.FADE * 0.4)) * 0.6 : l ? 1 : 0;
+      this.glows[i].value += (fading - this.glows[i].value) * Math.min(1, dt * 6);
+    });
     if (this.isSolved) this.shrineGlow.value += (1 - this.shrineGlow.value) * Math.min(1, dt);
     this.crystal.rotation.y += dt * 0.6;
   }

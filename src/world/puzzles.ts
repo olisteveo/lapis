@@ -106,9 +106,18 @@ export function layoutPuzzles(hf: Heightfield, wonders: Wonder[], boatAzimuth: n
           if (h > -0.15 || h < -0.8 || bells.some((b) => b.y > -0.15 || b.y < -0.8)) continue;
           site.bells = bells;
           site.order = shuffle(n, rnd);
-          let decoy = shuffle(n, rnd);
-          while (decoy.every((v, i) => v === site.order![i])) decoy = shuffle(n, rnd);
-          if (slot === 1) site.decoy = decoy;
+          if (slot === 1) {
+            // The last pool's tune is longer than its bells: two of them ring twice.
+            for (let k = 0; k < 2; k++) {
+              const at = 1 + Math.floor(rnd() * (site.order.length - 1));
+              let bell = Math.floor(rnd() * n);
+              while (bell === site.order[at - 1] || bell === site.order[at]) bell = (bell + 1) % n;
+              site.order.splice(at, 0, bell);
+            }
+            let decoy = [...site.order].sort(() => rnd() - 0.5);
+            while (decoy.every((v, i) => v === site.order![i]) || decoy.some((v, i) => v === decoy[i - 1])) decoy = [...site.order].sort(() => rnd() - 0.5);
+            site.decoy = decoy;
+          }
         } else {
           if (h < 0.8 || slope(x, z) > (region === 'dunes' ? 3.5 : 2)) continue;
           const dry = (px: number, pz: number) => hf.height(px, pz) > 0.6 && slope(px, pz) < 2.5;
@@ -178,10 +187,10 @@ export function layoutPuzzles(hf: Heightfield, wonders: Wonder[], boatAzimuth: n
             site.decoyTrail = adult;
             site.reward = { x: path[path.length - 1].x, z: path[path.length - 1].z };
           } else if (kind === 'glowcaps') {
-            // Six mushrooms joined by roots. Touching one flips it and every mushroom its roots reach.
+            // Eight mushrooms joined by roots. Touching one flips it and every mushroom its roots reach.
             const caps: Spot[] = [];
-            for (let k = 0; k < 6; k++) {
-              const ca = a + (k / 6) * Math.PI * 2 + (rnd() - 0.5) * 0.4;
+            for (let k = 0; k < 8; k++) {
+              const ca = a + (k / 8) * Math.PI * 2 + (rnd() - 0.5) * 0.3;
               const cr = 8 + rnd() * 5;
               caps.push(at(x + Math.sin(ca) * cr, z + Math.cos(ca) * cr));
             }
@@ -191,29 +200,30 @@ export function layoutPuzzles(hf: Heightfield, wonders: Wonder[], boatAzimuth: n
               if (!links[i].includes(j)) links[i].push(j);
               if (!links[j].includes(i)) links[j].push(i);
             };
-            for (let k = 0; k < 6; k++) join(k, (k + 1) % 6);
-            join(0, 3);
-            join(1, 4);
+            for (let k = 0; k < 8; k++) join(k, (k + 1) % 8);
+            join(0, 4);
+            join(2, 5);
+            join(3, 7);
             // Scramble from all-lit with presses the player has to undo: always solvable.
             const lit = caps.map(() => true);
             const presses = new Set<number>();
-            while (presses.size < 3) presses.add(Math.floor(rnd() * 6));
+            while (presses.size < 4) presses.add(Math.floor(rnd() * 8));
             for (const k of presses) for (const j of [k, ...links[k]]) lit[j] = !lit[j];
             if (lit.every(Boolean)) continue;
             site.caps = caps;
             site.links = links;
             site.start = lit;
           } else if (kind === 'mirrors') {
-            // Source, five caps, shrine. The caps lie along a hidden route (each within reach of the
+            // Source, seven caps, shrine. The caps lie along a hidden route (each within reach of the
             // next), then the beam must visit every cap before the shrine will wake.
-            const reach = 14;
+            const reach = 16;
             const nodes: Spot[] = [at(x, z)];
             let px = x;
             let pz = z;
             let heading = a;
-            for (let k = 0; k < 5; k++) {
-              heading += (rnd() > 0.5 ? 1 : -1) * (1.2 + rnd() * 0.9);
-              const d = 8 + rnd() * 4;
+            for (let k = 0; k < 7; k++) {
+              heading += (rnd() > 0.5 ? 1 : -1) * (1.4 + rnd() * 0.9);
+              const d = 7 + rnd() * 4;
               px += Math.sin(heading) * d;
               pz += Math.cos(heading) * d;
               nodes.push(at(px, pz));

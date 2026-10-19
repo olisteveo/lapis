@@ -47,7 +47,7 @@ export class BellPool implements PuzzleImpl {
     const post = new THREE.CylinderGeometry(0.16, 0.24, 2.6, 7).translate(0, 1.3, 0);
     const beam = new THREE.BoxGeometry(1.1, 0.16, 0.16).translate(0, 2.6, 0);
     const bellGeo = new THREE.CylinderGeometry(0.12, 0.38, 0.6, 12, 1, true).translate(0, -0.3, 0);
-    const marks = Array.from({ length: 7 }, (_, n) => marksTexture(n));
+    const marks = Array.from({ length: 9 }, (_, n) => marksTexture(n));
     const order = site.order!;
     this.swing = site.bells!.map(() => 0);
     site.bells!.forEach((b, i) => {
@@ -69,11 +69,21 @@ export class BellPool implements PuzzleImpl {
         this.group.add(s);
         return s;
       };
-      // Truth: how many-th this bell is in the order. Hidden from the real camera.
-      const t = mark(order.indexOf(i) + 1, 0x8ff0e6);
-      t.visible = false;
-      this.truth.push(t);
-      if (site.decoy) this.lies.push(mark(site.decoy.indexOf(i) + 1, 0xffc878));
+      // Truth: when to ring this bell (a bell rung twice carries two marks, one above the other).
+      // Hidden from the real camera.
+      const when = (seq: number[]) => seq.map((b, k) => (b === i ? k + 1 : 0)).filter(Boolean);
+      when(order).forEach((n, k) => {
+        const t = mark(n, 0x8ff0e6);
+        t.position.y += k * 1.5;
+        t.visible = false;
+        this.truth.push(t);
+      });
+      if (site.decoy)
+        when(site.decoy).forEach((n, k) => {
+          const l = mark(n, 0xffc878);
+          l.position.y += k * 1.5;
+          this.lies.push(l);
+        });
     });
   }
 
@@ -81,8 +91,11 @@ export class BellPool implements PuzzleImpl {
     return this.isSolved;
   }
 
+  /** Seconds the Keeper has stood still: wading makes ripples that break the reflection up. */
+  private still = 0;
+
   setMirror(mirror: boolean) {
-    for (const t of this.truth) t.visible = mirror && !this.isSolved;
+    for (const t of this.truth) t.visible = mirror && !this.isSolved && this.still > 1.5;
     for (const l of this.lies) l.visible = !mirror && !this.isSolved;
   }
 
@@ -113,8 +126,10 @@ export class BellPool implements PuzzleImpl {
     }
   }
 
-  update(dt: number) {
+  update(dt: number, player: { x: number; z: number; speed: number }) {
     const t = performance.now() / 1000;
+    const nearby = Math.hypot(player.x - this.site.x, player.z - this.site.z) < 30;
+    this.still = nearby && player.speed < 0.3 ? this.still + dt : 0;
     this.bells.forEach((b, i) => {
       this.swing[i] = Math.max(0, this.swing[i] - dt * 0.5);
       b.rotation.z = Math.sin(t * 7) * 0.35 * this.swing[i];

@@ -341,6 +341,13 @@ async function boot() {
         get post() {
           return post;
         },
+        /** Simulated playtesters of four skills on every puzzle; prints and returns the table. */
+        async playtest(runs = 30) {
+          const { playtest } = await import('./debug/playtest');
+          const rows = playtest(puzzleSites, skyFeatures(boatAz), runs);
+          console.table(rows);
+          return rows;
+        },
         view(x: number, z: number, yaw = input.yaw, pitch = input.pitch) {
           state = 'play';
           player.mode = 'walk';

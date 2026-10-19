@@ -23,6 +23,7 @@ export class Fireflies implements PuzzleImpl {
   private carrying = false;
   private swarm = new THREE.Vector3();
   private scatterT = 0;
+  private dodge = 0;
   private flies: { s: THREE.Sprite; seed: number }[] = [];
   private flower: THREE.Sprite;
   private held: THREE.Sprite;
@@ -116,17 +117,21 @@ export class Fireflies implements PuzzleImpl {
     const d = Math.hypot(dx, dz);
     this.scatterT = Math.max(0, this.scatterT - dt);
     // Startled: a running Keeper, or one who comes too close. They bolt for home.
-    if (this.scatterT <= 0 && (d < 3 || (d < 14 && player.speed > 4.2))) {
+    if (this.scatterT <= 0 && (d < 4 || (d < 14 && player.speed > 4.2))) {
       this.scatterT = 3.5;
       this.hooks.fail(this.site);
     }
     const move = new THREE.Vector2();
     if (this.scatterT > 0) move.set(home.x - S.x, home.z - S.z).clampLength(0, 1).multiplyScalar(7);
     else {
-      // Shy: drift away from you when you are near.
-      if (d < 7) move.add(new THREE.Vector2(dx / d, dz / d).multiplyScalar((7 - d) * 1.1));
+      // Shy, but flighty: they dart away from you at a slant that keeps changing, so you have to
+      // keep stepping round to steer them.
+      this.dodge += (Math.sin(t * 0.7 + this.site.x) * 0.9 + Math.sin(t * 1.9) * 0.5 - this.dodge) * Math.min(1, dt * 2);
+      if (d < 7.5) move.add(new THREE.Vector2(dx / d, dz / d).rotateAround(new THREE.Vector2(), this.dodge).multiplyScalar((7.5 - d) * 1.1));
+      // They wander on their own as well.
+      move.add(new THREE.Vector2(Math.sin(t * 0.43 + 1), Math.cos(t * 0.31)).multiplyScalar(0.45));
       // With the moonflower in it, the jar's scent pulls them gently.
-      if (this.state === 'open') move.add(new THREE.Vector2(j.x - S.x, j.z - S.z).normalize().multiplyScalar(0.35));
+      if (this.state === 'open') move.add(new THREE.Vector2(j.x - S.x, j.z - S.z).normalize().multiplyScalar(0.25));
       // Left alone, they wander back to the long grass where they live.
       if (d > 18) move.add(new THREE.Vector2(home.x - S.x, home.z - S.z).clampLength(0, 1).multiplyScalar(0.5));
     }
@@ -152,7 +157,7 @@ export class Fireflies implements PuzzleImpl {
       s.material.opacity = 1;
       s.visible = Math.sin(t * (2 + (seed % 1.3)) + seed * 4) > -0.6;
     });
-    if (this.state === 'open' && Math.hypot(S.x - j.x, S.z - j.z) < 1.8) {
+    if (this.state === 'open' && Math.hypot(S.x - j.x, S.z - j.z) < 1.2) {
       this.state = 'solved';
       for (const fl of this.flies) fl.s.visible = false;
       this.hooks.solve(this.site);

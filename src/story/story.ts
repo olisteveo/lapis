@@ -142,7 +142,7 @@ export class Story {
         mirrors: ['Listen! A beam of light, and mirror caps. The shrine wants the light to visit every one of them first.', 'listen'],
         stones: ["Hmm? Each stone has a picture of the sky. I think each one should show what it's looking at. Stand behind a stone and look up past it!", 'hmm'],
         bells: site.slot === 0
-          ? ['Listen! Bells, under the water. The water remembers things the air forgets... look at their reflections.', 'listen']
+          ? ['Listen! Bells, under the water. She used to say the sea remembers things the sky forgets... when it is calm.', 'listen']
           : ["Hmm? These bells have marks on them. But I don't trust them. What does the water say?", 'hmm'],
       };
       const [text, call] = lines[site.kind];
