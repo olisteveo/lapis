@@ -8,6 +8,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { PALETTE, QUALITY } from '../config';
 import type { Grade } from './grade';
+import { darkUniforms } from './darkWater';
 
 // TSL's generics can't follow values through these unrolled loops; nodes are typed loosely.
 type N = any;
@@ -77,8 +78,10 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const camY = uniform(camera.position, 'vec3').y as N;
   const localFloor = mix(drift.mul(10).add(2), camY.sub(1.6).add(drift.mul(3)), smoothstep(400, 80, dist));
   const layer = exp(max(world.y.sub(localFloor), 0).div(-14));
-  const mistAmt = select(isSky, float(0), float(1).sub(exp(dist.mul(-0.0045))).mul(layer).mul(0.38));
-  const mistCol = mix(vec3(0.07, 0.1, 0.32), vec3(0.2, 0.2, 0.42), drift.mul(0.5).add(0.5));
+  // As the Dark Water spreads the mist thickens and darkens toward ink.
+  const gloom = darkUniforms.gloom as N;
+  const mistAmt: N = select(isSky, float(0), float(1).sub(exp(dist.mul(float(-0.0045).mul(gloom.mul(1.4).add(1))))).mul(layer).mul(gloom.mul(0.3).add(0.38)));
+  const mistCol: N = mix(mix(vec3(0.07, 0.1, 0.32), vec3(0.2, 0.2, 0.42), drift.mul(0.5).add(0.5)), vec3(0.02, 0.02, 0.06), gloom.mul(0.7));
   // Luminous grain: glow arrives as coarse printed grain, not a smooth lens haze.
   const gcell = floor(px.div(2)) as N;
   const grainy = hash(gcell.x.add(gcell.y.mul(6151)).add(boil.mul(3.7))).mul(1.5).add(0.25);

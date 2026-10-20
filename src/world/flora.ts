@@ -7,6 +7,7 @@ import { drawnSurface, penLines } from '../render/drawn';
 import { WORLD_HALF } from '../core/heightfield';
 import type { WorkerPool } from './terrain';
 import type { FloraResult } from './terrainWorker';
+import { darkAtNode } from '../render/darkWater';
 import type { Colliders } from '../core/player';
 
 interface TypeCfg {
@@ -323,6 +324,10 @@ export class Flora implements Colliders {
       // Each palm breathes its light slowly, out of step with its neighbours.
       const breathe = sin(time.mul(0.45).add(inst.x.mul(0.013)).add(inst.z.mul(0.017))).mul(0.12).add(0.92);
       col = col.mul(this.glow).mul(variety.mul(0.35).add(0.8)).mul(breathe);
+      // Where the Dark Water has reached, the palms' starlight greys and goes out.
+      const grey = vec3(dot(col, vec3(0.3, 0.5, 0.2))).mul(0.25);
+      // Only the shore palms: the dark is on the water, and inland groves stay lit.
+      col = mix(col, grey, darkAtNode(inst.xz).mul(smoothstep(9, 2, inst.y)).mul(0.85));
     } else {
       const dark = partName.includes('core') || partName.includes('bark') || partName === 'trunk_dark';
       // Not one green: each plant takes a hue from a small palette, grouped into patches across the

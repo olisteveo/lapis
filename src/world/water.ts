@@ -3,6 +3,7 @@ import {
   cameraFar, cameraNear, cameraPosition, color, dot, float, fwidth, max, mix, mx_noise_float, normalize, perspectiveDepthToViewZ,
   positionView, positionWorld, pow, reflect, reflector, saturate, sin, smoothstep, time, vec2, vec3, viewportDepthTexture,
 } from 'three/tsl';
+import { darkAtNode } from '../render/darkWater';
 import { PALETTE, QUALITY, SKY, onQualityChange } from '../config';
 import { LAGOONS } from '../core/heightfield';
 
@@ -74,6 +75,12 @@ export function createWater() {
   // Bright enough to bloom: the light comes up through the water, strongest in the shallows.
   const lagoonCol = mix(color(0x0d4f66), color(0x6ff4ee), smoothstep(2.8, 0.1, depth).mul(0.55).add(glowBand.mul(0.45))).mul(1.7);
   col = mix(col, mix(lagoonCol, reflected, fresnel.mul(0.35)), lagoon.mul(0.9));
+  // Dark Water: starless, reflectionless ink where her despair has reached. Only a dull oily sheen
+  // at grazing angles and a slow heave keep it reading as water rather than a hole.
+  const dark = darkAtNode(p);
+  const heave = mx_noise_float(vec3(p.mul(0.02), t.mul(0.15))).mul(0.5).add(0.5);
+  const ink = mix(color(0x000002), color(0x07050f), heave.mul(0.5).add(fresnel.mul(0.6)));
+  col = mix(col, ink, dark);
   mat.colorNode = col;
   mat.opacityNode = max(smoothstep(0.0, px.mul(2).max(0.5), depth), foam).mul(0.97);
 

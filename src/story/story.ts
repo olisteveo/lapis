@@ -19,6 +19,7 @@ import type { LighthouseClimb } from '../core/lighthouseClimb';
 import type { Wonders } from '../world/wonders';
 import { NightClock, type NightCue } from '../core/night';
 import { LightStore, RestReturns, Sources, TUNING, Warmth } from '../core/survival';
+import type { Refuge } from '../core/darkWater';
 import { Progress, type SaveStore } from '../core/progress';
 import { KEEPSAKES, Keepsakes, layoutKeepsakes, type KeepsakeId } from './keepsakes';
 import { SEE_RANGE } from './fallenStars';
@@ -304,6 +305,26 @@ export class Story {
 
   get waitingStars() {
     return this.stars.waiting;
+  }
+
+  /**
+   * Where the Dark Water can't reach: every region whose constellation is restored, and the shore
+   * you woke on (held clear wider once The Boat is restored).
+   */
+  refuges(): Refuge[] {
+    const out: Refuge[] = [{ x: this.layout.spawn.x, z: this.layout.spawn.z, r: this.skies[0].isComplete ? 1100 : 500 }];
+    CONSTELLATIONS.forEach((c, i) => {
+      if (c.region && this.skies[i].isComplete) {
+        const B = BIOMES[c.region];
+        out.push({ x: B.x, z: B.z, r: B.r * 1.1 });
+      }
+    });
+    return out;
+  }
+
+  /** Share of her constellations restored, 0..1. */
+  get restoredShare() {
+    return this.skies.filter((c) => c.isComplete).length / this.skies.length;
   }
 
   /** The chapter (constellation id) whose region the player is in, for its colour grade. */

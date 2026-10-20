@@ -124,5 +124,17 @@ they all hunt, and flankers aim for the point between you and the nearest light.
 prowling eyes smoulder; the view's edges close in while you're hidden; the wisp warns when you're found and when
 you've lost them. Rules in `src/core/nightmareBrain.ts` (not yet ported to C#).
 
-Not yet: drawn sources dimming visibly (they run dry, but don't look it), visible breath and trembling hands at low
+## Phase 3 status
+
+Built: Dark Water (`src/core/darkWater.ts`, ported to `sbox/Lapis.Core/DarkWater.cs` with a parity trace) creeps in
+from 6.2 km out toward the island's heart over the night, reaching 2.3 km by dawn in Survival and 3.3 km in Story.
+Every region whose constellation is restored holds it back (clear to 1.2 times the region's radius), as does the
+shore you woke on (wider once The Boat is restored). Where it reaches, the sea turns to starless ink with no
+reflections, the sparkles (fallen stars) go out, shoreline palms grey, and the mist thickens and darkens with how
+much of her sky is still dark. On or beside it warmth drains fast (1/40 per second in Survival). The wisp warns the
+first time you meet it.
+
+Not yet: low islands submerging (the terrain doesn't change).
+
+Not yet (phase 1): drawn sources dimming visibly (they run dry, but don't look it), visible breath and trembling hands at low
 warmth. All numbers are first guesses in `TUNING` and want tuning in play.

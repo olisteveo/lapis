@@ -8,6 +8,8 @@ export interface SurvivalTuning {
   /** Extra drain per second standing in the sea, and out in the wind. */
   drainWater: number;
   drainWind: number;
+  /** Extra drain per second at the heart of the Dark Water. */
+  drainDarkWater: number;
   /** How much faster the dark drains at the very end of the night (1 = no change). */
   lateFactor: number;
   /** Warmth gained per second in full light. */
@@ -28,6 +30,7 @@ export const TUNING: Record<Exclude<SurvivalMode, 'wander'>, SurvivalTuning> = {
     drainDark: 1 / 300,
     drainWater: 1 / 60,
     drainWind: 1 / 240,
+    drainDarkWater: 1 / 40,
     lateFactor: 2.5,
     refill: 1 / 12,
     wispCap: 1,
@@ -42,6 +45,7 @@ export const TUNING: Record<Exclude<SurvivalMode, 'wander'>, SurvivalTuning> = {
     drainDark: 1 / 1200,
     drainWater: 1 / 240,
     drainWind: 0,
+    drainDarkWater: 1 / 160,
     lateFactor: 1.5,
     refill: 1 / 6,
     wispCap: 1,
@@ -62,6 +66,8 @@ export interface Exposure {
   wind: number;
   /** night.progress, 0 at dusk to 1 at waking. */
   night: number;
+  /** 0..1: how deep in the Dark Water (core/darkWater.ts). */
+  dark?: number;
 }
 
 /** How warm she is: 1 warm, 0 collapsed. Drains in the dark, water and wind; light warms her. */
@@ -72,7 +78,7 @@ export class Warmth {
   update(dt: number, e: Exposure, t: SurvivalTuning) {
     const dark = 1 - Math.min(1, Math.max(0, e.lit));
     const late = 1 + (t.lateFactor - 1) * e.night * e.night;
-    const drain = (t.drainDark * dark * late + (e.inWater ? t.drainWater : 0) + t.drainWind * e.wind * dark) * dt;
+    const drain = (t.drainDark * dark * late + (e.inWater ? t.drainWater : 0) + t.drainWind * e.wind * dark + t.drainDarkWater * (e.dark ?? 0)) * dt;
     const gain = t.refill * Math.max(0, e.lit) * dt;
     const before = this.value;
     this.value = Math.min(1, Math.max(0, this.value - drain + gain));

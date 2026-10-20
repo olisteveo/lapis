@@ -6,6 +6,7 @@ import {
 } from 'three/tsl';
 import { PALETTE, QUALITY, SKY, onQualityChange } from '../config';
 import { mulberry32 } from '../core/heightfield';
+import { darkAtNode } from '../render/darkWater';
 import { starShape } from '../render/starShape';
 
 /**
@@ -56,7 +57,8 @@ function layer(count: number, span: number, seed: number, sizeScale: number, nea
   // wherever the scene behind is less than a few metres beyond the sprite.
   const sceneZ = perspectiveDepthToViewZ(viewportDepthTexture(), cameraNear, cameraFar);
   const clearance = smoothstep(1.5, 8.0, positionView.z.sub(sceneZ));
-  const bright = glint.mul(1.6).add(ambient).mul(envelope).mul(edgeFade).mul(nearFade).mul(intensity);
+  // The sparkles are fallen stars: none survive on the Dark Water.
+  const bright = glint.mul(1.6).add(ambient).mul(envelope).mul(edgeFade).mul(nearFade).mul(intensity).mul(float(1).sub(darkAtNode(xz)));
 
   const size = float(0.4).add(d.mul(0.0045)).mul(bright.min(1.6).mul(0.8).add(0.25)).mul(sizeScale);
   mat.scaleNode = vec2(size.mul(bright.greaterThan(0.02).select(float(1), float(0))) as any);

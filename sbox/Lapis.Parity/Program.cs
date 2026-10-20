@@ -20,7 +20,7 @@ foreach (var file in files)
     using var doc = JsonDocument.Parse(File.ReadAllText(file));
     var root = doc.RootElement;
     var name = root.GetProperty("name").GetString()!;
-    var result = name == "night" ? RunNight(root) : name.StartsWith("survival-") ? RunSurvival(root) : RunPlayer(root);
+    var result = name == "night" ? RunNight(root) : name == "darkwater" ? RunDarkWater(root) : name.StartsWith("survival-") ? RunSurvival(root) : RunPlayer(root);
     if (result.Divergence != null) failures++;
     var status = result.Divergence == null ? "PASS" : "FAIL";
     Console.WriteLine($"{status}  {name,-14} {result.Steps,5} steps  max err {result.MaxError:0.0e+0}");
@@ -146,7 +146,7 @@ static Result RunSurvival(JsonElement root)
     {
         var dt = s.GetProperty("dt").GetDouble();
         now += dt;
-        var e = new Exposure(s.GetProperty("lit").GetDouble(), s.GetProperty("inWater").GetBoolean(), s.GetProperty("wind").GetDouble(), s.GetProperty("night").GetDouble());
+        var e = new Exposure(s.GetProperty("lit").GetDouble(), s.GetProperty("inWater").GetBoolean(), s.GetProperty("wind").GetDouble(), s.GetProperty("night").GetDouble(), s.GetProperty("dark").GetDouble());
         var collapsed = warmth.Update(dt, e, t);
         if (collapsed) warmth.Reset();
         light.Update(dt);
@@ -167,6 +167,25 @@ static Result RunSurvival(JsonElement root)
         check.Num("left", s, sources.Left(12.5, -3, now));
         check.Num("rest", s, rest);
         check.Num("streak", s, rests.Streak);
+        i++;
+    }
+    return new Result(i, check.MaxError, check.Divergence);
+}
+
+static Result RunDarkWater(JsonElement root)
+{
+    var refuges = root.GetProperty("refuges").EnumerateArray()
+        .Select(r => new Refuge(r.GetProperty("x").GetDouble(), r.GetProperty("z").GetDouble(), r.GetProperty("r").GetDouble())).ToList();
+    var check = new Checker();
+    var i = 0;
+    foreach (var s in root.GetProperty("steps").EnumerateArray())
+    {
+        var mode = s.GetProperty("mode").GetString() == "story" ? SurvivalMode.Story : SurvivalMode.Survival;
+        var reach = DarkWater.Reach(s.GetProperty("night").GetDouble(), mode);
+        check.Step = i;
+        check.Num("reach", s, reach);
+        check.Num("dark", s, DarkWater.At(s.GetProperty("x").GetDouble(), s.GetProperty("z").GetDouble(), reach, refuges));
+        check.Equal("wander", "null", double.IsInfinity(DarkWater.Reach(0.5, SurvivalMode.Wander)) ? "null" : "finite");
         i++;
     }
     return new Result(i, check.MaxError, check.Divergence);
