@@ -1,9 +1,11 @@
 import * as THREE from 'three/webgpu';
 import {
   attribute, cameraPosition, color, cross, dot, float, min, mix, mx_fractal_noise_float, mx_noise_float, normalize,
-  normalWorld, positionWorld, smoothstep, texture, vec2, vec3, screenUV, max, sin, time,
+  normalWorld, positionWorld, smoothstep, texture, vec2, vec3, screenUV, max, sin, time, floor, length,
 } from 'three/tsl';
 import { PALETTE, SKY } from '../config';
+import { hash } from '../render/seed';
+import { BIOMES } from '../core/heightfield';
 import { hatchAt, penLines, strokes, tones } from '../render/drawn';
 
 type N = any;
@@ -89,9 +91,34 @@ export function createTerrainMaterial(reflection: THREE.TextureNode) {
   // petals catching the moon in the meadows.
   const spores = smoothstep(0.78, 0.97, mx_noise_float(vec2(p.x.mul(0.9), p.z.mul(0.9)))).mul(sin(time.mul(1.3).add(p.x.mul(0.05))).mul(0.3).add(0.7));
   const grains = smoothstep(0.93, 1.0, speck).mul(0.6);
+  // Points of light are a world-space jittered cell each: big enough to survive the painted
+  // strokes up close, and faded out with distance before they would shimmer as sub-pixel dots.
+  const lights = (scale: number, chance: number, radius: number, seed: number) => {
+    const q = p.xz.mul(scale);
+    const cell = floor(q);
+    const h = (o: number) => hash(cell.x.mul(157.3).add(cell.y.mul(311.7)).add(seed + o));
+    const at = cell.add(vec2(h(0), h(1)).mul(0.6).add(0.2));
+    const dot1 = smoothstep(radius, radius * 0.3, length(q.sub(at))).mul(smoothstep(chance, chance + 0.01, h(2)));
+    return { dot: dot1, phase: h(3) };
+  };
+  const near = smoothstep(90, 25, camDist);
+  // Meadows: glow-worms in the grass, each breathing on its own slow clock.
+  const worms = lights(0.6, 0.82, 0.13, 11);
+  const wormLight = worms.dot.mul(sin(time.mul(worms.phase.mul(0.8).add(0.4)).add(worms.phase.mul(60))).mul(0.5).add(0.5)).mul(near);
+  // Dunes: glitter. Grains flash as you move past them, keyed to where the eye is, like real sand.
+  const glint = lights(1.6, 0.86, 0.11, 23);
+  const facing = sin(glint.phase.mul(80).add(cameraPosition.x.mul(0.9)).add(cameraPosition.z.mul(0.7)).add(time.mul(0.6)));
+  const glitter = glint.dot.mul(smoothstep(0.7, 1.0, facing)).mul(near);
+  // Drowned Town: sea light runs in the grout and rolls outward from the old square in slow waves.
+  const fromSquare = length(p.xz.sub(vec2(BIOMES.drowned.x, BIOMES.drowned.z)));
+  const swell = smoothstep(0.6, 1.0, sin(fromSquare.mul(0.12).sub(time.mul(0.9))));
+  const seaLight = grout.mul(swell.mul(0.8).add(0.25)).mul(smoothstep(600, 80, camDist));
   const regionGlow = vec3(0.15, 0.85, 0.8).mul(spores).mul(biome.y).mul(0.35)
     .add(vec3(0.75, 0.7, 1.0).mul(grains).mul(biome.z).mul(0.25))
-    .add(vec3(0.6, 0.55, 0.8).mul(petals).mul(biome.x).mul(0.12));
+    .add(vec3(0.6, 0.55, 0.8).mul(petals).mul(biome.x).mul(0.3))
+    .add(vec3(0.85, 0.95, 0.6).mul(wormLight).mul(biome.x).mul(4.5))
+    .add(vec3(0.8, 0.9, 1.0).mul(glitter).mul(biome.z).mul(3.0))
+    .add(vec3(0.2, 0.8, 0.95).mul(seaLight).mul(biome.w).mul(0.9));
 
   // ---- Drawn, not lit. The moon's light is laid on as three flat tones with wobbly edges, like
   // gouache; shadow is hatched in ink along the lie of the land; hills carry contour lines and

@@ -76,7 +76,7 @@ const REGION_GLOW: Record<string, [number, number]> = {
   // Shared by hundreds of small caps: kept modest, or their bloom floods the whole frame.
   mushroom_glow: [0x5fe8d8, 0.7],
   lantern_glow: [0xffc070, 1.8],
-  moonflower_glow: [0xece0ff, 1.25],
+  moonflower_glow: [0xece0ff, 1.6],
   crystal: [0xc6b6ff, 0.75],
 };
 const REGION_BASE: Record<string, number> = {
@@ -279,6 +279,16 @@ export class Flora implements Colliders {
         // Keep the inner gills below the bloom threshold (a big evenly bright surface blooms over
         // its own lines); only the rim burns bright.
         col = mix(col.mul(rim.mul(rim).mul(1.1).add(0.12)).mul(mottle), color(0x0b1030), gills.mul(0.85));
+      } else if (partName === 'crystal') {
+        // Light climbs the crystals in slow bands, and facets flash white as they turn to face you.
+        const view = normalize(cameraPosition.sub(wp));
+        const band = smoothstep(0.7, 1.0, sin(wp.y.mul(1.4).sub(time.mul(1.6)).add(variety.mul(12)))).mul(0.6);
+        const facet = smoothstep(0.88, 0.99, abs(dot(n, view)));
+        emit = color(0xd8ccff).mul(band).add(color(0xffffff).mul(facet).mul(1.6));
+      } else if (partName === 'moonflower_glow') {
+        // Each bloom shimmers faintly out of step with the rest, like breath on a cold night.
+        const shimmer = sin(time.mul(3.1).add(variety.mul(50))).mul(sin(time.mul(1.7).add(variety.mul(23)))).mul(0.25).add(1);
+        col = col.mul(shimmer);
       }
     } else if (REGION_BASE[partName] !== undefined) {
       col = color(REGION_BASE[partName]).mul(lambert.mul(0.6).add(0.3)).mul(variety.mul(0.25).add(0.85));

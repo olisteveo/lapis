@@ -15,7 +15,7 @@ import { createReflectionProxy, createTerrainMaterial } from './world/terrainMat
 import { createWater } from './world/water';
 import { createSky } from './world/sky';
 import { createSparkles } from './world/sparkles';
-import { createMotes, sporeDensity } from './world/motes';
+import { createMotes, regionMotes } from './world/motes';
 import { Moonbeams } from './world/moonbeams';
 import { Landmarks, layoutLandmarks, CompositeColliders } from './world/landmarks';
 import { Wildlife } from './world/wildlife';
@@ -655,7 +655,11 @@ async function boot() {
     post.frost.value += (Math.max(0, (frostTarget - 0.55) / 0.45) - post.frost.value) * Math.min(1, dt * 0.8);
     const memTarget = performance.now() / 1000 < memoryUntil ? 1 : 0;
     post.memoryMix.value += (memTarget - post.memoryMix.value) * Math.min(1, dt * (memTarget ? 1.2 : 0.7));
-    sporeDensity.value += (THREE.MathUtils.smoothstep(hf.sample(player.x, player.z).lantern, 0.2, 0.6) - sporeDensity.value) * Math.min(1, dt * 0.5);
+    const here = hf.sample(player.x, player.z);
+    for (const [k, u] of Object.entries(regionMotes)) {
+      const w = here[k as keyof typeof regionMotes] * (k === 'drowned' ? 1.5 : 1);
+      u.value += (THREE.MathUtils.smoothstep(w, 0.2, 0.6) - u.value) * Math.min(1, dt * 0.5);
+    }
     grade.set(story.chapterAt(player));
     grade.update(dt);
     const mix = { ...story.audioMix(player), dread: nightmares.dread, falls: waterfalls.loudness(camera.position) };
