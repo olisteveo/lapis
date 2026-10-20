@@ -55,6 +55,8 @@ const TRUNKS: Record<string, number> = {
 };
 
 // Soft plants you walk through: they part around you instead of stopping you.
+// Plants that carry flowers on their outer leaves.
+const FLOWERING = new Set(['Bush0', 'Bush1', 'Groundcover', 'Understory', 'Banana']);
 const SOFT = new Set(['FernA', 'FernB', 'Groundcover', 'Bush0', 'Bush1', 'Moonflowers', 'MeadowGrass', 'DuneGrass', 'Vines']);
 
 // Base radii; the live ones (and the shader uniforms) scale with the quality preset.
@@ -323,7 +325,16 @@ export class Flora implements Colliders {
       col = col.mul(this.glow).mul(variety.mul(0.35).add(0.8)).mul(breathe);
     } else {
       const dark = partName.includes('core') || partName.includes('bark') || partName === 'trunk_dark';
-      const baseCol = mix(color(PALETTE.jungle), color(PALETTE.jungleLit), vc.r.mul(0.6).add(variety.mul(0.4)));
+      // Not one green: each plant takes a hue from a small palette, grouped into patches across the
+      // ground so colours drift naturally (dark and light greens mostly, then brown, plum, maroon).
+      const patch = hash(floor(inst.x.div(22)).mul(41.3).add(floor(inst.z.div(22)).mul(17.9)));
+      const pick = variety.mul(0.55).add(patch.mul(0.65)).fract();
+      let hue: any = color(0x163a2c);
+      hue = mix(hue, color(0x3f7a4a), step(0.34, pick));
+      hue = mix(hue, color(0x5b4a2a), step(0.58, pick));
+      hue = mix(hue, color(0x4a2f66), step(0.73, pick));
+      hue = mix(hue, color(0x5e2233), step(0.87, pick));
+      const baseCol = mix(hue.mul(0.75), hue.mul(1.2), vc.r.mul(0.6).add(variety.mul(0.4)));
       // Keep foliage low and green: lit faces only lift a little, so the jungle reads as a
       // dark green mass (refs 2, 3) instead of frosted blue leaves.
       col = baseCol.mul(lambert.mul(0.45).add(0.22)).mul(dark ? 0.55 : 1);
@@ -333,6 +344,22 @@ export class Flora implements Colliders {
         const tip = vc.r.mul(vc.r).mul(vc.r).mul(vc.g);
         const pulse = sin(time.mul(0.8).add(variety.mul(30))).mul(0.25).add(0.75);
         col = col.add(vec3(0.2, 0.6, 0.85).mul(tip).mul(pulse).mul(partName === 'fern' ? 1.1 : 0.35));
+      }
+      if (FLOWERING.has(type) && !dark) {
+        // Blossoms freckling the outer leaves of most bushes and low plants, one colour per plant.
+        const q = varying(positionLocal).mul(2.6);
+        const cell = floor(q);
+        const h = (o: number) => hash(cell.x.mul(91.7).add(cell.y.mul(213.1)).add(cell.z.mul(57.3)).add(variety.mul(77)).add(o));
+        const centre = cell.add(vec3(h(0), h(1), h(2)).mul(0.5).add(0.25));
+        const bloom = smoothstep(0.3, 0.14, length(q.sub(centre))).mul(step(0.55, h(3))).mul(step(0.3, variety)).mul(smoothstep(0.15, 0.5, vc.r));
+        const tint = hash(inst.x.mul(3.1).add(inst.z.mul(7.7)));
+        let petal: any = color(0xff8fb8);
+        petal = mix(petal, color(0xffd36a), step(0.3, tint));
+        petal = mix(petal, color(0xf4eefe), step(0.5, tint));
+        petal = mix(petal, color(0xe2424e), step(0.7, tint));
+        petal = mix(petal, color(0xc39bff), step(0.85, tint));
+        // A touch brighter than the leaves so they read in the night, but well below a glow.
+        col = mix(col, petal.mul(lambert.mul(0.4).add(0.95)), bloom);
       }
     }
     // Trunks, bark and mushroom flesh are drawn: flat tones and vertical pen strokes on the

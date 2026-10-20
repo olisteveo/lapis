@@ -18,6 +18,8 @@ const SWATCHES = [
   0x8196b8, 0x815f5e, 0xb35d3d, 0xbf7e77, 0xff6e50, 0xffb866, 0xc9a2a3, 0xd6cbcb, 0xf2e6d8,
   // Jungle greens from refs 2 and 3, so the forest doesn't collapse into navy.
   0x0f2620, 0x1c3d33, 0x2f5a4c,
+  // The foliage's other hues (light green, brown, plum, maroon) and blossom pink, so they survive the palette.
+  0x3f7a4a, 0x5b4a2a, 0x4a2f66, 0x5e2233, 0xe07aa6,
 ];
 
 function srgbToOklab(hex: number): [number, number, number] {
