@@ -24,6 +24,13 @@ export class NightClock {
     this.fired.clear();
   }
 
+  /** Pick up a saved night: cues already passed count as heard, so none replay. */
+  resume(progress: number) {
+    this.progress = Math.min(1, Math.max(0, progress));
+    this.fired.clear();
+    for (const [at, cue] of CUES) if (at <= this.progress) this.fired.add(cue);
+  }
+
   /** Give back a share of the elapsed night (1 = a fresh night); cues not yet reached fire again. */
   rewind(share: number) {
     this.progress *= 1 - Math.min(1, Math.max(0, share));

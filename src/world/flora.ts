@@ -9,6 +9,7 @@ import type { WorkerPool } from './terrain';
 import type { FloraResult } from './terrainWorker';
 import { darkAtNode } from '../render/darkWater';
 import { weather } from '../render/weather';
+import { glowLeftNode } from '../render/drained';
 import type { Colliders } from '../core/player';
 
 interface TypeCfg {
@@ -280,7 +281,8 @@ export class Flora implements Colliders {
     if (REGION_GLOW[partName]) {
       const [hex, k] = REGION_GLOW[partName];
       const breathe = sin(time.mul(0.7).add(variety.mul(20))).mul(0.15).add(0.9);
-      col = color(hex).mul(k).mul(vc.r.mul(0.4).add(0.7)).mul(breathe).mul(float(1).sub((weather.storm as any).mul(0.35)));
+      // Drawn into the lantern, a plant's light stays low until it regrows.
+      col = color(hex).mul(k).mul(vc.r.mul(0.4).add(0.7)).mul(breathe).mul(float(1).sub((weather.storm as any).mul(0.35))).mul(glowLeftNode(inst.xz));
       if (partName === 'mushroom_glow') {
         // Gills drawn as fine radial ink lines; the light gathers at the rim and dies toward the stem.
         const rel = wp.xz.sub(inst.xz);
@@ -378,7 +380,7 @@ export class Flora implements Colliders {
     // shadow side, anchored in the world so they don't swim. Leaves stay painted.
     const drawn = partName === 'trunk' || partName.includes('bark') || partName.includes('core') || partName.startsWith('mushroom_') && !partName.includes('glow');
     if (drawn) col = drawnSurface(col, n, wp);
-    if (emit) col = col.add(emit);
+    if (emit) col = col.add(emit.mul(glowLeftNode(inst.xz)));
     mat.colorNode = col.mul(fade.mul(0.3).add(0.7));
     return mat;
   }

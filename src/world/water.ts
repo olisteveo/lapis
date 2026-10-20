@@ -4,6 +4,7 @@ import {
   positionView, positionWorld, pow, reflect, reflector, saturate, sin, smoothstep, time, vec2, vec3, viewportDepthTexture,
 } from 'three/tsl';
 import { darkAtNode } from '../render/darkWater';
+import { glowLeftNode } from '../render/drained';
 import { PALETTE, QUALITY, SKY, onQualityChange } from '../config';
 import { LAGOONS } from '../core/heightfield';
 
@@ -65,7 +66,7 @@ export function createWater() {
   // Bioluminescent surf: breaking waves stir up the sea's light, so each rolling band burns cyan
   // as it comes in, flickering where the water churns hardest.
   const churn = mx_noise_float(vec3(p.mul(0.7), t.mul(1.1))).mul(0.5).add(0.5);
-  const stirred = rolling.mul(smoothstep(0.35, 0.9, churn)).mul(smoothstep(160, 30, dist));
+  const stirred: any = rolling.mul(smoothstep(0.35, 0.9, churn)).mul(smoothstep(160, 30, dist)).mul(glowLeftNode(p));
   col = col.add(color(0x48d8ff).mul(stirred).mul(1.4));
 
   // Secret lagoons: still, luminous turquoise water, lit from below.

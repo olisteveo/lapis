@@ -85,6 +85,9 @@ export class HeldKeepsake {
    * held: what the Keeper wants in hand. needleTo: where the compass should point (world x, z), or null
    * to let it wander. speed: walking speed, for the sway.
    */
+  /** 0..1: how cold she is; the held keepsake trembles with it. */
+  shiver = 0;
+
   update(dt: number, camera: THREE.Camera, held: KeepsakeId | null, needleTo: { x: number; z: number } | null, speed: number) {
     this.t += dt;
     if (held !== this.showing) {
@@ -99,12 +102,14 @@ export class HeldKeepsake {
     const ease = this.raise * this.raise * (3 - 2 * this.raise);
     const walk = Math.min(1, speed / 3.2);
     const bob = Math.sin(this.t * 6.5) * 0.008 * walk + Math.sin(this.t * 1.3) * 0.004;
+    // Cold hands shake: a fast uneven tremor that grows as warmth runs out.
+    const tremor = this.shiver * (Math.sin(this.t * 41) * 0.6 + Math.sin(this.t * 29.3) * 0.4);
     const holder = this.holders.get(this.showing)!;
     camera.updateMatrixWorld();
-    const off = new THREE.Vector3(pose.at[0], pose.at[1] - (1 - ease) * 0.45 + bob, pose.at[2]).applyQuaternion(camera.quaternion);
+    const off = new THREE.Vector3(pose.at[0] + tremor * 0.004, pose.at[1] - (1 - ease) * 0.45 + bob + tremor * 0.006, pose.at[2]).applyQuaternion(camera.quaternion);
     holder.position.copy(camera.position).add(off);
     const swing = this.showing === 'lantern' ? Math.sin(this.t * 1.7) * 0.08 * (0.4 + walk) : 0;
-    holder.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose.turn[0], pose.turn[1], pose.turn[2] + swing)));
+    holder.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose.turn[0] + tremor * 0.03, pose.turn[1], pose.turn[2] + swing)));
     holder.updateMatrixWorld(true);
 
     if (this.needle && this.showing === 'compass') {

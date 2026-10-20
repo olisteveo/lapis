@@ -10,8 +10,10 @@ import { TUNING } from './core/survival';
 import { darkAt, darkReach } from './core/darkWater';
 import { SquallClock } from './core/squalls';
 import { createRain } from './world/rain';
+import { Breath } from './world/breath';
 import { weather } from './render/weather';
 import { setDarkWater } from './render/darkWater';
+import { setDrained } from './render/drained';
 import { MemoryFilm } from './ui/memoryFilm';
 import { HeldKeepsake } from './game/held';
 import { KEEPSAKES } from './story/keepsakes';
@@ -109,7 +111,8 @@ async function boot() {
   const avatar = new Avatar();
   // First person: the Keeper's body is never added to the scene.
   const rain = createRain();
-  scene.add(sky.group, terrain.group, water.mesh, water.target, sparkles.group, flora.group, avatar.boat, motes, beams.group, rain);
+  const breath = new Breath();
+  scene.add(sky.group, terrain.group, water.mesh, water.target, sparkles.group, flora.group, avatar.boat, motes, beams.group, rain, breath.group);
 
   const spawn = findSpawn(hf);
   const layout = layoutPrologue(hf, spawn);
@@ -607,6 +610,7 @@ async function boot() {
     const t = tuning();
     const here = hf.sample(player.x, player.z);
     if (frames % 10 === 0) {
+      setDrained(story.sources.drained(performance.now() / 1000), story.sources.cell / 2);
       glowCount = flora.glowNear(player.x, player.z, 5);
       coverCount = player.mode === 'walk' ? flora.coverNear(player.x, player.z, 2) : 0;
     }
@@ -893,6 +897,10 @@ async function boot() {
     promptEl.style.opacity = prompt && state === 'play' ? '1' : '0';
 
     avatar.update(dt, player, camera);
+    // Breath shows from a little cold, well before the frost does; the hands shake only when it's bad.
+    const chill = state === 'play' && surviving() ? Math.max(0, 1 - story.warmth.value) : 0;
+    breath.update(dt, camera, chill, player.speed > 4.5);
+    held.shiver = THREE.MathUtils.smoothstep(chill, 0.45, 0.95);
     held.update(dt, camera, state === 'play' ? story.held : null, story.held === 'compass' ? story.compassTarget(player.x, player.z) : null, player.mode === 'walk' ? player.speed : 0);
     const owned = KEEPSAKES.filter((k) => story.hasKeepsake(k.id)).map((k) => k.id);
     hotbar.visible = state === 'play' && owned.length > 0;
