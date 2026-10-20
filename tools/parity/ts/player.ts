@@ -87,6 +87,8 @@ export class PlayerController {
   platforms: Platforms | null = null;
   /** Moth wings found: hold jump while falling to glide. */
   canGlide = false;
+  /** How fast a glide sinks (m/s): moth wings spread wide sink slower. */
+  glideSink = 1.6;
   onEvent: ((e: PlayerEvent) => void) | null = null;
   /** >0 while sinking after a missed jump; the view fades and you return to safe ground. */
   falling = 0;
@@ -250,8 +252,8 @@ export class PlayerController {
     if (this.airborne) {
       this.vy -= GRAVITY * dt;
       // Moth wings: holding jump on the way down turns the fall into a long glide.
-      if (this.canGlide && input.jump && this.vy < -1.6) {
-        this.vy = -1.6;
+      if (this.canGlide && input.jump && this.vy < -this.glideSink) {
+        this.vy = -this.glideSink;
         this.speed = Math.max(this.speed, 5.5);
       }
       const ceiling = this.vy > 0 ? (this.platforms?.ceiling?.(this.x, this.z, this.y) ?? Infinity) : Infinity;

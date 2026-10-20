@@ -12,15 +12,19 @@ export interface KeepsakeDef {
   effect: string;
   /** Where to look, shown for keepsakes not yet found. */
   hint: string;
+  /** What it does when held up (keys 1 to 5). */
+  use: string;
+  /** The little light's line when you first find it: how to hold it. */
+  how: string;
   tint: number;
 }
 
 export const KEEPSAKES: KeepsakeDef[] = [
-  { id: 'shell', name: 'The Seashell', memory: 'Hold it to your ear. You can hear the stars in it.', effect: 'Hums when a hidden star is near. The closer, the brighter it sings.', hint: 'behind falling water, where the sea is still and full of light', tint: 0xffb8c8 },
-  { id: 'wings', name: 'Moth Wings', memory: 'I made you wings. Now you can fly too.', effect: 'Hold Space in the air to glide.', hint: 'on high ground in the meadows', tint: 0xe8e0ff },
-  { id: 'lantern', name: 'Paper Lantern', memory: 'Take it. Then the dark has to stay back.', effect: 'Nightmares keep their distance, and you can spot star glints from further away.', hint: 'deep in the Lantern Wood', tint: 0xffc070 },
-  { id: 'compass', name: 'The Compass', memory: "It always knows where home is. Even when I don't.", effect: 'Shows where you are on the chart.', hint: 'among the dunes', tint: 0x9ff0e0 },
-  { id: 'ribbon', name: 'Her Ribbon', memory: 'Keep it till I come back. Then you have to give it back.', effect: 'She sleeps more soundly: the nights last longer.', hint: 'in the drowned town', tint: 0xff8fa8 },
+  { id: 'shell', name: 'The Seashell', memory: 'Hold it to your ear. You can hear the stars in it.', effect: 'Hums when a hidden star is near. The closer, the brighter it sings.', hint: 'behind falling water, where the sea is still and full of light', use: 'it sings toward the nearest hidden star, and a pink shimmer shows which way.', how: 'Listen! Press 1 to hold the seashell to your ear. It sings toward hidden stars!', tint: 0xffb8c8 },
+  { id: 'wings', name: 'Moth Wings', memory: 'I made you wings. Now you can fly too.', effect: 'Hold Space in the air to glide.', hint: 'on high ground in the meadows', use: 'spread wide, they carry a glide much further.', how: 'Look! Wings! Hold Space while you fall to glide. Press 2 to spread them wide and glide even further.', tint: 0xe8e0ff },
+  { id: 'lantern', name: 'Paper Lantern', memory: 'Take it. Then the dark has to stay back.', effect: 'Nightmares keep their distance, and you can spot star glints from further away.', hint: 'deep in the Lantern Wood', use: 'its light drives nightmares back twice as far and shows star glints from further still.', how: 'Oh! Press 3 to hold the lantern up. The nightmares hate it!', tint: 0xffc070 },
+  { id: 'compass', name: 'The Compass', memory: "It always knows where home is. Even when I don't.", effect: 'Shows where you are on the chart.', hint: 'among the dunes', use: 'its needle points to the nearest lighthouse while you carry stars, otherwise to the nearest sky still dark.', how: 'Hey! Press 4 to look at the compass. The needle knows where you should go!', tint: 0x9ff0e0 },
+  { id: 'ribbon', name: 'Her Ribbon', memory: 'Keep it till I come back. Then you have to give it back.', effect: 'She sleeps more soundly: the nights last longer.', hint: 'in the drowned town', use: 'while you hold it, she sleeps deeper still and the night slows.', how: 'Listen... Press 5 to hold her ribbon. While you do, the night goes slower.', tint: 0xff8fa8 },
 ];
 
 /** Each keepsake lies somewhere a little out of the way: a lagoon, a hilltop, the heart of a region. */

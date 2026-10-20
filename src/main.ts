@@ -4,6 +4,9 @@ import { settings, onSettingsChange } from './settings';
 import { PauseMenu } from './ui/menu';
 import { JournalMap } from './ui/map';
 import { Satchel } from './ui/satchel';
+import { Hotbar } from './ui/hotbar';
+import { HeldKeepsake } from './game/held';
+import { KEEPSAKES } from './story/keepsakes';
 import { LAGOONS } from './core/heightfield';
 import { createHeightfield, findSpawn } from './core/heightfield';
 import { Terrain, WorkerPool } from './world/terrain';
@@ -136,6 +139,8 @@ async function boot() {
   story.attachWonders(wonders);
   props.push(story.keepsakeSolids);
   const wisp = new Wisp();
+  const held = new HeldKeepsake();
+  scene.add(held.group);
   story.wisp = wisp;
   scene.add(story.group, wisp.group);
 
@@ -152,6 +157,7 @@ async function boot() {
     fauna.group.visible = !mirror;
     puzzles.setMirror(mirror);
     flora.setMirror(mirror);
+    held.setMirror(mirror);
     proxy.node.value = mirror || settleFrames > 0 ? proxy.dummy : water.reflection.value;
   };
   scene.onAfterRender = (_r, _s, cam) => {
@@ -163,6 +169,7 @@ async function boot() {
       fauna.group.visible = true;
       puzzles.setMirror(false);
       flora.setMirror(false);
+      held.setMirror(false);
       proxy.node.value = settleFrames > 0 ? proxy.dummy : water.reflection.value;
     }
   };
@@ -208,7 +215,7 @@ async function boot() {
     optional(fauna.load('/models/fauna.glb').then((t) => debug && console.log('fauna', t)), 'fauna'),
     optional(nightmares.load('/models/nightmares.glb').then((t) => debug && console.log('nightmares', t)), 'nightmares'),
     optional(wonders.load('/models/wonders.glb').then((t) => debug && console.log('wonders', t)), 'wonders'),
-    optional(story.loadKeepsakes('/models/keepsakes.glb'), 'keepsakes'),
+    optional(story.loadKeepsakes('/models/keepsakes.glb').then((t) => t && held.setModels(t)), 'keepsakes'),
     avatar.load('/models/keeper.glb', '/models/boat.glb').then(() => {
       if (!avatar.keeperGltf) return;
       story.loadFigure(avatar.keeperGltf);
@@ -295,6 +302,11 @@ async function boot() {
       else openMenu();
     }
     if (e.code === 'KeyE' && !e.repeat) ePressed = true;
+    const slot = /^Digit([1-5])$/.exec(e.code);
+    if (slot && !e.repeat && state === 'play' && !menu.open && !chart.open) {
+      story.wield(KEEPSAKES[Number(slot[1]) - 1].id);
+      satchel.refresh(story.satchelState());
+    }
     if (e.code === 'KeyF' && !e.repeat && state === 'play' && !menu.open && !chart.open) story.askGuide(player);
     if (e.code === 'KeyQ' && !e.repeat && state === 'play' && !menu.open && !chart.open && wisp.awake) {
       if (nightmares.flare(camera.position)) {
@@ -308,9 +320,12 @@ async function boot() {
       if (satchel.open) {
         satchel.hide();
         audio.setPaused(false);
+        Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
       } else {
         satchel.show(story.satchelState());
         audio.setPaused(true);
+        // Let the pointer go so a keepsake can be clicked to take it in hand.
+        if (document.pointerLockElement) document.exitPointerLock();
       }
     }
     if (e.code === 'KeyM' && !e.repeat && state === 'play' && !menu.open && !satchel.open) {
@@ -416,6 +431,27 @@ async function boot() {
   const menu = new PauseMenu();
   const chart = new JournalMap(hf);
   const satchel = new Satchel();
+  satchel.onWield = (id) => {
+    story.wield(id);
+    satchel.refresh(story.satchelState());
+  };
+  const hotbar = new Hotbar();
+  // The seashell's hum, seen as well as heard: a pink shimmer at the edge of the view, on the star's side.
+  const shellCue = document.createElement('div');
+  shellCue.id = 'shell-cue';
+  document.body.appendChild(shellCue);
+  story.onShellHum = (dx, dz, near, inHand) => {
+    const rel = Math.atan2(dx, dz) - (input.yaw + Math.PI);
+    const side = -Math.sin(rel);
+    audio.shellHum(near, inHand ? side * 0.9 : 0);
+    shellCue.style.setProperty('--x', `${50 + side * 50}%`);
+    shellCue.style.setProperty('--y', `${50 - Math.cos(rel) * 50}%`);
+    shellCue.style.transition = 'none';
+    shellCue.style.opacity = String((inHand ? 0.45 : 0.18) + near * (inHand ? 0.55 : 0.25));
+    void shellCue.offsetWidth;
+    shellCue.style.transition = '';
+    shellCue.style.opacity = '0';
+  };
   let flareFlash = 0;
   nightmares.onCatch = () => story.caught();
   nightmares.onSighted = () => story.nightmaresSighted();
@@ -590,6 +626,10 @@ async function boot() {
     promptEl.style.opacity = prompt && state === 'play' ? '1' : '0';
 
     avatar.update(dt, player, camera);
+    held.update(dt, camera, state === 'play' ? story.held : null, story.held === 'compass' ? story.compassTarget(player.x, player.z) : null, player.mode === 'walk' ? player.speed : 0);
+    const owned = KEEPSAKES.filter((k) => story.hasKeepsake(k.id)).map((k) => k.id);
+    hotbar.visible = state === 'play' && owned.length > 0;
+    hotbar.update(owned, story.held, story.fresh);
     sky.shooting.update(dt, camera);
     focus.copy(camera.position);
     terrain.update(focus);
@@ -610,8 +650,10 @@ async function boot() {
         if (p.type === 'StoneLantern' || p.type === 'Hut' || p.type === 'Cairn') lights.push({ x: p.x, z: p.z, r: p.type === 'Hut' ? 12 : 8 });
       for (const p of puzzleSites) if (story.hasSeen(p.id)) lights.push({ x: p.reward?.x ?? p.x, z: p.reward?.z ?? p.z, r: 16 });
       // The paper lantern: a small circle of light that goes where you go.
-      if (story.hasKeepsake('lantern')) lights.push({ x: player.x, z: player.z, r: 6 });
+      // Held up, the lantern's light reaches twice as far; spread wide, the wings sink half as fast.
+      if (story.hasKeepsake('lantern')) lights.push({ x: player.x, z: player.z, r: held.raised === 'lantern' ? 12 : 6 });
       player.canGlide = story.hasKeepsake('wings');
+      player.glideSink = held.raised === 'wings' ? 0.9 : 1.6;
       const threat = settings.nights ? Math.min(1, Math.max(0, (story.night.progress - 0.45) / 0.4)) : 0;
       nightmares.update(dt, camera.position, player.mode === 'walk' ? player.speed : 0, player.mode === 'boat' ? 0 : threat, lights);
     }

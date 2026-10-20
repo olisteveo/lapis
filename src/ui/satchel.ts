@@ -3,6 +3,7 @@ import { KEEPSAKES, type KeepsakeId } from '../story/keepsakes';
 export interface SatchelState {
   carried: { constellation: string }[];
   keepsakes: KeepsakeId[];
+  held: KeepsakeId | null;
   skies: { name: string; lit: number; total: number; region: string }[];
   lit: number;
   total: number;
@@ -11,7 +12,7 @@ export interface SatchelState {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 /** Small inked glyphs for each keepsake, drawn rather than iconified. */
-const GLYPH: Record<KeepsakeId, string> = {
+export const GLYPH: Record<KeepsakeId, string> = {
   shell: '<path d="M8 30 C4 18 14 6 26 8 C34 10 36 20 30 26 C24 32 14 34 8 30 Z M14 26 C18 20 24 18 28 20" />',
   wings: '<path d="M20 22 C12 8 4 10 6 20 C8 28 16 26 20 22 C24 26 32 28 34 20 C36 10 28 8 20 22 Z M20 22 L20 32" />',
   lantern: '<path d="M14 10 H26 M15 10 C10 16 10 26 15 32 H25 C30 26 30 16 25 10 M20 4 V10 M16 32 H24 V35 H16 Z" />',
@@ -24,10 +25,23 @@ export class Satchel {
   private root: HTMLElement;
   open = false;
 
+  /** Called with a keepsake clicked in the satchel: take it in hand (or put it away). */
+  onWield: ((id: KeepsakeId) => void) | null = null;
+
   constructor() {
     this.root = document.createElement('div');
     this.root.id = 'satchel';
     document.body.appendChild(this.root);
+    this.root.addEventListener('click', (e) => {
+      const el = (e.target as HTMLElement).closest('[data-ks]') as HTMLElement | null;
+      if (!el || !this.onWield) return;
+      this.onWield(el.dataset.ks as KeepsakeId);
+    });
+  }
+
+  /** Re-draw with fresh state (after wielding from the satchel). */
+  refresh(s: SatchelState) {
+    if (this.open) this.render(s);
   }
 
   show(s: SatchelState) {
@@ -45,12 +59,13 @@ export class Satchel {
     const carried = s.carried.length
       ? `<p class="carry">${s.carried.length} fallen star${s.carried.length > 1 ? 's' : ''} carried, for ${[...new Set(s.carried.map((c) => esc(c.constellation)))].join(' and ')}.<br><span>Lift them from a lamp room before the night ends, or they fall back.</span></p>`
       : `<p class="carry quiet">No stars carried.</p>`;
-    const items = KEEPSAKES.map((k) => {
+    const items = KEEPSAKES.map((k, i) => {
       const has = s.keepsakes.includes(k.id);
-      return `<div class="ks ${has ? 'has' : ''}">
+      const held = s.held === k.id;
+      return `<div class="ks ${has ? 'has' : ''} ${held ? 'held' : ''}" ${has ? `data-ks="${k.id}"` : ''}>
         <svg viewBox="0 0 40 40" class="glyph">${has ? GLYPH[k.id] : '<text x="20" y="27" text-anchor="middle">?</text>'}</svg>
-        <div><div class="name">${has ? esc(k.name) : 'Something of hers'}</div>
-        <div class="what">${has ? esc(k.effect) : `Lost ${esc(k.hint)}.`}</div></div></div>`;
+        <div><div class="name">${has ? `<b>${i + 1}</b> ${esc(k.name)}${held ? ' <i>in hand</i>' : ''}` : 'Something of hers'}</div>
+        <div class="what">${has ? esc(k.effect) + (k.use ? ` <span class="use">Held up: ${esc(k.use)}</span>` : '') : `Lost ${esc(k.hint)}.`}</div></div></div>`;
     }).join('');
     const skies = s.skies
       .map((c) => `<div class="sky ${c.lit === c.total ? 'done' : ''}"><span class="cname">${esc(c.name)}</span><span class="dots">${'<i class="on"></i>'.repeat(c.lit)}${'<i></i>'.repeat(c.total - c.lit)}</span><span class="where">${esc(c.region)}</span></div>`)
@@ -68,7 +83,7 @@ export class Satchel {
         ${skies}
         <p class="total">${s.lit} of ${s.total} stars are back in her sky.</p>
       </div>
-      <div class="foot">I to close</div>
+      <div class="foot">click a keepsake or press 1 to 5 to hold it &nbsp;·&nbsp; I to close</div>
     </div>`;
   }
 }

@@ -84,7 +84,8 @@ export class Audio {
     }
   }
 
-  private one(name: string, gain = 1, rate = 1) {
+  /** pan: -1 left .. 1 right. */
+  private one(name: string, gain = 1, rate = 1, pan = 0) {
     const ctx = this.ctx;
     const buf = this.buffers.get(name);
     if (!ctx || !buf) return;
@@ -93,7 +94,11 @@ export class Audio {
     src.playbackRate.value = rate;
     const g = ctx.createGain();
     g.gain.value = gain;
-    src.connect(g).connect(this.sfxBus);
+    if (pan) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pan));
+      src.connect(g).connect(p).connect(this.sfxBus);
+    } else src.connect(g).connect(this.sfxBus);
     src.start();
   }
 
@@ -139,8 +144,9 @@ export class Audio {
   }
 
   /** The seashell: a hollow, rising hum, brighter the closer a hidden star is. */
-  shellHum(near: number) {
-    this.one('chime_2', 0.15 + near * 0.35, 0.5 + near * 0.6);
+  /** pan: which side the star is on, when the shell is held to your ear. */
+  shellHum(near: number, pan = 0) {
+    this.one('chime_2', 0.15 + near * 0.35, 0.5 + near * 0.6, pan);
   }
 
   /** A wrong note: two chimes slowed into a sour low clash. */

@@ -54,6 +54,9 @@ public sealed class PlayerController
     /// <summary>Moth wings found: hold jump while falling to glide.</summary>
     public bool CanGlide { get; set; }
 
+    /// <summary>How fast a glide sinks (m/s): moth wings spread wide sink slower.</summary>
+    public double GlideSink { get; set; } = 1.6;
+
     /// <summary>&gt;0 while sinking after a missed jump; the view fades and you return to safe ground.</summary>
     public double Falling { get; private set; }
 
@@ -223,9 +226,9 @@ public sealed class PlayerController
         {
             VerticalVelocity -= Gravity * dt;
             // Moth wings: holding jump on the way down turns the fall into a long glide.
-            if (CanGlide && input.Jump && VerticalVelocity < -1.6)
+            if (CanGlide && input.Jump && VerticalVelocity < -GlideSink)
             {
-                VerticalVelocity = -1.6;
+                VerticalVelocity = -GlideSink;
                 Speed = Math.Max(Speed, 5.5);
             }
             var ceiling = VerticalVelocity > 0 ? Platforms?.Ceiling(X, Z, Y) ?? double.PositiveInfinity : double.PositiveInfinity;

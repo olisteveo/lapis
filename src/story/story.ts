@@ -156,8 +156,44 @@ export class Story {
     return this.keepsakes.solids;
   }
 
-  loadKeepsakes(url: string) {
-    return this.keepsakes.load(url);
+  /** Loads the keepsake models; resolves with the file's scene, for the first-person held versions. */
+  async loadKeepsakes(url: string) {
+    await this.keepsakes.load(url);
+    return this.keepsakes.templates;
+  }
+
+  /** The keepsake in hand (keys 1 to 5, or a click in the satchel), or null. */
+  held: KeepsakeId | null = null;
+  /** A keepsake just put in the satchel, so its slot can flare. */
+  fresh: KeepsakeId | null = null;
+  private freshUntil = 0;
+  /** Each time the seashell hums: which way the star is (dx, dz from the player), how near (0..1), whether held. */
+  onShellHum: ((dx: number, dz: number, near: number, held: boolean) => void) | null = null;
+  private asks = 0;
+
+  /** Take a keepsake in hand, or put it away if it already is. */
+  wield(id: KeepsakeId) {
+    if (!this.hasKeepsake(id)) {
+      this.narrative.say('Something of hers is still lost out there.', 'hint');
+      return;
+    }
+    this.held = this.held === id ? null : id;
+    if (this.held) this.audio.chime(1);
+  }
+
+  /** Where the compass needle points: the nearest lighthouse while carrying stars, else the nearest dark sky. */
+  compassTarget(px: number, pz: number): { x: number; z: number } {
+    const lm = this.landmarks;
+    if (this.stars.carriedIds.length && lm) {
+      const nb = lm.nearestBeacon(px, pz);
+      if (nb.index >= 0) return lm.beacons[nb.index].placed;
+    }
+    const dark = CONSTELLATIONS.filter((c, ci) => c.region && !this.skies[ci].isComplete)
+      .map((c) => BIOMES[c.region!])
+      .sort((a, b) => Math.hypot(a.x - px, a.z - pz) - Math.hypot(b.x - px, b.z - pz))[0];
+    if (dark && Math.hypot(dark.x - px, dark.z - pz) > dark.r * 0.5) return dark;
+    // In a dark region already, or all lit: north, toward the brightest star.
+    return { x: px, z: pz - 1000 };
   }
 
   hasKeepsake(id: KeepsakeId) {
@@ -166,7 +202,12 @@ export class Story {
 
   private applyKeepsakes() {
     this.night.length = 20 * 60 * (this.hasKeepsake('ribbon') ? 1.4 : 1);
-    SEE_RANGE.value = this.hasKeepsake('lantern') ? 130 : 75;
+    this.applyHeld();
+  }
+
+  /** Effects that only last while a keepsake is in hand. */
+  private applyHeld() {
+    SEE_RANGE.value = this.hasKeepsake('lantern') ? (this.held === 'lantern' ? 170 : 130) : 75;
   }
 
   private takeKeepsake(id: KeepsakeId) {
@@ -177,6 +218,9 @@ export class Story {
     this.audio.memory();
     this.audio.chime(5);
     this.narrative.say(def.memory, 'memory');
+    this.fresh = id;
+    this.freshUntil = performance.now() + 2500;
+    setTimeout(() => this.guide(def.how, 'listen'), 7000);
     this.onMemory?.(6);
     setTimeout(() => this.narrative.say(def.name.toUpperCase(), 'title'), 6500);
     setTimeout(() => this.guide(`Oh! It's hers! ${def.effect} Press I to look in your satchel.`, 'oh', 'star'), 11000);
@@ -188,6 +232,7 @@ export class Story {
     return {
       carried: this.stars.carriedIds.map((id) => ({ constellation: CONSTELLATIONS[this.starRef.get(id)!.c].name })),
       keepsakes: this.save.keepsakes ?? [],
+      held: this.held,
       skies: this.skies.map((c) => ({ name: c.def.name, lit: c.litCount, total: c.def.stars.length, region: c.def.region ? regionName[c.def.region] : 'the coral shore' })),
       lit: this.save.collected.length,
       total: TOTAL_STARS,
@@ -330,6 +375,17 @@ export class Story {
     }
     if (this.allLit) {
       this.guide('Look! Follow the River of Light north, to the brightest star!', 'look', 'star');
+      return;
+    }
+    // Every so often (or whenever one is close) the light remembers her lost things.
+    this.asks++;
+    const ks = this.keepsakes.nearest(player.x, player.z);
+    if (ks && (ks.dist < 120 || this.asks % 3 === 0)) {
+      const def = KEEPSAKES.find((k) => k.id === ks.id)!;
+      if (ks.dist < 120) {
+        this.point(ks.pos.clone());
+        this.guide(`Oh! Something of hers is close, ${compass(ks.pos)}. Can you see it glowing?`, 'oh', 'star');
+      } else this.guide(`Hmm... something of hers is lost ${def.hint}. It's ${compass(ks.pos)}.`, 'hmm');
       return;
     }
     // Point at the nearest region whose constellation is still dark, never at the star itself.
@@ -526,7 +582,10 @@ export class Story {
     if (!playing) return;
     // Nights: the clock runs while you play; turned off, anything carried is kept at once.
     const carried = this.stars.carriedIds.length;
-    if (settings.nights) this.night.update(dt);
+    // Holding her ribbon, she sleeps deeper: the night runs slower.
+    if (settings.nights) this.night.update(dt * (this.held === 'ribbon' ? 0.6 : 1));
+    this.applyHeld();
+    if (this.fresh && performance.now() > this.freshUntil) this.fresh = null;
     else if (carried) this.bankCarried();
     this.onNight?.(settings.nights ? this.night.progress : 0);
     const found = LAGOONS.filter((_, i) => this.save.seen.includes(`lagoon-${i}`)).length;
@@ -613,10 +672,13 @@ export class Story {
     if (this.hasKeepsake('shell')) {
       const hidden = this.stars.nearest(px, pz);
       this.shellT -= dt;
-      if (hidden && !hidden.beacon && hidden.dist < 240 && this.shellT <= 0) {
-        const near = 1 - hidden.dist / 240;
-        this.audio.shellHum(near);
-        this.shellT = 0.5 + (1 - near) * 2.6;
+      // Held to your ear it hears further, sings more often, and tells you which way.
+      const held = this.held === 'shell';
+      const reach = held ? 400 : 240;
+      if (hidden && !hidden.beacon && hidden.dist < reach && this.shellT <= 0) {
+        const near = 1 - hidden.dist / reach;
+        this.onShellHum?.(hidden.pos.x - px, hidden.pos.z - pz, near, held);
+        this.shellT = held ? 0.35 + (1 - near) * 1.4 : 0.5 + (1 - near) * 2.6;
       }
     }
 

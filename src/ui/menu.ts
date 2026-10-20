@@ -12,6 +12,7 @@ const CONTROLS: [string, string][] = [
   ['F', 'ask the little light what to do next'],
   ['M', 'the chart: everywhere you have been'],
   ['I / Tab', 'the satchel: keepsakes, carried stars, her sky'],
+  ['1 to 5', 'hold up a keepsake (again to put it away)'],
   ['Q', 'the little light flares: nightmares nearby burst'],
   ['Hold E', 'at the water’s edge: call the boat'],
   ['Esc', 'pause'],
