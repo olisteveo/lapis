@@ -120,8 +120,8 @@ fn author_frag(uv0: vec2<f32>) -> vec4<f32> {
 
   // Half remembered: the frame melts into soft focus toward its edges, and a milky glow lifts it.
   let d = length((uv0 - 0.5) * vec2<f32>(dims.x / dims.y, 1.0));
-  let soft = smoothstep(0.18, 0.85, d);
-  let rad = px * (6.0 + 70.0 * soft * params.edgeBlur);
+  let soft = smoothstep(0.12, 0.8, d);
+  let rad = px * (10.0 + 90.0 * soft * params.edgeBlur);
   var blur = vec3<f32>(0.0);
   for (var i = 0; i < 16; i++) {
     let a = f32(i) * 2.39996 + hash(uv0 * dims) * 6.2832;
@@ -129,10 +129,11 @@ fn author_frag(uv0: vec2<f32>) -> vec4<f32> {
     blur += tap(uv0 + vec2<f32>(cos(a), sin(a)) * r * rad);
   }
   blur /= 16.0;
-  col = mix(col, blur, clamp(soft * params.edgeBlur * 1.1, 0.0, 0.9));
+  // Even the middle is a little soft: nothing in a memory is quite in focus.
+  col = mix(col, blur, clamp(soft * params.edgeBlur * 1.1 + 0.18 * params.haze, 0.0, 0.92));
   // Glow: the blurred light screened back over the picture, and the shadows lifted to a haze.
-  col = vec3<f32>(1.0) - (vec3<f32>(1.0) - col) * (vec3<f32>(1.0) - blur * 0.45 * params.haze);
-  col = mix(col, vec3<f32>(0.86, 0.80, 0.74), 0.16 * params.haze);
+  col = vec3<f32>(1.0) - (vec3<f32>(1.0) - col) * (vec3<f32>(1.0) - blur * 0.55 * params.haze);
+  col = mix(col, vec3<f32>(0.88, 0.81, 0.74), 0.24 * params.haze);
 
   // Paper: a faint tooth under everything.
   let paper = 0.95 + 0.05 * hash(floor(uv0 * dims / 2.0));
