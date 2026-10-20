@@ -138,7 +138,8 @@ The art direction comes from unseenai's paintings: ultramarine night, coral palm
 | F | ask the little light what to do next |
 | Q | the little light flares: nearby nightmares burst |
 | M | the chart |
-| I / Tab | the satchel: keepsakes, carried stars, her sky |
+| I / Tab | the satchel: keepsakes, carried stars, her sky (click a keepsake to hold it) |
+| 1 to 5 | hold up a keepsake; press again to put it away |
 | Esc | pause: settings (graphics, sound, mouse, night cycle), controls, start over |
 
 ---

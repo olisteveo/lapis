@@ -30,7 +30,7 @@ MATS = {
     "ks_stone": (0.42, 0.43, 0.5), "ks_wood": (0.36, 0.27, 0.2), "ks_sand": (0.86, 0.76, 0.66),
     "ks_iron": (0.16, 0.16, 0.2), "ks_rope": (0.62, 0.52, 0.36), "ks_shell": (1.0, 0.76, 0.8),
     "ks_paper": (1.0, 0.86, 0.62), "ks_wing": (0.92, 0.9, 1.0), "ks_brass": (0.78, 0.6, 0.3),
-    "ks_ribbon": (1.0, 0.56, 0.66), "ks_glow": (0.7, 1.0, 0.94),
+    "ks_ribbon": (1.0, 0.56, 0.66), "ks_glow": (0.7, 1.0, 0.94), "ks_dial": (0.92, 0.87, 0.75),
 }
 NAMES = list(MATS)
 M = {n: i for i, n in enumerate(NAMES)}
@@ -69,6 +69,22 @@ def strip(mb, path, side, width, mat, col_fn, twist=None):
     for (a0, a1), (b0, b1) in zip(rows, rows[1:]):
         mb.f((a0, a1, b1, b0), mat)
     return rows
+
+
+def clone(mb):
+    c = B.MeshBuilder()
+    c.verts, c.faces, c.mats, c.cols = list(mb.verts), list(mb.faces), list(mb.mats), list(mb.cols)
+    return c
+
+
+def held(mb, name):
+    """The keepsake again, centred on its own middle, for holding up in first person (Held_<id>)."""
+    c = clone(mb)
+    lo = Vector([min(v[k] for v in c.verts) for k in range(3)])
+    hi = Vector([max(v[k] for v in c.verts) for k in range(3)])
+    mid = (lo + hi) / 2
+    B.xform(c, 0, lambda p: p - mid)
+    c.build(f"Held_{name}", mats())
 
 
 # ---------------------------------------------------------------- the seashell, on a wet rock shelf
@@ -131,6 +147,7 @@ def build_shell():
     rot = Matrix.Rotation(0.6, 3, "Z") @ Matrix.Rotation(-0.25, 3, "Y")
     scallop(ks, (-0.15, -0.1, 0.5), 0.36, rot, (0, 0, 0.3))
     B.ramp_r(ks, 0, 0.45, 0.7)
+    held(ks, "shell")
     ks.build("Keepsake_shell", mats())
 
 
@@ -181,6 +198,7 @@ def build_wings():
            mat=M["ks_rope"], col_fn=lambda t: (0.0, 0.0, 0.7))
     B.limb(ks, [root + Vector((0, 0.01, 0.0)), Vector((0.06, 0.0, 1.72)), Vector((0.05, 0.05, 1.7))], [0.006] * 3,
            segments=4, mat=M["ks_rope"], col_fn=lambda t: (0.0, 0.0, 0.8))
+    held(ks, "wings")
     ks.build("Keepsake_wings", mats())
 
 
@@ -218,6 +236,7 @@ def build_lantern():
     # A paper tassel.
     B.limb(ks, [c - Vector((0, 0, 0.27)), c - Vector((0, 0, 0.5))], [0.02, 0.008], segments=5, mat=M["ks_ribbon"],
            col_fn=lambda t: (t, 1.0, 0.9))
+    held(ks, "lantern")
     ks.build("Keepsake_lantern", mats())
 
 
@@ -248,15 +267,17 @@ def build_compass():
     top = tilt @ Vector((0.05, 0.02, 0.31)) + cc
     face = tilt @ Vector((0, 0, 1))
     rot = UP.rotation_difference(face).to_matrix()
-    s = len(ks.verts)
     R = 0.17
     B.lathe(ks, [(0.0, 0.0), (R, 0.0), (R + 0.01, 0.03), (R, 0.055), (R - 0.02, 0.055), (R - 0.02, 0.045),
                  (0.0, 0.045)], 28, M["ks_brass"], col_fn=lambda t: (t, 0, 0.2))
-    B.lathe(ks, [(0.0, 0.046), (R - 0.025, 0.046), (R - 0.025, 0.05), (0.0, 0.05)], 28, M["ks_glow"],
-            col_fn=lambda t: (t, 0.5, 0.4))
-    # The needle: a slim diamond, one end brighter.
-    B.extrude(ks, [(-0.13, 0), (0, -0.018), (0.13, 0), (0, 0.018)], (0, 0, 0.052), (1, 0, 0), (0, 1, 0), (0, 0, 1),
-              0.006, M["ks_brass"], (0.9, 0, 0.8))
+    B.lathe(ks, [(0.0, 0.046), (R - 0.025, 0.046), (R - 0.025, 0.05), (0.0, 0.05)], 28, M["ks_dial"],
+            col_fn=lambda t: (t, 0, 0.4))
+    # The needle: a slim diamond, its north end glowing. Its own piece, so a held compass can swing it.
+    nd = B.MeshBuilder()
+    B.extrude(nd, [(0, -0.018), (0.13, 0), (0, 0.018)], (0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), 0.006,
+              M["ks_glow"], (0.9, 0.5, 0.8))
+    B.extrude(nd, [(-0.13, 0), (0, -0.018), (0, 0.018)], (0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), 0.006,
+              M["ks_brass"], (0.9, 0, 0.8))
     B.limb(ks, [(0, R + 0.005, 0.03), (0, R + 0.04, 0.03)], [0.008, 0.008], segments=5, mat=M["ks_brass"],
            col_fn=lambda t: (0.5, 0, 0.3))
     B.limb(ks, [(0.03 * math.cos(a), R + 0.06 + 0.03 * math.sin(a), 0.03) for a in (TAU * k / 10 for k in range(10))],
@@ -266,7 +287,13 @@ def build_compass():
     sl = len(ks.verts)
     B.lathe(ks, [(0.0, 0.0), (R, 0.0), (R, 0.015), (0.0, 0.02)], 28, M["ks_brass"], col_fn=lambda t: (t, 0, 0.25))
     B.xform(ks, sl, lambda p: lid @ (p - Vector((0, -R, 0))) + Vector((0, -R, 0.05)))
-    B.xform(ks, s, lambda p: rot @ p + top)
+    # Held, the case sits face up at its own origin and the needle pivots at the origin.
+    clone(ks).build("Held_compass", mats())
+    clone(nd).build("Held_needle", mats())
+    s = len(ks.verts)
+    ks.merge(clone(nd))
+    B.xform(ks, s, lambda p: p + Vector((0, 0, 0.052)))
+    B.xform(ks, 0, lambda p: rot @ p + top)
     ks.build("Keepsake_compass", mats())
 
 
@@ -302,6 +329,7 @@ def build_ribbon():
         tail = [knot + Vector((s * (0.04 + 0.12 * u), -0.02 - 0.05 * u, -0.6 * u + 0.03 * math.sin(u * 7)))
                 for u in (k / 10 for k in range(11))]
         strip(ks, tail, (1, 0, 0), lambda t: 0.06 * (1 - 0.3 * t), M["ks_ribbon"], lambda t: (t, 1.0, 0.6 + 0.2 * s))
+    held(ks, "ribbon")
     ks.build("Keepsake_ribbon", mats())
 
 
