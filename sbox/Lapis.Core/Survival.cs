@@ -155,7 +155,7 @@ public sealed class Sources
 {
     private readonly Dictionary<(long, long), double> _drawn = new();
 
-    public Sources(double cell = 8, double regrowSeconds = 180)
+    public Sources(double cell = 24, double regrowSeconds = 180)
     {
         Cell = cell;
         RegrowSeconds = regrowSeconds;

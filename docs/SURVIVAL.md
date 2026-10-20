@@ -164,6 +164,21 @@ tuning drifts out of range):
 - Fixed: pressing E to end the rest scene rested again (spending a diminished rest); a squall's wind could carry a
   glide through walls; the frame after an adaptive-resolution change could render with freed textures.
 
+## Review pass
+
+- Only real light (lamps, huts, lighthouses) warms her back up. The raised lantern now only softens the cold, like
+  glowing plants, so finding it doesn't make the night safe.
+- After a catch the nightmares are blind to you for the 5 s grace; "it's lost us" is said once, only when nothing is
+  still hunting or searching, and not after a catch scatters them.
+- Glowing sources deplete by a 24 m area, so stepping aside doesn't find a fresh one.
+- Canopy shelter covers the whole crown, not just the trunk.
+- The cold hint only names small lamps within about 550 m (farther ones are culled from view); lighthouses, lit or
+  not, can always be named.
+- The ending stands outside the night: no clock, cold, Dark Water, squalls or nightmares behind the last pages.
+- Waking clears any squall. Old saves with the night cycle on start in Story, not Survival.
+- Adaptive resolution now budgets for the display's refresh rate, so 75, 90, 120 and 144 Hz screens don't drop to
+  minimum resolution.
+
 Not yet: low islands submerging (the terrain doesn't change).
 
 Not yet (phase 1): drawn sources dimming visibly (they run dry, but don't look it), visible breath and trembling hands at low

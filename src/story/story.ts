@@ -388,13 +388,14 @@ export class Story {
 
   /** She's growing cold: the wisp points to the nearest warm light and names where it is. */
   warnCold(player: { x: number; z: number }, light: { x: number; z: number } | null) {
-    if (!this.wisp?.awake) return;
+    if (!this.wisp?.awake) return false;
     if (!light) {
       this.guide("Brr! You're so cold. Find a light, any light!", 'oh', 'warn');
-      return;
+      return true;
     }
     this.point(new THREE.Vector3(light.x, this.hf.height(light.x, light.z) + 3, light.z));
     this.guide(`Brr! You're getting so cold. There's a light ${this.compass(player, light)}. Warm up there!`, 'oh', 'warn');
+    return true;
   }
 
   /** F: ask the light what to do next. */
@@ -665,7 +666,8 @@ export class Story {
     // Nights: the clock runs while you play; turned off, anything carried is kept at once.
     const carried = this.stars.carriedIds.length;
     // Holding her ribbon, she sleeps deeper: the night runs slower.
-    if (settings.nights) this.night.update(dt * (this.held === 'ribbon' ? 0.6 : 1));
+    // The ending stands outside the night: no waking, no cold behind the last page.
+    if (settings.nights && !this.ending) this.night.update(dt * (this.held === 'ribbon' ? 0.6 : 1));
     this.applyHeld();
     if (this.fresh && performance.now() > this.freshUntil) this.fresh = null;
     else if (carried) this.bankCarried();
@@ -833,7 +835,8 @@ export class Story {
     }
   }
 
-  private ending = false;
+  /** The ending has begun: the night, the cold and the weather stand still for it. */
+  ending = false;
   /** Fired when the ending finishes, to roll the title. */
   onEnding: (() => void) | null = null;
 

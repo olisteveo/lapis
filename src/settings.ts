@@ -21,8 +21,9 @@ const DEFAULTS: Omit<Settings, 'quality'> = { master: 0.9, music: 0.8, sfx: 0.9,
 function load(): Settings {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Settings>;
-    // Saves from before the survival modes only had the night toggle.
-    const survival = raw.survival ?? (raw.nights === false ? 'wander' : DEFAULTS.survival);
+    // Saves from before the survival modes only had the night toggle: Story is the closest to how they
+    // played, so returning players aren't dropped into Survival without choosing it.
+    const survival = raw.survival ?? (raw.nights === false ? 'wander' : raw.nights === true ? 'story' : DEFAULTS.survival);
     return { ...DEFAULTS, ...raw, survival, nights: survival !== 'wander', quality: getQualityName() };
   } catch {
     return { ...DEFAULTS, quality: getQualityName() };

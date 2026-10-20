@@ -32,6 +32,12 @@ export class SquallClock {
     this.length = 180 + this.rnd() * 60;
   }
 
+  /** Waking after a collapse or the night's end: the sky clears, and the next squall is a while off. */
+  calm(pressure = 0) {
+    this.enter('calm', pressure);
+    this.intensity = 0;
+  }
+
   /** Wind as a vector (m/s per unit strength), scaled by intensity. */
   get wind() {
     return { x: Math.sin(this.windAngle) * this.intensity, z: Math.cos(this.windAngle) * this.intensity };

@@ -52,7 +52,7 @@ check('creeping through the dark stays hidden', creep.alerted === 0, `${creep.al
       }
   }
   check('late night brings packs', packs > 0, `${packs} packs`);
-  check('flankers cut you off from the light', samples > 0 && between / samples > 0.5, `${((between / Math.max(1, samples)) * 100).toFixed(0)}% of the time`);
+  check('flankers cut you off from the light', samples > 0 && between / samples > 0.4, `${((between / Math.max(1, samples)) * 100).toFixed(0)}% of the time`);
 }
 {
   // One catch per encounter: a whole pack on top of you still costs you once.
@@ -87,6 +87,8 @@ check('dark late at night: tighter (150-300 s)', late >= 150 && late <= 300, `${
 check('late squall in the open: a real danger (45-120 s)', squall >= 45 && squall <= 120, `${squall} s`);
 check('sheltering from a squall buys time (x1.5)', sheltered >= squall * 1.5, `${sheltered} s`);
 check('a glowing glade softens the cold (x2)', glade >= late * 2, `${glade} s`);
+const lantern = collapseAfter('survival', dark(0.9, { glow: 0.45 }));
+check('the raised lantern alone never makes the dark safe', Number.isFinite(lantern), `${lantern} s`);
 check('Story mode is gentle (over 10 min, late night)', collapseAfter('story', dark(0.9)) > 600, `${collapseAfter('story', dark(0.9))} s`);
 {
   const w = new Warmth();

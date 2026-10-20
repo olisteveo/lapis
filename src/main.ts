@@ -266,6 +266,8 @@ async function boot() {
   story.onNight = (p) => (frostTarget = p);
   // She wakes: frost whites everything out, the Keeper is moved to the last light, and it clears.
   story.onWake = (spot) => {
+    squalls.calm();
+    weather.flash.value = 0;
     fade.style.background = '#dfe6f7';
     fade.style.transitionDuration = '2.2s';
     fade.style.opacity = '1';
@@ -427,7 +429,13 @@ async function boot() {
         gauge.spent();
       } else if (story.light.ready && performance.now() - outOfLightSaid > 15000) {
         outOfLightSaid = performance.now();
-        story.guide("Oh! I'm out of light. Walk through the glow, or hold the lantern up to something shining.", 'oh', 'warn');
+        story.guide(
+          story.hasKeepsake('lantern')
+            ? "Oh! I'm out of light. Walk through the glow, or hold the lantern up to something shining."
+            : "Oh! I'm out of light. Walk where the air's full of glowing motes, in the meadows or the Lantern Wood.",
+          'oh',
+          'warn',
+        );
       }
     }
     if ((e.code === 'KeyI' || e.code === 'Tab') && !e.repeat && state === 'play' && !menu.open && !chart.open) {
@@ -604,9 +612,9 @@ async function boot() {
     }
     let lit = 0;
     for (const l of lights) lit = Math.max(lit, THREE.MathUtils.smoothstep(l.r - Math.hypot(l.x - player.x, l.z - player.z), 0, l.r * 0.65));
-    // The raised lantern is a small real light; glowing plants only soften the cold (glow, below).
-    lit = Math.min(1, lit + (held.raised === 'lantern' ? 0.25 : 0));
-    const glow = Math.min(1, glowCount * 0.15);
+    // Glowing plants and the raised lantern soften the cold but never warm her back up: only a real
+    // light (lamp, hut, lighthouse) does, so the lantern can't make the night safe on its own.
+    const glow = Math.min(1, glowCount * 0.15 + (held.raised === 'lantern' ? 0.45 : 0));
     litHere = Math.min(1, lit + glow * 0.5);
     const ground = hf.height(player.x, player.z);
     const exposure = {
@@ -626,17 +634,19 @@ async function boot() {
     if (story.warmth.update(dt, exposure, t)) story.collapse();
     // Growing cold: once per cold spell the wisp points the way to the nearest warmth.
     if (story.warmth.value < 0.45 && !coldWarned) {
-      coldWarned = true;
-      let best: LightSource | null = null;
+      // Small lamps are only named when near enough to be seen; lighthouses (lit or not) always are.
+      let best: { x: number; z: number } | null = null;
       let bestD = Infinity;
-      for (const l of lights) {
-        const d = Math.hypot(l.x - player.x, l.z - player.z) - l.r;
-        if (d > 0 && d < bestD) {
-          best = l;
+      const consider = (x: number, z: number, r: number, far: number) => {
+        const d = Math.hypot(x - player.x, z - player.z) - r;
+        if (d > 0 && d < far && d < bestD) {
+          best = { x, z };
           bestD = d;
         }
-      }
-      story.warnCold(player, best);
+      };
+      for (const l of lights) consider(l.x, l.z, l.r, l.r >= 55 ? Infinity : 550);
+      for (const b of landmarks.beacons) consider(b.placed.x, b.placed.z, 8, Infinity);
+      coldWarned = story.warnCold(player, best);
     } else if (story.warmth.value > 0.75) coldWarned = false;
     cold = THREE.MathUtils.smoothstep(1 - story.warmth.value, 0.35, 1);
     story.light.cap = story.hasKeepsake('lantern') ? t.lanternCap : t.wispCap;
@@ -696,7 +706,12 @@ async function boot() {
       story.guide(story.once('alertHint') ? 'It heard us! Run for a light, or hold C and slip into the long grass!' : 'It found us! Run for the light!', 'watch', 'warn');
     } else wisp.speak(0.8, 'warn');
   };
-  nightmares.onLost = () => story.guide("Phew. It's lost us.", 'hmm');
+  let lostSaid = 0;
+  nightmares.onLost = () => {
+    if (nightmares.live.some((n) => !n.dissolving && n.mode !== 'prowl') || performance.now() - lostSaid < 20000) return;
+    lostSaid = performance.now();
+    story.guide("Phew. It's lost us.", 'hmm');
+  };
   story.onNewNight = () => nightmares.clear();
   // The ending: fade to black for the last page, then the end card; afterwards you may keep wandering.
   story.onEndingStart = () => {
@@ -772,6 +787,7 @@ async function boot() {
     ePressed = false;
     if (menu.open || chart.open || satchel.open || film.open) {
       // Frozen world behind the menu: keep drawing it, but nothing moves or happens.
+      weather.flash.value = 0;
       camera.updateMatrixWorld();
       if (renderer.domElement.clientWidth > 0 && settleFrames < 3) post.pipeline.render();
       return;
@@ -903,12 +919,18 @@ async function boot() {
         if (p.type === 'StoneLantern' || p.type === 'Hut' || p.type === 'Cairn') lights.push({ x: p.x, z: p.z, r: p.type === 'Hut' ? 12 : 8 });
       for (const p of puzzleSites) if (story.hasSeen(p.id)) lights.push({ x: p.reward?.x ?? p.x, z: p.reward?.z ?? p.z, r: 16 });
       story.light.update(dt);
-      updateWeather(dt);
+      // The ending stands outside the night: the weather clears and the cold and the dark let go.
+      const nights = settings.nights && !story.ending;
+      if (nights) updateWeather(dt);
+      else {
+        squalls.update(dt, 0, false);
+        weather.storm.value = squalls.intensity;
+      }
       // Dark Water creeps in as the night wears on; restored regions hold it back.
-      darkReachNow = settings.nights ? darkReach(story.night.progress, settings.survival) : Infinity;
+      darkReachNow = nights ? darkReach(story.night.progress, settings.survival) : Infinity;
       refugesNow = story.refuges();
       setDarkWater(darkReachNow, refugesNow, settings.nights ? THREE.MathUtils.smoothstep(story.night.progress, 0.2, 0.95) * (1 - story.restoredShare * 0.8) : 0);
-      if (surviving()) surviveFrame(dt, lights);
+      if (surviving() && !story.ending) surviveFrame(dt, lights);
       else cold = 0;
       // The paper lantern: a small circle of light that goes where you go.
       // Held up, the lantern's light reaches twice as far; spread wide, the wings sink half as fast.
@@ -927,13 +949,13 @@ async function boot() {
         }
       }
       // Story mode keeps them few and never in packs (packs need threat above 0.65).
-      const threat = settings.nights ? Math.min(1, Math.max(0, (story.night.progress - 0.45) / 0.4)) * (settings.survival === 'story' ? 0.5 : 1) : 0;
+      const threat = nights ? Math.min(1, Math.max(0, (story.night.progress - 0.45) / 0.4)) * (settings.survival === 'story' ? 0.5 : 1) : 0;
       const sense = senses();
       nightmares.update(dt, camera.position, player.mode === 'walk' ? player.speed : 0, player.mode === 'boat' ? 0 : threat, lights, sense);
       noiseBurst = Math.max(0, noiseBurst - dt * 32);
       // Hidden: in the dark, low and quiet, the edges of the view close in a little.
       const hidden = nightmares.live.length > 0 && sense.visibility < 0.3 && sense.noise < 4 ? 1 : 0;
-      hiddenVeil.style.opacity = String(hidden * (nightmares.brain.hunted ? 0.5 : 0.85));
+      hiddenVeil.style.opacity = String(hidden * (nightmares.brain.hunted ? 0.5 : 0.85) * (story.ending ? 0 : 1));
       if (hidden && !hiddenSaid && !nightmares.brain.hunted) {
         hiddenSaid = true;
         story.guide("Shh. Down here in the dark they can't see us. Keep low and quiet.", 'hmm');
@@ -959,11 +981,22 @@ async function boot() {
   };
   // Capped: a 120Hz display would otherwise render twice as many frames for no visible gain.
   // Unfocused windows drop to a trickle so the game doesn't heat the machine in the background.
+  let lastTick = 0;
+  let refreshMs = 1000 / 60;
   renderer.setAnimationLoop((t: number) => {
     const cap = !document.hasFocus() ? 8 : menu.open || chart.open || satchel.open || film.open ? 30 : QUALITY.fps;
+    // The display's refresh interval, learnt from the callbacks themselves (the shortest gaps seen).
+    // Biased to the shortest gaps, so dropped frames don't make the display look slower than it is.
+    if (lastTick > 0) {
+      const gap = t - lastTick;
+      refreshMs += (gap - refreshMs) * (gap < refreshMs ? 0.2 : 0.002);
+    }
+    lastTick = t;
     if (t - lastRender < 1000 / cap - 2) return;
-    // Only judge the GPU while playing at the full frame rate (menus and background run capped).
-    if (cap === QUALITY.fps && state === 'play' && lastRender > 0 && dynRes.update(t - lastRender, 1000 / cap, t)) {
+    // Only judge the GPU while playing at the full frame rate (menus and background run capped). The
+    // cap rounds frames to whole refreshes (60fps on 144Hz renders every 20.8 ms), so that is the budget.
+    const budget = Math.ceil((1000 / cap - 2) / refreshMs) * refreshMs;
+    if (cap === QUALITY.fps && state === 'play' && lastRender > 0 && dynRes.update(t - lastRender, budget, t)) {
       renderer.setPixelRatio(Math.min(devicePixelRatio, RENDER.maxPixelRatio) * dynRes.scale);
       renderer.setSize(innerWidth, innerHeight);
       // frame() counts down before it renders; 4 here skips this frame like a window resize does.

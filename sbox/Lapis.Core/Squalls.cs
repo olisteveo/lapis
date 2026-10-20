@@ -60,6 +60,13 @@ public sealed class SquallClock
     /// <summary>Direction the wind blows toward, radians (0 = +z).</summary>
     public double WindAngle { get; private set; }
 
+    /// <summary>Waking after a collapse or the night's end: the sky clears, and the next squall is a while off.</summary>
+    public void Calm(double pressure = 0)
+    {
+        Enter(SquallPhase.Calm, pressure);
+        Intensity = 0;
+    }
+
     public double WindX => Math.Sin(WindAngle) * Intensity;
     public double WindZ => Math.Cos(WindAngle) * Intensity;
 
