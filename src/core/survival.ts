@@ -155,7 +155,7 @@ export class Sources {
   private drawn = new Map<string, number>();
 
   constructor(
-    public cell = 8,
+    public cell = 24,
     public regrowSeconds = 180,
   ) {}
 

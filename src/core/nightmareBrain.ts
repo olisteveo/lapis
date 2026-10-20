@@ -67,6 +67,8 @@ export interface NightmareState {
   /** Pack it belongs to (0: alone), and its part in the hunt. */
   pack: number;
   role: 'chaser' | 'flanker';
+  /** Searching because a catch scattered the hunt, not because it lost you: giving up isn't news. */
+  scattered?: boolean;
   /** The thorn patch it crawled out of. */
   thorns: { x: number; z: number; yaw: number; scale: number };
 }
@@ -233,7 +235,8 @@ export class NightmareBrain {
       off = Math.atan2(Math.sin(off), Math.cos(off));
       const seen = d < sight.range * senses.visibility && Math.abs(off) < sight.cone;
       const heard = d < senses.noise;
-      const perceived = seen || heard || d < (playerSpeed > 0.3 ? FEEL : FEEL * 0.5);
+      // In the grace after a catch they're blind to you: time to get away.
+      const perceived = this.graceT <= 0 && (seen || heard || d < (playerSpeed > 0.3 ? FEEL : FEEL * 0.5));
       if (perceived) {
         const keen = (seen ? 1.4 : 0.9) * (n.mode === 'search' ? 1.6 : 1) * (1 + Math.max(0, 1 - d / 30));
         n.alert = Math.min(1, n.alert + dt * keen);
@@ -243,6 +246,7 @@ export class NightmareBrain {
       } else n.alert = Math.max(0, n.alert - dt * (n.mode === 'hunt' ? 0.05 : 0.12));
       if (n.mode !== 'hunt' && n.alert >= 1) {
         n.mode = 'hunt';
+        n.scattered = false;
         if (!n.pack) ev.alerted++;
         else if (!packsAlerted.has(n.pack)) {
           packsAlerted.add(n.pack);
@@ -260,7 +264,8 @@ export class NightmareBrain {
         if (n.searchT <= 0) {
           n.mode = 'prowl';
           n.alert = 0;
-          ev.lost++;
+          if (!n.scattered) ev.lost++;
+          n.scattered = false;
         }
       }
 
@@ -345,6 +350,7 @@ export class NightmareBrain {
         for (const o of this.live)
           if (o !== n && !o.dissolving && Math.hypot(o.x - player.x, o.z - player.z) < 25) {
             o.mode = 'search';
+            o.scattered = true;
             o.searchT = 6;
             o.alert = 0.3;
             o.lastX = player.x;

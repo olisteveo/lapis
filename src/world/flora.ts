@@ -59,6 +59,8 @@ const TRUNKS: Record<string, number> = {
 // Soft plants you walk through: they part around you instead of stopping you.
 // Plants broad enough to stand under out of the rain.
 const SHELTER = ['CanopyA', 'CanopyB', 'GiantMushroomA', 'GiantMushroomB', 'LanternTree'];
+/** Crown radius (m, at scale 1) of each sheltering plant: you're under it anywhere inside this. */
+const CROWN: Record<string, number> = { CanopyA: 5, CanopyB: 4.5, GiantMushroomA: 5, GiantMushroomB: 4.5, LanternTree: 3 };
 // Plants that carry flowers on their outer leaves.
 const FLOWERING = new Set(['Bush0', 'Bush1', 'Groundcover', 'Understory', 'Banana']);
 const SOFT = new Set(['FernA', 'FernB', 'Groundcover', 'Bush0', 'Bush1', 'Moonflowers', 'MeadowGrass', 'DuneGrass', 'Vines']);
@@ -475,10 +477,11 @@ export class Flora implements Colliders {
 
   /** How many sheltering plants (broad canopies, giant mushrooms) spread over (x, z), within r of their edge. */
   coverNear(x: number, z: number, r: number) {
-    return this.countNear(SHELTER, x, z, r);
+    return this.countNear(SHELTER, x, z, r, CROWN);
   }
 
-  private countNear(types: readonly string[], x: number, z: number, r: number) {
+  /** reach: a plant's spread in metres at scale 1 (its crown), defaulting to 1. */
+  private countNear(types: readonly string[], x: number, z: number, r: number, reach: Record<string, number> = {}) {
     const B = FLORA.blockSize;
     let n = 0;
     for (let dj = -1; dj <= 1; dj++)
@@ -488,7 +491,8 @@ export class Flora implements Colliders {
         for (const type of types) {
           const set = b.sets[type];
           if (!set) continue;
-          for (let k = 0; k < set.length; k += 5) if (Math.hypot(set[k] - x, set[k + 2] - z) < r + set[k + 4]) n++;
+          const spread = reach[type] ?? 1;
+          for (let k = 0; k < set.length; k += 5) if (Math.hypot(set[k] - x, set[k + 2] - z) < r + spread * set[k + 4]) n++;
         }
       }
     return n;
