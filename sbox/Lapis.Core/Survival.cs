@@ -45,7 +45,7 @@ public sealed class SurvivalTuning
     public double MoteRate { get; }
     public double DrawRate { get; }
 
-    public static readonly SurvivalTuning Survival = new(1.0 / 300, 1.0 / 60, 1.0 / 240, 1.0 / 40, 1.0 / 90, 2.5, 1.0 / 12, 1, 3, 1, 3, 1.0 / 90, 1.0 / 8);
+    public static readonly SurvivalTuning Survival = new(1.0 / 420, 1.0 / 60, 1.0 / 240, 1.0 / 40, 1.0 / 150, 2.2, 1.0 / 12, 1, 3, 1, 3, 1.0 / 90, 1.0 / 8);
 
     /// <summary>The story without the struggle: the cold is slow, flares are free.</summary>
     public static readonly SurvivalTuning Story = new(1.0 / 1200, 1.0 / 240, 0, 1.0 / 160, 1.0 / 400, 1.5, 1.0 / 6, 1, 3, 0, 20, 1.0 / 90, 1.0 / 8);

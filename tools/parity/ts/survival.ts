@@ -29,12 +29,12 @@ export interface SurvivalTuning {
 
 export const TUNING: Record<Exclude<SurvivalMode, 'wander'>, SurvivalTuning> = {
   survival: {
-    drainDark: 1 / 300,
+    drainDark: 1 / 420,
     drainWater: 1 / 60,
     drainWind: 1 / 240,
     drainDarkWater: 1 / 40,
-    drainRain: 1 / 90,
-    lateFactor: 2.5,
+    drainRain: 1 / 150,
+    lateFactor: 2.2,
     refill: 1 / 12,
     wispCap: 1,
     lanternCap: 3,

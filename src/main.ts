@@ -209,6 +209,8 @@ async function boot() {
   const surviving = () => settings.survival !== 'wander';
   let outOfLightSaid = 0;
   let glowCount = 0;
+  let coverCount = 0;
+  let coldWarned = false;
   let lightningIn = 8;
   let squallWarned = 0;
   /** Squalls come more often and harder as the night grows late and as her sky is restored. */
@@ -396,6 +398,7 @@ async function boot() {
     fade.style.opacity = '0';
   };
   let ePressed = false;
+  const restGlowOn = () => restGlow.classList.contains('on');
   addEventListener('keydown', (e) => {
     if ((e.code === 'Escape' || e.code === 'Space') && state === 'intro') skipIntro();
     else if (e.code === 'Escape' && state === 'play') {
@@ -406,7 +409,8 @@ async function boot() {
       film.close();
       return;
     }
-    if (e.code === 'KeyE' && !e.repeat) ePressed = true;
+    // E during the rest scene only ends it; it mustn't also rest again (and spend a diminished rest).
+    if (e.code === 'KeyE' && !e.repeat && !restGlowOn()) ePressed = true;
     const slot = /^Digit([1-5])$/.exec(e.code);
     if (slot && !e.repeat && state === 'play' && !menu.open && !chart.open) {
       story.wield(KEEPSAKES[Number(slot[1]) - 1].id);
@@ -509,6 +513,7 @@ async function boot() {
           player.mode = 'boat';
         },
         squalls,
+        dynRes,
         /** Bring the next squall in now. */
         squall() {
           (squalls as unknown as { t: number; length: number }).t = (squalls as unknown as { length: number }).length;
@@ -593,7 +598,10 @@ async function boot() {
   const surviveFrame = (dt: number, lights: LightSource[]) => {
     const t = tuning();
     const here = hf.sample(player.x, player.z);
-    if (frames % 10 === 0) glowCount = flora.glowNear(player.x, player.z, 5);
+    if (frames % 10 === 0) {
+      glowCount = flora.glowNear(player.x, player.z, 5);
+      coverCount = player.mode === 'walk' ? flora.coverNear(player.x, player.z, 2) : 0;
+    }
     let lit = 0;
     for (const l of lights) lit = Math.max(lit, THREE.MathUtils.smoothstep(l.r - Math.hypot(l.x - player.x, l.z - player.z), 0, l.r * 0.65));
     // The raised lantern is a small real light; glowing plants only soften the cold (glow, below).
@@ -605,9 +613,10 @@ async function boot() {
       lit,
       glow,
       inWater: player.mode === 'walk' && ground < -0.3 && player.y < 0.3,
-      wind: Math.max(here.dunes * 0.8, THREE.MathUtils.smoothstep(player.y, 40, 160), player.mode === 'boat' ? 0.6 : 0, squalls.intensity * 0.9),
-      // Near a real light (a lamp, a hut, a lighthouse) she shelters from the rain.
-      rain: squalls.intensity * (lit > 0.5 ? 0.2 : 1),
+      wind: Math.max(here.dunes * 0.8, THREE.MathUtils.smoothstep(player.y, 40, 160), player.mode === 'boat' ? 0.6 : 0, squalls.intensity * 0.9) * (coverCount ? 0.5 : 1),
+      // By a real light (a lamp, a hut, a lighthouse), or under a broad canopy or giant mushroom, she
+      // shelters from the rain.
+      rain: squalls.intensity * (lit > 0.5 ? 0.2 : coverCount ? 0.25 : 1),
       night: story.night.progress,
       // On or beside the Dark Water it chills fast; inland it only reaches you faintly.
       dark: darkAt(player.x, player.z, darkReachNow, refugesNow) * (player.mode === 'boat' || ground < 1 ? 1 : 0.3),
@@ -615,6 +624,20 @@ async function boot() {
     if ((exposure.dark ?? 0) > 0.35 && story.once('darkWaterHint'))
       story.guide("Oh... the water's gone black out there, and so cold. Her lit skies hold it back. Don't stay on it long!", 'oh', 'warn');
     if (story.warmth.update(dt, exposure, t)) story.collapse();
+    // Growing cold: once per cold spell the wisp points the way to the nearest warmth.
+    if (story.warmth.value < 0.45 && !coldWarned) {
+      coldWarned = true;
+      let best: LightSource | null = null;
+      let bestD = Infinity;
+      for (const l of lights) {
+        const d = Math.hypot(l.x - player.x, l.z - player.z) - l.r;
+        if (d > 0 && d < bestD) {
+          best = l;
+          bestD = d;
+        }
+      }
+      story.warnCold(player, best);
+    } else if (story.warmth.value > 0.75) coldWarned = false;
     cold = THREE.MathUtils.smoothstep(1 - story.warmth.value, 0.35, 1);
     story.light.cap = story.hasKeepsake('lantern') ? t.lanternCap : t.wispCap;
     // Drawing: the raised lantern held to glowing plants or the surf pulls their light in; they dim.
@@ -887,10 +910,16 @@ async function boot() {
       // Gliding, the squall carries you: harder to land where you aimed, or a lift if it's behind you.
       if (player.mode === 'walk' && player.canGlide && input.down('Space') && Math.abs(player.vy + player.glideSink) < 0.05 && squalls.intensity > 0.05) {
         const w = squalls.wind;
-        player.x += w.x * 2.2 * dt;
-        player.z += w.z * 2.2 * dt;
+        const nx = player.x + w.x * 2.2 * dt;
+        const nz = player.z + w.z * 2.2 * dt;
+        // The wind carries you, never through a wall or into a hillside.
+        if (!player.platforms?.blocked?.(nx, nz, player.y) && hf.height(nx, nz) < player.y - 0.5) {
+          player.x = nx;
+          player.z = nz;
+        }
       }
-      const threat = settings.nights ? Math.min(1, Math.max(0, (story.night.progress - 0.45) / 0.4)) : 0;
+      // Story mode keeps them few and never in packs (packs need threat above 0.65).
+      const threat = settings.nights ? Math.min(1, Math.max(0, (story.night.progress - 0.45) / 0.4)) * (settings.survival === 'story' ? 0.5 : 1) : 0;
       const sense = senses();
       nightmares.update(dt, camera.position, player.mode === 'walk' ? player.speed : 0, player.mode === 'boat' ? 0 : threat, lights, sense);
       noiseBurst = Math.max(0, noiseBurst - dt * 32);
@@ -929,7 +958,8 @@ async function boot() {
     if (cap === QUALITY.fps && state === 'play' && lastRender > 0 && dynRes.update(t - lastRender, 1000 / cap, t)) {
       renderer.setPixelRatio(Math.min(devicePixelRatio, RENDER.maxPixelRatio) * dynRes.scale);
       renderer.setSize(innerWidth, innerHeight);
-      settleFrames = 3;
+      // frame() counts down before it renders; 4 here skips this frame like a window resize does.
+      settleFrames = 4;
     }
     lastRender = t;
     frame();
