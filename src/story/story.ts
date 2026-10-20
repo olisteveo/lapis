@@ -520,7 +520,7 @@ export class Story {
 
   nightmaresSighted() {
     if (this.seen('nightmareHint')) this.guide('Watch out! Nightmares!', 'watch', 'warn');
-    else this.guide("Watch out! Nightmares! They hate the light. Stay near a lamp, or press Q and I'll flare!", 'watch', 'warn');
+    else this.guide("Watch out! Nightmares! They hunt by sound and sight. Hold C to creep, keep to the dark grass, or press Q and I'll flare!", 'watch', 'warn');
   }
 
   private bankCarried() {
@@ -578,6 +578,11 @@ export class Story {
       this.onMemory?.(6);
     };
     this.group.add(this.echoes.group);
+  }
+
+  /** True the first time this is asked for a key (and remembers it). */
+  once(key: string) {
+    return !this.seen(key);
   }
 
   private seen(key: string) {

@@ -26,7 +26,7 @@ import { Wonders, layoutWonders } from './world/wonders';
 import { Puzzles, layoutPuzzles, skyFeatures } from './world/puzzles';
 import { Waterfalls, layoutFalls } from './world/waterfalls';
 import { LighthouseClimb } from './core/lighthouseClimb';
-import { Nightmares, type LightSource } from './world/nightmares';
+import { Nightmares, type LightSource, type Senses } from './world/nightmares';
 import { layoutRegionStars } from './core/placement';
 import { Stones, layoutStones } from './world/stones';
 import { Currents } from './world/currents';
@@ -192,6 +192,32 @@ async function boot() {
   const surviving = () => settings.survival !== 'wander';
   let outOfLightSaid = 0;
   let glowCount = 0;
+  // Stealth (docs/SURVIVAL.md, phase 2): how loud and how visible the Keeper is.
+  let litHere = 0;
+  let noiseBurst = 0;
+  let hiddenSaid = false;
+  let alertSaid = 0;
+  const hiddenVeil = document.createElement('div');
+  hiddenVeil.id = 'hidden-veil';
+  document.body.appendChild(hiddenVeil);
+  const creeping = () => input.down('KeyC');
+  /** Noise radius and visibility for the nightmares' senses, from how you move and where you are. */
+  const senses = (): Senses => {
+    const wet = player.mode === 'walk' && hf.height(player.x, player.z) < -0.3;
+    let noise: number;
+    if (player.mode === 'boat') noise = player.boat.rowing ? 14 : 4;
+    else if (player.speed < 0.3) noise = 0;
+    else if (player.speed < 2) noise = 3;
+    else if (player.speed < 4.5) noise = 11;
+    else noise = 26;
+    if (wet && player.speed > 0.3) noise *= 1.6;
+    noise = Math.max(noise, noiseBurst);
+    const cover = player.mode === 'walk' && flora.softAt(player.x, player.z, player.y);
+    let visibility = 0.3 + 0.7 * litHere;
+    if (cover) visibility *= 0.4;
+    if (player.speed < 2) visibility *= player.speed < 0.3 ? 0.6 : 0.75;
+    return { noise, visibility: Math.min(1, visibility) };
+  };
   story.onNight = (p) => (frostTarget = p);
   // She wakes: frost whites everything out, the Keeper is moved to the last light, and it clears.
   story.onWake = (spot) => {
@@ -394,6 +420,8 @@ async function boot() {
   let lastStroke = 0;
   let playStarted = 0;
   player.onEvent = (e) => {
+    // Jumps and landings carry: a burst of noise the nightmares can hear.
+    if (e === 'jump' || e === 'land') noiseBurst = Math.max(noiseBurst, 16);
     if (e === 'jump') audio.jump();
     else if (e === 'land') audio.land(hf.height(player.x, player.z) < 0);
     else if (e === 'fall') {
@@ -521,6 +549,7 @@ async function boot() {
     for (const l of lights) lit = Math.max(lit, THREE.MathUtils.smoothstep(l.r - Math.hypot(l.x - player.x, l.z - player.z), 0, l.r * 0.65));
     // Glowing plants warm a little, and the raised lantern a little more; neither replaces a real light.
     lit = Math.min(1, lit + Math.min(0.5, glowCount * 0.12) + (held.raised === 'lantern' ? 0.25 : 0));
+    litHere = lit;
     const ground = hf.height(player.x, player.z);
     const exposure = {
       lit,
@@ -573,6 +602,14 @@ async function boot() {
   let flareFlash = 0;
   nightmares.onCatch = () => story.caught();
   nightmares.onSighted = () => story.nightmaresSighted();
+  nightmares.onAlerted = () => {
+    audio.discord();
+    if (performance.now() - alertSaid > 20000) {
+      alertSaid = performance.now();
+      story.guide(story.once('alertHint') ? 'It heard us! Run for a light, or hold C and slip into the long grass!' : 'It found us! Run for the light!', 'watch', 'warn');
+    } else wisp.speak(0.8, 'warn');
+  };
+  nightmares.onLost = () => story.guide("Phew. It's lost us.", 'hmm');
   story.onNewNight = () => nightmares.clear();
   // The ending: fade to black for the last page, then the end card; afterwards you may keep wandering.
   story.onEndingStart = () => {
@@ -692,9 +729,10 @@ async function boot() {
       // The story gets first claim on E (gather, read); otherwise it boards or leaves the boat.
       const storyUsed = pressed && story.interact();
       player.update(dt, {
-        moveX: story.narrative.reading ? 0 : input.moveX,
-        moveY: story.narrative.reading ? 0 : input.moveY,
-        sprint: input.down('ShiftLeft', 'ShiftRight'),
+        moveX: story.narrative.reading ? 0 : input.moveX * (creeping() ? 0.45 : 1),
+        moveY: story.narrative.reading ? 0 : input.moveY * (creeping() ? 0.45 : 1),
+        // Holding C creeps: slow and quiet, for slipping past nightmares.
+        sprint: input.down('ShiftLeft', 'ShiftRight') && !creeping(),
         interact: (pressed && !storyUsed) || (input.down('KeyE') && !story.currentPrompt),
         jump: input.down('Space'),
         cameraYaw: input.yaw,
@@ -785,7 +823,16 @@ async function boot() {
       player.canGlide = story.hasKeepsake('wings');
       player.glideSink = held.raised === 'wings' ? 0.9 : 1.6;
       const threat = settings.nights ? Math.min(1, Math.max(0, (story.night.progress - 0.45) / 0.4)) : 0;
-      nightmares.update(dt, camera.position, player.mode === 'walk' ? player.speed : 0, player.mode === 'boat' ? 0 : threat, lights);
+      const sense = senses();
+      nightmares.update(dt, camera.position, player.mode === 'walk' ? player.speed : 0, player.mode === 'boat' ? 0 : threat, lights, sense);
+      noiseBurst = Math.max(0, noiseBurst - dt * 32);
+      // Hidden: in the dark, low and quiet, the edges of the view close in a little.
+      const hidden = nightmares.live.length > 0 && sense.visibility < 0.3 && sense.noise < 4 ? 1 : 0;
+      hiddenVeil.style.opacity = String(hidden * (nightmares.brain.hunted ? 0.5 : 0.85));
+      if (hidden && !hiddenSaid && !nightmares.brain.hunted) {
+        hiddenSaid = true;
+        story.guide("Shh. Down here in the dark they can't see us. Keep low and quiet.", 'hmm');
+      }
     }
     flareFlash = Math.max(0, flareFlash - dt * 2.5);
     post.nightmare.value += (Math.max(nightmares.dread, 0) * (1 - flareFlash) - post.nightmare.value) * Math.min(1, dt * 2);

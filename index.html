@@ -127,6 +127,8 @@
       @keyframes gauge-draw { 50% { box-shadow: 0 0 14px rgba(255, 220, 170, 0.9); } }
       #light-gauge.spent { animation: gauge-spent 0.7s ease-out; }
       @keyframes gauge-spent { 0% { filter: brightness(2.4); transform: translateY(-3px); } 100% { filter: none; transform: none; } }
+      #hidden-veil { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.9s ease; z-index: 3;
+        background: radial-gradient(ellipse at 50% 50%, transparent 45%, rgba(2, 3, 14, 0.55) 80%, rgba(2, 3, 14, 0.85) 100%); }
       #rest-glow { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.4s ease; z-index: 6;
         background: radial-gradient(ellipse at 50% 35%, rgba(255, 196, 130, 0.0) 20%, rgba(255, 170, 100, 0.28) 60%, rgba(60, 28, 10, 0.75) 100%); }
       #rest-glow.on { opacity: 1; }
