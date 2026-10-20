@@ -7,6 +7,8 @@ import { Satchel } from './ui/satchel';
 import { Hotbar } from './ui/hotbar';
 import { LightGauge } from './ui/lightGauge';
 import { TUNING } from './core/survival';
+import { darkAt, darkReach } from './core/darkWater';
+import { setDarkWater } from './render/darkWater';
 import { MemoryFilm } from './ui/memoryFilm';
 import { HeldKeepsake } from './game/held';
 import { KEEPSAKES } from './story/keepsakes';
@@ -194,6 +196,8 @@ async function boot() {
   const surviving = () => settings.survival !== 'wander';
   let outOfLightSaid = 0;
   let glowCount = 0;
+  let darkReachNow = Infinity;
+  let refugesNow: ReturnType<typeof story.refuges> = [];
   // Stealth (docs/SURVIVAL.md, phase 2): how loud and how visible the Keeper is.
   let litHere = 0;
   let noiseBurst = 0;
@@ -559,7 +563,11 @@ async function boot() {
       inWater: player.mode === 'walk' && ground < -0.3 && player.y < 0.3,
       wind: Math.max(here.dunes * 0.8, THREE.MathUtils.smoothstep(player.y, 40, 160), player.mode === 'boat' ? 0.6 : 0),
       night: story.night.progress,
+      // On or beside the Dark Water it chills fast; inland it only reaches you faintly.
+      dark: darkAt(player.x, player.z, darkReachNow, refugesNow) * (player.mode === 'boat' || ground < 1 ? 1 : 0.3),
     };
+    if ((exposure.dark ?? 0) > 0.35 && story.once('darkWaterHint'))
+      story.guide("Oh... the water's gone black out there, and so cold. Her lit skies hold it back. Don't stay on it long!", 'oh', 'warn');
     if (story.warmth.update(dt, exposure, t)) story.collapse();
     cold = THREE.MathUtils.smoothstep(1 - story.warmth.value, 0.35, 1);
     story.light.cap = story.hasKeepsake('lantern') ? t.lanternCap : t.wispCap;
@@ -818,6 +826,10 @@ async function boot() {
         if (p.type === 'StoneLantern' || p.type === 'Hut' || p.type === 'Cairn') lights.push({ x: p.x, z: p.z, r: p.type === 'Hut' ? 12 : 8 });
       for (const p of puzzleSites) if (story.hasSeen(p.id)) lights.push({ x: p.reward?.x ?? p.x, z: p.reward?.z ?? p.z, r: 16 });
       story.light.update(dt);
+      // Dark Water creeps in as the night wears on; restored regions hold it back.
+      darkReachNow = settings.nights ? darkReach(story.night.progress, settings.survival) : Infinity;
+      refugesNow = story.refuges();
+      setDarkWater(darkReachNow, refugesNow, settings.nights ? THREE.MathUtils.smoothstep(story.night.progress, 0.2, 0.95) * (1 - story.restoredShare * 0.8) : 0);
       if (surviving()) surviveFrame(dt, lights);
       else cold = 0;
       // The paper lantern: a small circle of light that goes where you go.

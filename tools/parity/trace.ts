@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { PlayerController, type PlayerEvent, type PlayerInput } from './ts/player.ts';
 import { NightClock, type NightCue } from './ts/night.ts';
 import { LightStore, RestReturns, Sources, TUNING, Warmth, type Exposure } from './ts/survival.ts';
+import { darkAt, darkReach, type Refuge } from './ts/darkWater.ts';
 import { colliders, platforms, TOWER, world } from './world.ts';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '../../sbox/parity');
@@ -213,6 +214,7 @@ for (const mode of ['survival', 'story'] as const) {
       inWater: i % 900 > 700,
       wind: 0.5 + 0.5 * Math.sin(i * 0.01),
       night: (i / 3000) % 1,
+      dark: 0.5 + 0.5 * Math.sin(i * 0.013),
     };
     const collapsed = warmth.update(dt, e, t);
     if (collapsed) warmth.reset();
@@ -224,11 +226,28 @@ for (const mode of ['survival', 'story'] as const) {
     const rest = i % 500 === 0 ? rests.restAt(i % 1500 === 0 ? 2 : 1) : 0;
     if (i === 2500) rests.clear();
     steps.push({
-      dt, lit: e.lit, inWater: e.inWater, wind: e.wind, night: e.night,
+      dt, lit: e.lit, inWater: e.inWater, wind: e.wind, night: e.night, dark: e.dark,
       warmth: warmth.value, collapsed, light: light.value, cap: light.cap, ready: light.ready, flare,
       drawn, left: sources.left(12.5, -3, now), rest, streak: rests.streak,
     });
   }
   writeFileSync(join(OUT, `survival-${mode}.json`), JSON.stringify({ name: `survival-${mode}`, mode, steps }));
   console.log(`survival-${mode.padEnd(8)} ${steps.length} steps  collapses: ${steps.filter((s) => s.collapsed).length}  flares: ${steps.filter((s) => s.flare).length}`);
+}
+
+// Dark Water: its reach through the night in each mode, and the field across a line of the sea
+// with two refuges holding it back.
+{
+  const refuges: Refuge[] = [{ x: 2600, z: 400, r: 900 }, { x: -1800, z: 2900, r: 600 }];
+  const steps = [];
+  for (let i = 0; i <= 400; i++) {
+    const night = i / 400;
+    const mode = i % 2 ? 'story' : 'survival';
+    const reach = darkReach(night, mode);
+    const x = -6000 + i * 30;
+    const z = 2000 * Math.sin(i * 0.05);
+    steps.push({ night, mode, reach, x, z, dark: darkAt(x, z, reach, refuges), wander: darkReach(night, 'wander') });
+  }
+  writeFileSync(join(OUT, 'darkwater.json'), JSON.stringify({ name: 'darkwater', refuges, steps }));
+  console.log(`darkwater        ${steps.length} steps`);
 }
