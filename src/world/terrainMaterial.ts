@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
   attribute, cameraPosition, color, cross, dot, float, min, mix, mx_fractal_noise_float, mx_noise_float, normalize,
-  normalWorld, positionWorld, smoothstep, texture, vec2, vec3, screenUV, max, sin, time, floor, length,
+  normalWorld, positionWorld, smoothstep, texture, vec2, vec3, screenUV, max, sin, time, floor, length, step,
 } from 'three/tsl';
 import { PALETTE, SKY } from '../config';
 import { hash } from '../render/seed';
@@ -67,11 +67,18 @@ export function createTerrainMaterial(reflection: THREE.TextureNode) {
   const duneRipple = sin(p.x.mul(0.72).add(p.z.mul(0.96)).add(brush.mul(2.2))).mul(0.5).add(0.5);
   const dune = mix(color(0xb8a8cc), color(0xe2d6ec), duneRipple.mul(0.6).add(fine.mul(0.15)).add(0.2));
   base = mix(base, dune, biome.z);
-  // Drowned Town: old paving under the shallows.
-  const tile = vec2(p.x, p.z).div(2.6).fract();
-  const grout = max(smoothstep(0.06, 0.0, tile.x), smoothstep(0.06, 0.0, tile.y));
+  // Drowned Town: old paving under the shallows, laid in staggered courses. Only on the low, level
+  // ground where a town stood, and broken into patches with stones missing, so it never drapes
+  // over the hills as a grid.
+  const course = vec2(p.x, p.z).div(vec2(2.6, 1.7));
+  const stone = vec2(course.x.add(floor(course.y).mul(0.5)), course.y);
+  const tile = stone.fract();
+  const missing = step(hash(floor(stone.x).mul(57.1).add(floor(stone.y).mul(131.7))), 0.22);
+  const pavedHere = biome.w.mul(smoothstep(0.08, 0.03, slope)).mul(smoothstep(9, 5, h))
+    .mul(smoothstep(-0.25, 0.1, large.add(brush.mul(0.25)))).mul(float(1).sub(missing));
+  const grout = max(smoothstep(0.05, 0.0, tile.x), smoothstep(0.07, 0.0, tile.y)).mul(pavedHere);
   const paving = mix(color(0x6a7096), color(0x2a2f4c), grout.add(fine.mul(0.15)));
-  base = mix(base, paving, biome.w.mul(0.85));
+  base = mix(base, paving, pavedHere.mul(0.85));
 
   // Mirror-wet band at the waterline reuses the water's reflection target (refs 2 and 3).
   // The wet band fades with distance: coarse far terrain would show it as flat mirrored triangles.
