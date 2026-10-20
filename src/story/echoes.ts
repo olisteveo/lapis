@@ -6,6 +6,9 @@ import { PALETTE } from '../config';
 
 type Pose = 'stand' | 'point' | 'sit' | 'lookUp';
 
+/** keeper.glb clips performed for each pose (baked from tools/viggle/motions by the asset build). */
+const PERFORMED: Partial<Record<Pose, string>> = { point: 'viggle_point', sit: 'viggle_sitlook', lookUp: 'viggle_lookup' };
+
 export interface EchoDef {
   id: string;
   line: string;
@@ -64,12 +67,21 @@ export class Echoes {
         body.scale.setScalar(scale);
         body.position.set(offset[0], 0, offset[1]);
         const mixer = new THREE.AnimationMixer(body);
-        const clip = keeper.animations.find((a) => a.name === (pose === 'sit' ? 'sit' : 'idle'));
-        if (clip) mixer.clipAction(clip).play();
+        // Performed motion (generated with Viggle, tools/viggle) where there is one; the hand-keyed
+        // idle or sit with a posed head and arm otherwise.
+        const performed = keeper.animations.find((a) => a.name === PERFORMED[pose]);
+        const clip = performed ?? keeper.animations.find((a) => a.name === (pose === 'sit' ? 'sit' : 'idle'));
+        if (clip) {
+          const action = mixer.clipAction(clip).play();
+          // Parent and child shouldn't move in lockstep.
+          action.time = Math.random() * clip.duration;
+        }
         mixers.push(mixer);
         // Sanitised glTF bone names drop the dot: "upperarm.R" -> "upperarmR".
         const bone = (n: string) => body.getObjectByName(n);
-        if (pose === 'point') {
+        if (performed) {
+          // The motion carries the pose itself.
+        } else if (pose === 'point') {
           const arm = bone('upperarmR');
           const fore = bone('forearmR');
           const head = bone('head');

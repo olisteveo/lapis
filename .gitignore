@@ -4,3 +4,5 @@ dist/
 *.blend1
 tools/audio/.venv/
 __pycache__/
+.env.local
+tools/viggle/raw/

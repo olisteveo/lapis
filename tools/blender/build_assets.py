@@ -1450,6 +1450,33 @@ def bake_keeper_actions(rig):
                    (60, seated({"spine": (-4, 0, 0), "upperarm.L": (-25, 0, 10), "upperarm.R": (-25, 0, -10),
                                 "forearm.L": (-50, 0, 0), "forearm.R": (-50, 0, 0), "head": (4, 0, 0)}), -0.42, 0.0)])
 
+    # Motions generated with Viggle and retargeted onto this rig (tools/blender/viggle_retarget.py),
+    # baked as viggle_<name>. Every other frame is keyed; the exporter resamples between them.
+    import glob
+    import json
+    here = os.path.dirname(os.path.abspath(__file__))
+    for path in sorted(glob.glob(os.path.join(here, "..", "viggle", "motions", "*.json"))):
+        name = "viggle_" + os.path.splitext(os.path.basename(path))[0]
+        with open(path) as fh:
+            data = json.load(fh)
+        act = bpy.data.actions.new(name)
+        act.use_fake_user = True
+        rig.animation_data.action = act
+        step = max(1, round(data["fps"] / 15))
+        for i in range(0, len(data["frames"]), step):
+            fr = data["frames"][i]
+            clear()
+            for bone, e in fr["rot"].items():
+                rig.pose.bones[bone].rotation_euler = e
+            rig.pose.bones["hips"].location = fr["hips"]
+            for pb in rig.pose.bones:
+                pb.keyframe_insert("rotation_euler", frame=1 + i * FPS / data["fps"])
+                pb.keyframe_insert("location", frame=1 + i * FPS / data["fps"])
+        track = rig.animation_data.nla_tracks.new()
+        track.name = name
+        track.strips.new(name, 1, act)
+        rig.animation_data.action = None
+
 
 # ---------------------------------------------------------------- landmark / creature helpers
 
