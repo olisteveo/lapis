@@ -258,6 +258,11 @@ export class Audio {
     this.sfxBus.gain.setTargetAtTime(v.sfx, ctx.currentTime, 0.1);
   }
 
+  /** Overall effects loudness, for sound played outside the mixer (memory films). */
+  get effectsVolume() {
+    return this.volumes.master * this.volumes.sfx;
+  }
+
   /** The world goes quiet behind the pause menu; music stays faintly. */
   setPaused(paused: boolean) {
     this.pausedDuck = paused ? 0.35 : 1;

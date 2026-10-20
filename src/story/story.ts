@@ -162,6 +162,9 @@ export class Story {
     return this.keepsakes.templates;
   }
 
+  /** Plays the memory film for a fragment if there is one; returns false when there isn't. */
+  onMemoryFilm: ((id: string, after: () => void) => boolean) | null = null;
+
   /** The keepsake in hand (keys 1 to 5, or a click in the satchel), or null. */
   held: KeepsakeId | null = null;
   /** A keepsake just put in the satchel, so its slot can flare. */
@@ -724,7 +727,8 @@ export class Story {
     }
     this.audio.chime(index % 6);
     this.audio.memory();
-    this.narrative.say(fragment.line, 'memory');
+    // A memory film, where there is one, plays first; her line comes as it fades back to the world.
+    if (!this.onMemoryFilm?.(fragment.id, () => this.narrative.say(fragment.line, 'memory'))) this.narrative.say(fragment.line, 'memory');
     this.audio.voice(fragment.id).catch(() => {});
     this.onMemory?.(8);
     if (r.c !== 0) return;

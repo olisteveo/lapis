@@ -6,3 +6,7 @@ tools/audio/.venv/
 __pycache__/
 .env.local
 tools/viggle/raw/
+tools/memories/frames/
+tools/memories/work/
+tools/memories/*/
+!tools/memories/refs/
