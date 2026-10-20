@@ -229,7 +229,7 @@ export class Wildlife {
     halo.positionNode = vec3(G.x.add(sin(time.mul(0.07).add(G.w.mul(30))).mul(3)), 0.08, G.z.add(cos(time.mul(0.06).add(G.w.mul(30))).mul(3)));
     halo.scaleNode = vec3(2.4, 2.4, 1) as N;
     const rr = length(uv().sub(0.5)).mul(2);
-    halo.colorNode = vec4(mix(color(PALETTE.coral), color(0x8fd4ff), smoothstep(0.3, 0.7, G.w)).mul(exp(rr.mul(-4)).mul(0.5)).mul(sin(time.mul(1.8).add(G.w.mul(6.28))).mul(0.3).add(0.8)), 1);
+    halo.colorNode = vec4(mix(color(PALETTE.coral), color(0x8fd4ff), smoothstep(0.3, 0.7, G.w)).mul(exp(rr.mul(-4)).mul(0.5).mul(smoothstep(1, 0.7, rr))).mul(sin(time.mul(1.8).add(G.w.mul(6.28))).mul(0.3).add(0.8)), 1);
     const sprite = new THREE.Sprite(halo);
     sprite.count = JELLIES;
     sprite.frustumCulled = false;

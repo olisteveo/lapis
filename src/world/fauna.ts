@@ -251,7 +251,7 @@ export class Fauna implements Colliders {
     const wing = sin(time.mul(30).add(s.w.mul(50))).mul(0.5).add(0.5);
     // Big enough to see: moths a hand across, wings beating.
     mat.scaleNode = vec3(float(0.26).mul(wing.mul(0.6).add(0.5)), 0.18, 1) as N;
-    mat.colorNode = vec4(mix(color(0xc6b8ff), color(0x8ff0e6), s.w).mul(exp(r.mul(-3.2)).mul(1.9)).mul(this.mothStrength as N), 1);
+    mat.colorNode = vec4(mix(color(0xc6b8ff), color(0x8ff0e6), s.w).mul(exp(r.mul(-3.2)).mul(1.9).mul(smoothstep(1, 0.7, r))).mul(this.mothStrength as N), 1);
     const sprite = new THREE.Sprite(mat);
     sprite.count = count;
     sprite.frustumCulled = false;
