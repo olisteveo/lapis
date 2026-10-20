@@ -33,16 +33,24 @@ A star only counts once it is **carried to a lighthouse** and lifted back into t
 1. Wake. The little light points you at the nearest unlit constellation's region.
 2. Find stars: lying in the open, inside wonders, behind puzzles.
 3. Carry them. While carried they glow, and **the night presses in**.
-4. Reach a lighthouse, climb it, lift the stars from the lamp room. The night resets.
-5. If the night runs out, or a nightmare reaches you, carried stars fall back where you found them.
+4. Reach a lighthouse, climb it, lift the stars from the lamp room, and rest: the night turns back, by less each
+   time you rest at the same tower.
+5. If the night runs out, she freezes, or a nightmare reaches you, carried stars fall back where you found them.
+
+Along the way, keep her warm (only real light warms; the cold shows as frost, breath and shaking hands) and keep
+your light (gathered from the glow, spent on flares). Dark Water and squalls close in as the night wears on. The
+full survival design, and the Wander / Story / Survival modes, are in [SURVIVAL.md](SURVIVAL.md).
 
 ## Danger: nightmares
 
 Her despair. As each night grows late, ink creatures come out of the dark away from light:
-- **Wraiths** drift toward you; **Crawlers** run you down in the open.
+- **Wraiths** drift; **Crawlers** stalk, lunge and rest.
+- They prowl until they hear or see you: running is loud, creeping (C) in dark grass is nearly silent and unseen.
+  Hunting eyes blaze; lose them and they search where you were, then give up.
+- Late in the night they come in packs, and flankers try to get between you and the nearest light.
 - Near them the dream curdles: colour drains, the paint goes black and red, the music sours.
-- A touch scatters your carried stars.
-- Light drives them off: lit lighthouses, stone lanterns, and the little light's flare (Q, with a cooldown).
+- A touch scatters your carried stars, once per encounter.
+- Light drives them off: lit lighthouses, stone lanterns, and the little light's flare (Q, costs carried light).
 - Where they linger, black thorns grow; lighting that region's constellation burns them away.
 
 ## Puzzles
