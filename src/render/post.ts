@@ -2,11 +2,12 @@ import * as THREE from 'three/webgpu';
 import {
   abs, color, dot, exp, float, floor, fract, getViewPosition, hash, length, luminance, max, min, mix, mx_fractal_noise_float,
   mx_noise_float, normalize, pass, pow, renderOutput, rtt, screenCoordinate, screenSize, screenUV, select, smoothstep,
-  sqrt, texture, time, uniform, vec2, vec3, vec4,
+  sqrt, texture, texture3D, time, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { PALETTE, QUALITY } from '../config';
+import type { Grade } from './grade';
 
 // TSL's generics can't follow values through these unrolled loops; nodes are typed loosely.
 type N = any;
@@ -49,7 +50,7 @@ function toOklab(c: N): N {
  * colour is pulled onto the paintings' palette, ink lines trace silhouettes, everything
  * sits on canvas, and the hand-made parts re-draw at 10fps like drawn animation.
  */
-export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, grade: Grade) {
   const pipeline = new THREE.RenderPipeline(renderer);
   const scenePass = pass(scene, camera);
   const sceneColor = scenePass.getTextureNode('output');
@@ -208,6 +209,17 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const ditherStep = select(fract(dl.mul(levels)).greaterThan(bayer4(floor(px))), float(1), float(-1));
   c = c.mul(ditherStep.mul(0.07).mul(smoothstep(0.22, 0.04, dl)).mul(paint).add(1));
 
+  // ---- 8b. Grade: the painting through the chapter's .cube LUT, crossfading between two (grade.ts).
+  // Before the story's washes, so memory, frost and nightmare keep their exact colours.
+  const sizeA = uniform(2);
+  const sizeB = uniform(2);
+  const gradeBlend = uniform(0);
+  const graded = min(max(c, vec3(0)), vec3(1));
+  const cell = (size: N) => vec3(0.5).div(size).add(graded.mul(float(1).sub(float(1).div(size))));
+  const lutA = texture3D(grade.neutral.texture, cell(sizeA)) as N;
+  const lutB = texture3D(grade.neutral.texture, cell(sizeB)) as N;
+  c = mix(lutA.rgb, lutB.rgb, gradeBlend);
+
   // ---- 9. Memory: while her voice plays the world washes into a grainy indigo duotone,
   // like a risograph print of something remembered rather than seen.
   const memoryMix = uniform(0);
@@ -243,5 +255,6 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
 
   pipeline.outputNode = vec4(min(c, vec3(1)), 1);
   pipeline.outputColorTransform = false;
+  grade.attach({ lutA, lutB, sizeA, sizeB, blend: gradeBlend });
   return { pipeline, paint, boilRate, memoryMix, frost, nightmare };
 }

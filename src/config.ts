@@ -88,6 +88,13 @@ export function setQuality(name: QualityName) {
   for (const fn of qualityListeners) fn();
 }
 
+/**
+ * Colour grade per chapter (constellation id: boat, hand, lantern, whale, bell), as a .cube LUT under
+ * public/grades/. Grade a screenshot of the game in Resolve or Photoshop and export the look as a
+ * .cube; chapters left out stay neutral. Try one live with lapis.grade(chapter, url) in debug.
+ */
+export const GRADES: Partial<Record<string, string>> = {};
+
 export const RENDER = {
   maxPixelRatio: QUALITY.pixelRatio,
   fov: 48,
