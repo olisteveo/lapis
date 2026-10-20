@@ -22,8 +22,9 @@ print(f"{len(todo)} to make, {sum(m['seconds'] for m in todo)} credits")
 
 
 def make(m):
-    prompt = f"{spec['style']} {m['scene']}"
-    refs = [os.path.join(HERE, r) for r in spec["refsByAge"][m["age"]]]
+    # The day style's light and island win over a night scene, so night scenes lead and use their own.
+    prompt = f"{m['scene']} {spec['nightStyle']}" if m.get("night") else f"{spec['style']} {m['scene']}"
+    refs = [os.path.join(HERE, r) for r in spec["refsByAge"].get(m["age"], [])]
     gen = subprocess.run([os.path.join(ROOT, "tools", "viggle", "video.sh"), m["id"], str(m["seconds"]), prompt, *refs],
                          capture_output=True, text=True)
     if gen.returncode:
