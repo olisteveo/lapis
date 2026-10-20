@@ -44,6 +44,9 @@ export function layoutKeepsakes(hf: Heightfield, spawn: P): Record<KeepsakeId, P
       const z = B.z + Math.cos(a) * d;
       const h = hf.height(x, z);
       if (h < (region === 'drowned' ? -1 : 0.8)) continue;
+      // Each sits in a small setting (a staff, a crook, a chest, a post) that needs level ground.
+      const slope = Math.max(...[[2, 0], [-2, 0], [0, 2], [0, -2]].map(([dx, dz]) => Math.abs(hf.height(x + dx, z + dz) - h) / 2));
+      if (slope > 0.3) continue;
       // The wings sit on the highest ground; the others favour a quiet spot well inside.
       const score = region === 'meadow' ? h : -d * 0.01 + rnd() * 3 + (region === 'drowned' ? -Math.abs(h + 0.6) : 0);
       if (score > bestScore) {

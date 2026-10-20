@@ -151,6 +151,15 @@ export class Story {
 
   private keepsakes: Keepsakes;
 
+  /** The keepsakes' settings as solids, and their models, which load after the story starts. */
+  get keepsakeSolids() {
+    return this.keepsakes.solids;
+  }
+
+  loadKeepsakes(url: string) {
+    return this.keepsakes.load(url);
+  }
+
   hasKeepsake(id: KeepsakeId) {
     return (this.save.keepsakes ?? []).includes(id);
   }

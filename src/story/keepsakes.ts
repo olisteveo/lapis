@@ -1,45 +1,143 @@
 import * as THREE from 'three/webgpu';
-import { color, exp, length, sin, time, uv, vec4 } from 'three/tsl';
+import { atan, color, cos, exp, float, length, mix, normalWorld, positionLocal, positionWorld, sin, time, uv, vec3, vec4, vertexColor } from 'three/tsl';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { P } from '../core/placement';
+import { mulberry32 } from '../core/heightfield';
+import { PropCollision } from '../core/propCollision';
+import { drawnSurface, penLines } from '../render/drawn';
+import { gridFromObject } from '../world/propGrid';
 
 export { KEEPSAKES, layoutKeepsakes, type KeepsakeDef, type KeepsakeId } from '../core/keepsakes';
 import { KEEPSAKES, type KeepsakeId } from '../core/keepsakes';
 
-/** The keepsakes lying in the world: a small soft light on a stone, with a ring of motes. */
+type N = any;
+
+/** Painted colour per material in keepsakes.glb (tools/blender/keepsakes.py). */
+const TINT: Record<string, number> = {
+  ks_stone: 0x5b6890, ks_wood: 0x6b5450, ks_sand: 0xa898bc, ks_iron: 0x2a2e48, ks_rope: 0x8a7a68,
+  ks_shell: 0xe8909f, ks_paper: 0xffb46a, ks_wing: 0xbab2de, ks_brass: 0xd8a85a, ks_ribbon: 0xff8fa8, ks_glow: 0x9ff0e0,
+};
+/** Parts that give off their own light: the lantern's paper, the compass face, the eye-spots on the wings. */
+const GLOWS: Record<string, number> = { ks_paper: 0.9, ks_glow: 0.75 };
+/** The lantern's axis sits this far along x from its setting's origin (keepsakes.py, build_lantern). */
+const LANTERN_AXIS = 0.62;
+
+/**
+ * The keepsakes lying in the world, each in its own small setting: the seashell on a wet rock shelf
+ * behind the falls, the moth wings tied to a staff on the meadow peak, the paper lantern hung from a
+ * crook in the Lantern Wood, the compass on a half-buried chest in the dunes, the ribbon round a
+ * drowned post. The settings stay once their keepsake is taken.
+ */
 export class Keepsakes {
   readonly group = new THREE.Group();
-  private items = new Map<KeepsakeId, { obj: THREE.Group; pos: THREE.Vector3 }>();
+  /** The settings as solids to stand on and walk round. */
+  readonly solids = new PropCollision();
+  private items = new Map<KeepsakeId, { obj: THREE.Object3D; pos: THREE.Vector3 }>();
 
-  constructor(spots: Record<KeepsakeId, P>, height: (x: number, z: number) => number, owned: (id: KeepsakeId) => boolean) {
+  constructor(
+    private spots: Record<KeepsakeId, P>,
+    private height: (x: number, z: number) => number,
+    private owned: (id: KeepsakeId) => boolean,
+  ) {
     this.group.name = 'keepsakes';
-    const stone = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 0.6, 9).translate(0, 0.2, 0), new THREE.MeshBasicNodeMaterial({ color: 0x3a4470 }));
-    for (const def of KEEPSAKES) {
-      if (owned(def.id)) continue;
-      const s = spots[def.id];
-      const y = Math.max(height(s.x, s.z), -0.4);
-      const obj = new THREE.Group();
-      obj.position.set(s.x, y, s.z);
-      obj.add(stone.clone());
-      const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-      const r = length(uv().sub(0.5)).mul(2);
-      const pulse = sin(time.mul(1.7)).mul(0.2).add(1);
-      mat.colorNode = vec4(color(def.tint).mul(exp(r.mul(-5)).mul(1.8).add(exp(r.mul(-16)).mul(2.5))).mul(pulse), 1);
-      const glow = new THREE.Sprite(mat);
-      glow.position.y = 1.1;
-      glow.scale.setScalar(1.1);
-      obj.add(glow);
-      // A slow ring of motes circling it, so it reads as special rather than another star.
-      const ringMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-      ringMat.colorNode = vec4(color(def.tint).mul(exp(r.mul(-7)).mul(1.4)), 1);
-      for (let k = 0; k < 6; k++) {
-        const m = new THREE.Sprite(ringMat);
-        m.scale.setScalar(0.18);
-        m.userData.k = k;
-        obj.add(m);
-      }
-      this.group.add(obj);
-      this.items.set(def.id, { obj, pos: new THREE.Vector3(s.x, y + 1.1, s.z) });
+  }
+
+  private material(name: string, item: boolean, tint: number) {
+    const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+    const vc = vertexColor();
+    const base = color(TINT[name] ?? 0x34405e);
+    const pulse = sin(time.mul(1.7)).mul(0.25).add(0.85);
+    let col: N;
+    if (name === 'ks_paper') {
+      // Lit from within: warmest round its middle, with the bamboo ribs inked dark against the glow.
+      const lp = positionLocal as N;
+      const ang = atan(lp.z, lp.x.sub(LANTERN_AXIS));
+      const ribs = penLines(ang.mul(12 / (Math.PI * 2)), 1.6);
+      const belly = sin(vc.r.mul(Math.PI)).mul(0.5).add(0.5);
+      col = mix(base.mul(GLOWS[name]).mul(belly).mul(pulse), color(0x5a2a10), ribs.mul(0.75));
+    } else if (GLOWS[name]) {
+      col = base.mul(GLOWS[name]).mul(vc.r.mul(0.3).add(0.8)).mul(pulse);
+    } else {
+      col = drawnSurface(base.mul(vc.b.mul(0.15).add(0.85)), normalWorld, positionWorld, { spacing: 0.35 });
+      // Her things catch the moonlight more than the world around them, so they can be found.
+      if (item) col = col.add(color(tint).mul(0.12).mul(pulse));
     }
+    mat.colorNode = col;
+    // Paper wings and ribbon tails stir in the breeze, more toward their free ends.
+    const cloth = vc.g.greaterThan(0.9).select(float(1), float(0)).mul(vc.r);
+    const ph = vc.b.mul(6.283);
+    mat.positionNode = positionLocal.add(vec3(sin(time.mul(2.6).add(ph)), sin(time.mul(1.9).add(ph)).mul(0.4), cos(time.mul(2.1).add(ph))).mul(cloth.mul(0.035)));
+    return mat;
+  }
+
+  /** A soft halo and a slow ring of motes round the keepsake, so it reads as something special. */
+  private halo(tint: number) {
+    const g = new THREE.Group();
+    const r = length(uv().sub(0.5)).mul(2);
+    const pulse = sin(time.mul(1.7)).mul(0.2).add(1);
+    const glowMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    glowMat.colorNode = vec4(color(tint).mul(exp(r.mul(-4)).mul(0.16)).mul(pulse), 1);
+    const glow = new THREE.Sprite(glowMat);
+    glow.scale.setScalar(1.6);
+    g.add(glow);
+    const ringMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    ringMat.colorNode = vec4(mix(color(tint), color(0xffffff), 0.3).mul(exp(r.mul(-7)).mul(1.4)), 1);
+    for (let k = 0; k < 6; k++) {
+      const m = new THREE.Sprite(ringMat);
+      m.scale.setScalar(0.16);
+      m.userData.k = k;
+      g.add(m);
+    }
+    return g;
+  }
+
+  async load(url: string) {
+    const gltf = await new GLTFLoader().loadAsync(url);
+    gltf.scene.updateMatrixWorld(true);
+    const rnd = mulberry32(4242);
+    for (const def of KEEPSAKES) {
+      const s = this.spots[def.id];
+      const y = Math.max(this.height(s.x, s.z), -0.4);
+      const yaw = rnd() * Math.PI * 2;
+      const place = (o: THREE.Object3D) => {
+        o.position.set(s.x, y, s.z);
+        o.rotation.set(0, yaw, 0);
+        o.updateMatrixWorld(true);
+      };
+      const setting = gltf.scene.getObjectByName(`Setting_${def.id}`);
+      if (setting) {
+        this.solids.add(gridFromObject(setting), { x: s.x, y, z: s.z, yaw, scale: 1 });
+        const obj = setting.clone(true);
+        this.dress(obj, false, def.tint);
+        place(obj);
+        this.group.add(obj);
+      }
+      const keepsake = gltf.scene.getObjectByName(`Keepsake_${def.id}`);
+      if (!keepsake || this.owned(def.id)) continue;
+      const obj = new THREE.Group();
+      const model = keepsake.clone(true);
+      this.dress(model, true, def.tint);
+      obj.add(model);
+      place(obj);
+      const pos = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
+      const halo = this.halo(def.tint);
+      halo.position.copy(obj.worldToLocal(pos.clone()));
+      halo.userData.halo = true;
+      obj.add(halo);
+      this.group.add(obj);
+      this.items.set(def.id, { obj, pos });
+    }
+  }
+
+  private dress(o: THREE.Object3D, item: boolean, tint: number) {
+    const cache = new Map<string, THREE.Material>();
+    o.traverse((c) => {
+      const m = c as THREE.Mesh;
+      if (!m.isMesh) return;
+      const name = ((Array.isArray(m.material) ? m.material[0] : m.material) as THREE.Material).name;
+      if (!cache.has(name)) cache.set(name, this.material(name, item, tint));
+      m.material = cache.get(name)!;
+    });
   }
 
   nearest(x: number, z: number) {
@@ -60,12 +158,14 @@ export class Keepsakes {
 
   update() {
     const t = performance.now() / 1000;
-    for (const it of this.items.values())
-      for (const c of it.obj.children)
+    for (const it of this.items.values()) {
+      const halo = it.obj.children.find((c) => c.userData.halo);
+      if (!halo) continue;
+      for (const c of halo.children)
         if (c.userData.k !== undefined) {
           const a = t * 0.8 + (c.userData.k / 6) * Math.PI * 2;
-          c.position.set(Math.cos(a) * 0.7, 1.1 + Math.sin(t * 1.3 + c.userData.k) * 0.15, Math.sin(a) * 0.7);
+          c.position.set(Math.cos(a) * 0.55, Math.sin(t * 1.3 + c.userData.k) * 0.12, Math.sin(a) * 0.55);
         }
+    }
   }
 }
-

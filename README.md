@@ -39,7 +39,7 @@ Mara is the only voice in the game. The Keeper never speaks and is never seen. T
 
 **The little light.** A Navi-like companion that keeps you company, hovers over things worth finding, and speaks up with a bright little call. Ask it what to do next with F. After the opening, it only knows roughly where stars are: finding them is your job.
 
-**Find her keepsakes.** Five of Mara's things are hidden one per region, and each is a tool: a seashell that hums near hidden stars, moth wings to glide, a paper lantern that holds nightmares back, a compass that puts you on the chart, a ribbon that makes the nights longer.
+**Find her keepsakes.** Five of Mara's things are hidden one per region, each waiting somewhere of its own (a shell on a wet rock behind the falls, paper wings tied to a staff on the meadow heights, a lantern hung from a crook in the Lantern Wood, a compass on a half-buried chest in the dunes, a ribbon round a drowned post), and each is a tool: a seashell that hums near hidden stars, moth wings to glide, a paper lantern that holds nightmares back, a compass that puts you on the chart, a ribbon that makes the nights longer.
 
 **When the last constellation is lit,** the brightest star blazes, and the River of Light carries you north to the end of the world.
 
