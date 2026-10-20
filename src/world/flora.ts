@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, attribute, cameraPosition, color, cos, dot, float, mix, normalGeometry, positionLocal, saturate, sin, smoothstep, step, time, uniform, vec2, vec3, vertexColor, length, varying, atan, floor } from 'three/tsl';
+import { abs, attribute, cameraPosition, color, cos, dot, float, mix, normalGeometry, normalize, positionLocal, saturate, sin, smoothstep, step, time, uniform, vec2, vec3, vertexColor, length, varying, atan, floor } from 'three/tsl';
 import { hash } from '../render/seed';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FLORA, PALETTE, QUALITY, SKY, onQualityChange } from '../config';
@@ -74,7 +74,7 @@ const GLOW_PARTS = new Set(['trunk', 'frond', 'fruit', 'flower']);
 // Each region glows in its own colour: teal spores, gold lanterns, pale petals, icy crystal.
 const REGION_GLOW: Record<string, [number, number]> = {
   // Shared by hundreds of small caps: kept modest, or their bloom floods the whole frame.
-  mushroom_glow: [0x5fe8d8, 0.45],
+  mushroom_glow: [0x5fe8d8, 0.7],
   lantern_glow: [0xffc070, 1.8],
   moonflower_glow: [0xece0ff, 1.25],
   crystal: [0xc6b6ff, 0.75],
@@ -262,6 +262,8 @@ export class Flora implements Colliders {
     const fade = smoothstep(R.far, R.far.mul(0.85), d);
 
     let col;
+    // Light that sits on top of the drawn shading rather than under its ink.
+    let emit: any = null;
     if (REGION_GLOW[partName]) {
       const [hex, k] = REGION_GLOW[partName];
       const breathe = sin(time.mul(0.7).add(variety.mul(20))).mul(0.15).add(0.9);
@@ -280,6 +282,19 @@ export class Flora implements Colliders {
       }
     } else if (REGION_BASE[partName] !== undefined) {
       col = color(REGION_BASE[partName]).mul(lambert.mul(0.6).add(0.3)).mul(variety.mul(0.25).add(0.85));
+      if (partName === 'mushroom_cap') {
+        // Bioluminescent caps: freckled with cold glowing spots that each twinkle on their own
+        // clock, and a translucent rim where the light inside shows through at grazing angles.
+        const p = varying(positionLocal).mul(1.1);
+        const cell = floor(p);
+        const h = (o: number) => hash(cell.x.mul(127.1).add(cell.y.mul(311.7)).add(cell.z.mul(74.7)).add(variety.mul(91)).add(o));
+        const centre = cell.add(vec3(h(0), h(1), h(2)).mul(0.5).add(0.25));
+        const spot = smoothstep(0.3, 0.1, length(p.sub(centre))).mul(step(0.3, h(3)));
+        const twinkle = sin(time.mul(h(4).mul(1.6).add(0.6)).add(h(5).mul(40))).mul(0.4).add(0.7);
+        const view = normalize(cameraPosition.sub(wp));
+        const rim = smoothstep(0.55, 0.0, abs(dot(n, view)));
+        emit = color(0x3fd8e0).mul(rim).mul(0.6).add(color(0xc8fbff).mul(spot).mul(twinkle).mul(4));
+      }
     } else if (GLOW_PARTS.has(partName)) {
       // The palms drank the starlight: crowns glow coral, trunks warm to salmon toward the top.
       const tipRamp = vc.r;
@@ -309,6 +324,7 @@ export class Flora implements Colliders {
     // shadow side, anchored in the world so they don't swim. Leaves stay painted.
     const drawn = partName === 'trunk' || partName.includes('bark') || partName.includes('core') || partName.startsWith('mushroom_') && !partName.includes('glow');
     if (drawn) col = drawnSurface(col, n, wp);
+    if (emit) col = col.add(emit);
     mat.colorNode = col.mul(fade.mul(0.3).add(0.7));
     return mat;
   }
