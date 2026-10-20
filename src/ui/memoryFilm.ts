@@ -7,8 +7,10 @@
 export class MemoryFilm {
   private root: HTMLElement;
   private video: HTMLVideoElement;
+  private caption: HTMLElement;
   private available = new Set<string>();
   private done: (() => void) | null = null;
+  private captionTimer = 0;
 
   constructor() {
     this.root = document.createElement('div');
@@ -17,6 +19,10 @@ export class MemoryFilm {
     this.video.playsInline = true;
     this.video.preload = 'auto';
     this.root.appendChild(this.video);
+    // Her line, laid over the film as it plays, the way she'd have said it in that moment.
+    this.caption = document.createElement('div');
+    this.caption.className = 'film-line';
+    this.root.appendChild(this.caption);
     document.body.appendChild(this.root);
     this.video.addEventListener('ended', () => this.close());
     this.root.addEventListener('click', () => this.close());
@@ -34,10 +40,15 @@ export class MemoryFilm {
     return this.available.has(id);
   }
 
-  /** volume: 0..1, the player's effects volume. onDone runs when it ends or is skipped. */
-  play(id: string, volume: number, onDone?: () => void) {
+  /** volume: 0..1, the player's effects volume. line: her words, captioned during the film. onDone runs when it ends or is skipped. */
+  play(id: string, volume: number, onDone?: () => void, line = '') {
     if (!this.available.has(id)) return false;
     this.done = onDone ?? null;
+    this.caption.innerHTML = line ? `<span>her voice</span>${line.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!)}` : '';
+    this.caption.classList.remove('show');
+    // In after the film has faded up, so the words land on the picture rather than on black.
+    clearTimeout(this.captionTimer);
+    if (line) this.captionTimer = window.setTimeout(() => this.caption.classList.add('show'), 900);
     this.video.src = `/memories/${id}.mp4`;
     this.video.volume = Math.max(0, Math.min(1, volume));
     this.video.currentTime = 0;
@@ -54,6 +65,8 @@ export class MemoryFilm {
   close() {
     if (!this.open) return;
     this.root.classList.remove('open');
+    clearTimeout(this.captionTimer);
+    this.caption.classList.remove('show');
     this.video.pause();
     const done = this.done;
     this.done = null;
