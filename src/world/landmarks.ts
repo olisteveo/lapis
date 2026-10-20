@@ -196,6 +196,10 @@ export class Landmarks implements Colliders {
   /** Story hook: the home lighthouse's lamp. 0 = dark, 1 = lit (Act 2 midpoint). */
   readonly lamp = uniform(0);
 
+  /** Props that drop out of the scene beyond their reach r, so far ones cost no draw calls. */
+  private far: { obj: THREE.Object3D; x: number; z: number; r: number }[] = [];
+  private cullTick = 0;
+
   constructor(readonly placed: Placed[]) {
     this.group.name = 'landmarks';
     for (let i = 0; i < 4; i++) {
@@ -332,6 +336,8 @@ export class Landmarks implements Colliders {
       // The model's floating rune rings read as clutter; leave them out.
       for (let k = 0; k < 3; k++) obj.getObjectByName(`RuneRing_${k}`)?.removeFromParent();
       this.group.add(obj);
+      // Lighthouses are seen (and steered by) from anywhere; everything else drops out with distance.
+      if (!isLight) this.far.push({ obj, x: p.x, z: p.z, r: 650 * Math.max(1, p.scale) });
     }
     return [...templates.keys()];
   }
@@ -397,6 +403,9 @@ export class Landmarks implements Colliders {
 
   /** The nearest few lamps get real point lights so they pool warm light on the ground. */
   update(focus: THREE.Vector3, dt = 0.016) {
+    // Every few frames is plenty: nothing comes into view faster than you can travel 650 m.
+    if (this.cullTick++ % 12 === 0)
+      for (const f of this.far) f.obj.visible = Math.abs(f.x - focus.x) < f.r && Math.abs(f.z - focus.z) < f.r && Math.hypot(f.x - focus.x, f.z - focus.z) < f.r;
     for (const b of this.beacons) {
       b.lit.value += (b.litTarget - b.lit.value) * Math.min(1, dt * 0.8);
       b.beam.visible = b.lit.value > 0.05;

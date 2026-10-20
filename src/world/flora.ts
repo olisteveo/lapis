@@ -106,6 +106,7 @@ class Batch {
     this.ensure(256);
     this.geo.instanceCount = 0;
     this.mesh = new THREE.Mesh(this.geo, material);
+    this.mesh.visible = false;
     this.mesh.frustumCulled = false;
   }
 
@@ -135,6 +136,8 @@ class Batch {
     this.inst.needsUpdate = true;
     this.scl.needsUpdate = true;
     this.geo.instanceCount = n;
+    // An empty batch still costs a draw call.
+    this.mesh.visible = n > 0;
   }
 }
 
@@ -343,7 +346,7 @@ export class Flora implements Colliders {
 
   /** In the water's reflection only the glowing palms matter; skip the jungle there. */
   setMirror(mirror: boolean) {
-    for (const m of this.mirrorHidden) m.visible = !mirror;
+    for (const m of this.mirrorHidden) m.visible = !mirror && (m.geometry as THREE.InstancedBufferGeometry).instanceCount > 0;
   }
 
   update(focus: THREE.Vector3, now: number) {
