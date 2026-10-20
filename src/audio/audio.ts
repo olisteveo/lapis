@@ -19,6 +19,8 @@ export interface AudioMix {
   dread?: number;
   /** 0..1 how close the nearest waterfall is. */
   falls?: number;
+  /** 0..1 how hard a squall is blowing. */
+  storm?: number;
 }
 
 export class Audio {
@@ -298,9 +300,10 @@ export class Audio {
     const now = ctx.currentTime;
     const set = (l: LoopName, v: number) => this.loops.get(l)!.gain.setTargetAtTime(v, now, 0.6);
     const shore = mix.inBoat ? 0.4 : mix.sea;
-    set('surf', shore * 0.85 * Math.max(0, 1 - mix.altitude / 120));
-    set('lapping', mix.inBoat ? 0.55 : mix.sea * 0.25);
-    set('wind', 0.12 + Math.min(0.6, mix.altitude / 400) + (mix.inBoat ? 0.15 : 0));
+    const storm = mix.storm ?? 0;
+    set('surf', shore * 0.85 * Math.max(0, 1 - mix.altitude / 120) + storm * 0.35);
+    set('lapping', (mix.inBoat ? 0.55 : mix.sea * 0.25) * (1 + storm * 0.6));
+    set('wind', 0.12 + Math.min(0.6, mix.altitude / 400) + (mix.inBoat ? 0.15 : 0) + storm * 0.75);
     set('jungle', mix.jungle * 0.6 * (1 - mix.sea * 0.4));
     // The generated pad only fills in when no composed track is sounding.
     const dread = mix.dread ?? 0;

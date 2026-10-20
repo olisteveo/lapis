@@ -4,6 +4,7 @@ import {
 } from 'three/tsl';
 import { PALETTE, QUALITY, onQualityChange } from '../config';
 import { mulberry32 } from '../core/heightfield';
+import { weather } from '../render/weather';
 
 /**
  * Dream motes. Fireflies: warm points drifting and blinking at head height around you.
@@ -82,7 +83,9 @@ function cloud(count: number, span: number, seed: number, kind: 'firefly' | 'ris
   const tint = kind === 'firefly'
     ? mix(color(PALETTE.starGold), color(0xffe2a0), s.x)
     : region ? mix(color(region.tint[0]), color(region.tint[1]), s.y) : mix(color(0xbfd0ff), color(PALETTE.starWhite), s.y);
-  mat.colorNode = vec4(tint.mul(glow).mul(life).mul(fade).mul(kind === 'firefly' ? 2.4 : region ? region.gain : 1.4), 1);
+  // Rain beats the motes down.
+  const rainDim = float(1).sub((weather.storm as any).mul(0.7));
+  mat.colorNode = vec4(tint.mul(glow).mul(life).mul(fade).mul(rainDim).mul(kind === 'firefly' ? 2.4 : region ? region.gain : 1.4), 1);
   const sprite = new THREE.Sprite(mat);
   sprite.count = count;
   sprite.frustumCulled = false;

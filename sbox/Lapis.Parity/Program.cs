@@ -20,7 +20,7 @@ foreach (var file in files)
     using var doc = JsonDocument.Parse(File.ReadAllText(file));
     var root = doc.RootElement;
     var name = root.GetProperty("name").GetString()!;
-    var result = name == "night" ? RunNight(root) : name == "darkwater" ? RunDarkWater(root) : name.StartsWith("survival-") ? RunSurvival(root) : RunPlayer(root);
+    var result = name == "night" ? RunNight(root) : name == "darkwater" ? RunDarkWater(root) : name == "squalls" ? RunSqualls(root) : name.StartsWith("survival-") ? RunSurvival(root) : RunPlayer(root);
     if (result.Divergence != null) failures++;
     var status = result.Divergence == null ? "PASS" : "FAIL";
     Console.WriteLine($"{status}  {name,-14} {result.Steps,5} steps  max err {result.MaxError:0.0e+0}");
@@ -146,7 +146,7 @@ static Result RunSurvival(JsonElement root)
     {
         var dt = s.GetProperty("dt").GetDouble();
         now += dt;
-        var e = new Exposure(s.GetProperty("lit").GetDouble(), s.GetProperty("inWater").GetBoolean(), s.GetProperty("wind").GetDouble(), s.GetProperty("night").GetDouble(), s.GetProperty("dark").GetDouble());
+        var e = new Exposure(s.GetProperty("lit").GetDouble(), s.GetProperty("inWater").GetBoolean(), s.GetProperty("wind").GetDouble(), s.GetProperty("night").GetDouble(), s.GetProperty("dark").GetDouble(), s.GetProperty("rain").GetDouble(), s.GetProperty("glow").GetDouble());
         var collapsed = warmth.Update(dt, e, t);
         if (collapsed) warmth.Reset();
         light.Update(dt);
@@ -186,6 +186,28 @@ static Result RunDarkWater(JsonElement root)
         check.Num("reach", s, reach);
         check.Num("dark", s, DarkWater.At(s.GetProperty("x").GetDouble(), s.GetProperty("z").GetDouble(), reach, refuges));
         check.Equal("wander", "null", double.IsInfinity(DarkWater.Reach(0.5, SurvivalMode.Wander)) ? "null" : "finite");
+        i++;
+    }
+    return new Result(i, check.MaxError, check.Divergence);
+}
+
+static Result RunSqualls(JsonElement root)
+{
+    var sq = new SquallClock((uint)root.GetProperty("seed").GetInt32());
+    var check = new Checker();
+    var i = 0;
+    foreach (var s in root.GetProperty("steps").EnumerateArray())
+    {
+        var entered = sq.Update(s.GetProperty("dt").GetDouble(), s.GetProperty("pressure").GetDouble(), s.GetProperty("enabled").GetBoolean());
+        if (s.TryGetProperty("phase", out _))
+        {
+            check.Step = i;
+            check.Str("phase", s, Camel(sq.Phase));
+            var exp = s.GetProperty("entered");
+            check.Equal("entered", exp.ValueKind == JsonValueKind.Null ? "" : exp.GetString()!, entered.HasValue ? Camel(entered.Value) : "");
+            check.Num("intensity", s, sq.Intensity);
+            check.Num("angle", s, sq.WindAngle);
+        }
         i++;
     }
     return new Result(i, check.MaxError, check.Divergence);

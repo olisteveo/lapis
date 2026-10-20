@@ -9,6 +9,7 @@ import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { PALETTE, QUALITY } from '../config';
 import type { Grade } from './grade';
 import { darkUniforms } from './darkWater';
+import { weather } from './weather';
 
 // TSL's generics can't follow values through these unrolled loops; nodes are typed loosely.
 type N = any;
@@ -79,7 +80,8 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const localFloor = mix(drift.mul(10).add(2), camY.sub(1.6).add(drift.mul(3)), smoothstep(400, 80, dist));
   const layer = exp(max(world.y.sub(localFloor), 0).div(-14));
   // As the Dark Water spreads the mist thickens and darkens toward ink.
-  const gloom = darkUniforms.gloom as N;
+  // A squall greys the air in close: rain haze the mist can't see past.
+  const gloom = (darkUniforms.gloom as N).add((weather.storm as N).mul(0.6)).min(1);
   const mistAmt: N = select(isSky, float(0), float(1).sub(exp(dist.mul(float(-0.0045).mul(gloom.mul(1.4).add(1))))).mul(layer).mul(gloom.mul(0.3).add(0.38)));
   const mistCol: N = mix(mix(vec3(0.07, 0.1, 0.32), vec3(0.2, 0.2, 0.42), drift.mul(0.5).add(0.5)), vec3(0.02, 0.02, 0.06), gloom.mul(0.7));
   // Luminous grain: glow arrives as coarse printed grain, not a smooth lens haze.
@@ -226,6 +228,11 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const lutA = texture3D(grade.neutral.texture, cell(sizeA)) as N;
   const lutB = texture3D(grade.neutral.texture, cell(sizeB)) as N;
   c = mix(lutA.rgb, lutB.rgb, gradeBlend);
+
+  // ---- 8c. Squall: the colour washes toward rain-grey, and lightning lights everything for an instant.
+  const storm = weather.storm as N;
+  c = mix(c, vec3(luminance(c)).mul(vec3(0.82, 0.88, 1.0)), storm.mul(0.35)).mul(float(1).sub(storm.mul(0.18)));
+  c = c.add(vec3(0.55, 0.6, 0.75).mul(weather.flash as N).mul(float(0.35).add(luminance(c))));
 
   // ---- 9. Memory: while her voice plays the world washes into a grainy indigo duotone,
   // like a risograph print of something remembered rather than seen.

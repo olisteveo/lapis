@@ -134,6 +134,20 @@ reflections, the sparkles (fallen stars) go out, shoreline palms grey, and the m
 much of her sky is still dark. On or beside it warmth drains fast (1/40 per second in Survival). The wisp warns the
 first time you meet it.
 
+## Phase 4 status
+
+Built: squalls (`src/core/squalls.ts`, ported to `sbox/Lapis.Core/Squalls.cs` with a bit-exact mulberry32 and a
+parity trace). The first comes after three to four minutes; each builds over 14 s, rages for 45 to 90 s, and passes
+over 18 s, and the calm between them shrinks from about four minutes to under a minute and a half as the night grows
+late and her sky is restored (pressure). In a squall: slanted rain around you, the picture washes toward rain-grey
+and the mist closes in, glowing plants and motes dim, lightning flashes in the heart of it, and the wind and surf
+roar. Rain drains warmth (1/90 per second in Survival) unless you shelter by a real light; the wind pushes the boat
+(it adds to the star currents) and carries a glide. Rain also masks you: noise halved and visibility down 40%, so a
+squall is cover as well as danger. The wisp warns as the first two squalls build.
+
+Warmth now separates real light (lamps, huts, lighthouses, the raised lantern), which warms her back up, from
+glowing plants, which only soften the cold.
+
 Not yet: low islands submerging (the terrain doesn't change).
 
 Not yet (phase 1): drawn sources dimming visibly (they run dry, but don't look it), visible breath and trembling hands at low
