@@ -652,16 +652,23 @@ async function boot() {
     gathering = drawn > 0;
   };
   const film = new MemoryFilm();
-  story.onMemoryFilm = (id, after) => {
+  let filmClosedAt = -Infinity;
+  story.onMemoryFilm = (id, line, after) => {
     if (!film.has(id)) return false;
     // The world goes quiet and still behind the film.
     audio.setPaused(true);
     if (document.pointerLockElement) document.exitPointerLock();
-    return film.play(id, audio.effectsVolume, () => {
-      audio.setPaused(false);
-      after();
-      Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
-    });
+    return film.play(
+      id,
+      audio.effectsVolume,
+      () => {
+        filmClosedAt = performance.now();
+        audio.setPaused(false);
+        after();
+        Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
+      },
+      line,
+    );
   };
   // The seashell's hum, seen as well as heard: a pink shimmer at the edge of the view, on the star's side.
   const shellCue = document.createElement('div');
@@ -740,7 +747,8 @@ async function boot() {
   };
   // The browser swallows Escape when it releases pointer lock, so losing the lock opens the menu.
   document.addEventListener('pointerlockchange', () => {
-    if (!document.pointerLockElement && state === 'play' && !menu.open) {
+    // The film lets the pointer go itself (so it can be clicked away); that isn't a request for the menu.
+    if (!document.pointerLockElement && state === 'play' && !menu.open && !film.open && performance.now() - filmClosedAt > 600) {
       // Escape while the chart is up just puts the chart away.
       if (chart.open || satchel.open) {
         chart.hide();
