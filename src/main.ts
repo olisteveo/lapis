@@ -5,6 +5,8 @@ import { PauseMenu } from './ui/menu';
 import { JournalMap } from './ui/map';
 import { Satchel } from './ui/satchel';
 import { Hotbar } from './ui/hotbar';
+import { LightGauge } from './ui/lightGauge';
+import { TUNING } from './core/survival';
 import { MemoryFilm } from './ui/memoryFilm';
 import { HeldKeepsake } from './game/held';
 import { KEEPSAKES } from './story/keepsakes';
@@ -184,6 +186,12 @@ async function boot() {
   let postSteps = QUALITY.strokeSteps;
   let memoryUntil = 0;
   let frostTarget = 0;
+  // Survival (docs/SURVIVAL.md): how cold she is, 0 warm to 1 frozen, drawn as frost.
+  let cold = 0;
+  const tuning = () => TUNING[settings.survival === 'survival' ? 'survival' : 'story'];
+  const surviving = () => settings.survival !== 'wander';
+  let outOfLightSaid = 0;
+  let glowCount = 0;
   story.onNight = (p) => (frostTarget = p);
   // She wakes: frost whites everything out, the Keeper is moved to the last light, and it clears.
   story.onWake = (spot) => {
@@ -200,6 +208,26 @@ async function boot() {
     }, 2600);
   };
   story.onMemory = (seconds) => (memoryUntil = performance.now() / 1000 + seconds);
+  // A rest is a short sleep: the lamp's warmth closes in around the view while her stars rise and
+  // the nightmares sink, then lets go. E or Space ends it early.
+  const restGlow = document.createElement('div');
+  restGlow.id = 'rest-glow';
+  document.body.appendChild(restGlow);
+  let restTimer = 0;
+  const endRest = () => {
+    clearTimeout(restTimer);
+    restGlow.classList.remove('on');
+  };
+  story.onRest = (share) => {
+    cold = 0;
+    restGlow.classList.add('on');
+    audio.chime(share < 1 ? 2 : 4);
+    wisp.speak(1.6, 'calm');
+    restTimer = window.setTimeout(endRest, 2800 + 1600 * share);
+  };
+  addEventListener('keydown', (e) => {
+    if ((e.code === 'Space' || e.code === 'KeyE') && restGlow.classList.contains('on') && !e.repeat) endRest();
+  });
 
   wildlife.onEvent = (kind, at) => {
     const d = camera.position.distanceTo(at);
@@ -317,10 +345,16 @@ async function boot() {
     }
     if (e.code === 'KeyF' && !e.repeat && state === 'play' && !menu.open && !chart.open) story.askGuide(player);
     if (e.code === 'KeyQ' && !e.repeat && state === 'play' && !menu.open && !chart.open && wisp.awake) {
-      if (nightmares.flare(camera.position)) {
+      // The light store gates the flare: it costs light (free in Story mode) and has its own cooldown.
+      if (story.light.flare(tuning())) {
+        nightmares.flare(camera.position, 0);
         wisp.speak(1.2, 'star');
         flareFlash = 1;
         audio.chime(5);
+        gauge.spent();
+      } else if (story.light.ready && performance.now() - outOfLightSaid > 15000) {
+        outOfLightSaid = performance.now();
+        story.guide("Oh! I'm out of light. Walk through the glow, or hold the lantern up to something shining.", 'oh', 'warn');
       }
     }
     if ((e.code === 'KeyI' || e.code === 'Tab') && !e.repeat && state === 'play' && !menu.open && !chart.open) {
@@ -473,6 +507,41 @@ async function boot() {
     satchel.refresh(story.satchelState());
   };
   const hotbar = new Hotbar();
+  const gauge = new LightGauge();
+  let gathering = false;
+  /**
+   * One frame of survival: measure how lit, wet and windswept she is, let warmth drain or recover,
+   * gather light from the motes and from glowing things the raised lantern is held to.
+   */
+  const surviveFrame = (dt: number, lights: LightSource[]) => {
+    const t = tuning();
+    const here = hf.sample(player.x, player.z);
+    if (frames % 10 === 0) glowCount = flora.glowNear(player.x, player.z, 5);
+    let lit = 0;
+    for (const l of lights) lit = Math.max(lit, THREE.MathUtils.smoothstep(l.r - Math.hypot(l.x - player.x, l.z - player.z), 0, l.r * 0.65));
+    // Glowing plants warm a little, and the raised lantern a little more; neither replaces a real light.
+    lit = Math.min(1, lit + Math.min(0.5, glowCount * 0.12) + (held.raised === 'lantern' ? 0.25 : 0));
+    const ground = hf.height(player.x, player.z);
+    const exposure = {
+      lit,
+      inWater: player.mode === 'walk' && ground < -0.3 && player.y < 0.3,
+      wind: Math.max(here.dunes * 0.8, THREE.MathUtils.smoothstep(player.y, 40, 160), player.mode === 'boat' ? 0.6 : 0),
+      night: story.night.progress,
+    };
+    if (story.warmth.update(dt, exposure, t)) story.collapse();
+    cold = THREE.MathUtils.smoothstep(1 - story.warmth.value, 0.35, 1);
+    story.light.cap = story.hasKeepsake('lantern') ? t.lanternCap : t.wispCap;
+    // Drawing: the raised lantern held to glowing plants or the surf pulls their light in; they dim.
+    const surf = Math.abs(ground) < 0.8 && player.mode === 'walk';
+    let drawn = 0;
+    if (held.raised === 'lantern' && (glowCount > 0 || surf) && story.light.value < story.light.cap)
+      drawn = story.sources.draw(player.x, player.z, performance.now() / 1000, dt, t.drawRate);
+    let motes = 0;
+    for (const u of Object.values(regionMotes)) motes += u.value;
+    const moving = player.speed > 0.5 ? 1 : 0.4;
+    story.light.gain(drawn + t.moteRate * dt * Math.min(1, motes) * moving);
+    gathering = drawn > 0;
+  };
   const film = new MemoryFilm();
   story.onMemoryFilm = (id, after) => {
     if (!film.has(id)) return false;
@@ -651,8 +720,8 @@ async function boot() {
       }
     }
     story.update(dt, player, camera, state === 'play');
-    // Frost only shows in the last part of the night.
-    post.frost.value += (Math.max(0, (frostTarget - 0.55) / 0.45) - post.frost.value) * Math.min(1, dt * 0.8);
+    // Frost shows in the last part of the night, and whenever she's growing cold.
+    post.frost.value += (Math.max(0, (frostTarget - 0.55) / 0.45, cold) - post.frost.value) * Math.min(1, dt * 0.8);
     const memTarget = performance.now() / 1000 < memoryUntil ? 1 : 0;
     post.memoryMix.value += (memTarget - post.memoryMix.value) * Math.min(1, dt * (memTarget ? 1.2 : 0.7));
     const here = hf.sample(player.x, player.z);
@@ -685,6 +754,8 @@ async function boot() {
     held.update(dt, camera, state === 'play' ? story.held : null, story.held === 'compass' ? story.compassTarget(player.x, player.z) : null, player.mode === 'walk' ? player.speed : 0);
     const owned = KEEPSAKES.filter((k) => story.hasKeepsake(k.id)).map((k) => k.id);
     hotbar.visible = state === 'play' && owned.length > 0;
+    gauge.visible = state === 'play' && surviving();
+    gauge.update(story.light.value, story.light.cap, gathering, story.light.ready);
     hotbar.update(owned, story.held, story.fresh);
     sky.shooting.update(dt, camera);
     focus.copy(camera.position);
@@ -705,6 +776,9 @@ async function boot() {
       for (const p of landmarks.placed)
         if (p.type === 'StoneLantern' || p.type === 'Hut' || p.type === 'Cairn') lights.push({ x: p.x, z: p.z, r: p.type === 'Hut' ? 12 : 8 });
       for (const p of puzzleSites) if (story.hasSeen(p.id)) lights.push({ x: p.reward?.x ?? p.x, z: p.reward?.z ?? p.z, r: 16 });
+      story.light.update(dt);
+      if (surviving()) surviveFrame(dt, lights);
+      else cold = 0;
       // The paper lantern: a small circle of light that goes where you go.
       // Held up, the lantern's light reaches twice as far; spread wide, the wings sink half as fast.
       if (story.hasKeepsake('lantern')) lights.push({ x: player.x, z: player.z, r: held.raised === 'lantern' ? 12 : 6 });

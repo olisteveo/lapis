@@ -1,5 +1,12 @@
 import { settings, updateSettings } from '../settings';
 import type { QualityName } from '../config';
+import type { SurvivalMode } from '../core/survival';
+
+const MODE_NOTES: Record<SurvivalMode, string> = {
+  wander: 'Free wandering: no nights, stars are kept as soon as you gather them.',
+  story: 'Carry fallen stars to a lighthouse before she wakes. The cold is gentle and the nightmares are few.',
+  survival: 'Keep her warm and keep your light. The dark is cold, and the nightmares hunt.',
+};
 
 type View = 'main' | 'settings' | 'controls' | 'confirm';
 
@@ -39,9 +46,7 @@ export class PauseMenu {
     this.root.addEventListener('input', (e) => {
       const t = e.target as HTMLInputElement;
       if (t.dataset.setting === 'invertY') updateSettings({ invertY: t.checked });
-      else if (t.dataset.setting === 'nights') updateSettings({ nights: t.checked });
       else if (t.dataset.setting) updateSettings({ [t.dataset.setting]: Number(t.value) } as never);
-      if (t.dataset.setting === 'nights') this.render();
     });
     this.render();
   }
@@ -74,11 +79,16 @@ export class PauseMenu {
     } else if (act === 'quality') {
       updateSettings({ quality: value as QualityName });
       this.render();
+    } else if (act === 'survival') {
+      updateSettings({ survival: value as SurvivalMode });
+      this.render();
     } else if (act === 'startOver') this.onStartOver?.();
   }
 
   private render() {
     const q = settings.quality;
+    const mode = (name: SurvivalMode, label: string) =>
+      `<button class="seg ${settings.survival === name ? 'on' : ''}" data-act="survival" data-value="${name}">${label}</button>`;
     const seg = (name: QualityName, label: string) =>
       `<button class="seg ${q === name ? 'on' : ''}" data-act="quality" data-value="${name}">${label}</button>`;
     const slider = (key: 'master' | 'music' | 'sfx' | 'sensitivity', label: string, min: number, max: number, stepV: number) =>
@@ -97,8 +107,8 @@ export class PauseMenu {
           <div class="note">${q === 'low' ? 'Cooler and quieter: 30fps, lighter effects.' : q === 'high' ? 'Full detail. Runs hot on laptops.' : 'Balanced: 60fps.'}</div>
         </div>
         <div class="group"><div class="label">Play</div>
-          <label class="row"><span>Night cycle</span><input type="checkbox" data-setting="nights" ${settings.nights ? 'checked' : ''}></label>
-          <div class="note">${settings.nights ? 'Carry fallen stars to a lighthouse before she wakes.' : 'Free wandering: no nights, stars are kept as soon as you gather them.'}</div>
+          <div class="segs">${mode('wander', 'Wander')}${mode('story', 'Story')}${mode('survival', 'Survival')}</div>
+          <div class="note">${MODE_NOTES[settings.survival]}</div>
         </div>
         <div class="group"><div class="label">Sound</div>
           ${slider('master', 'Master', 0, 1, 0.01)}

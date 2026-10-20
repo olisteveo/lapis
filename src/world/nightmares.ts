@@ -172,8 +172,9 @@ export class Nightmares {
   }
 
   /** Q: the little light flares; every nightmare within reach bursts. Returns false on cooldown. */
-  flare(at: THREE.Vector3) {
-    return this.brain.flare(at);
+  /** cooldown: seconds before the next; the light store gates flares itself and passes 0. */
+  flare(at: THREE.Vector3, cooldown = 20) {
+    return this.brain.flare(at, cooldown);
   }
 
   get flareReady() {

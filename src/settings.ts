@@ -1,4 +1,5 @@
 import { getQualityName, setQuality, type QualityName } from './config';
+import type { SurvivalMode } from './core/survival';
 
 /** Player preferences, persisted locally. Quality itself lives in config (it drives rendering). */
 export interface Settings {
@@ -8,17 +9,21 @@ export interface Settings {
   sfx: number;
   sensitivity: number;
   invertY: boolean;
-  /** Night cycle on (stars must be carried to a lighthouse) or off (free wandering). */
+  /** Wander (no nights), Story (gentle nights) or Survival (warmth, light and the dark: docs/SURVIVAL.md). */
+  survival: SurvivalMode;
+  /** Derived from survival: the night cycle runs unless you're wandering. */
   nights: boolean;
 }
 
 const KEY = 'lapis.settings';
-const DEFAULTS: Omit<Settings, 'quality'> = { master: 0.9, music: 0.8, sfx: 0.9, sensitivity: 1, invertY: false, nights: true };
+const DEFAULTS: Omit<Settings, 'quality'> = { master: 0.9, music: 0.8, sfx: 0.9, sensitivity: 1, invertY: false, survival: 'survival', nights: true };
 
 function load(): Settings {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Settings>;
-    return { ...DEFAULTS, ...raw, quality: getQualityName() };
+    // Saves from before the survival modes only had the night toggle.
+    const survival = raw.survival ?? (raw.nights === false ? 'wander' : DEFAULTS.survival);
+    return { ...DEFAULTS, ...raw, survival, nights: survival !== 'wander', quality: getQualityName() };
   } catch {
     return { ...DEFAULTS, quality: getQualityName() };
   }
@@ -33,6 +38,7 @@ export function onSettingsChange(fn: () => void) {
 
 export function updateSettings(patch: Partial<Settings>) {
   Object.assign(settings, patch);
+  settings.nights = settings.survival !== 'wander';
   if (patch.quality) setQuality(patch.quality);
   try {
     localStorage.setItem(KEY, JSON.stringify(settings));

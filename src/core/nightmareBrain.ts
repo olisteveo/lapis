@@ -55,9 +55,9 @@ export class NightmareBrain {
   constructor(private height: (x: number, z: number) => number) {}
 
   /** The little light flares; every nightmare within reach bursts. False while on cooldown. */
-  flare(at: Point) {
+  flare(at: Point, cooldown = 20) {
     if (this.flareT > 0) return false;
-    this.flareT = 20;
+    this.flareT = cooldown;
     for (const n of this.live) if (Math.hypot(n.x - at.x, n.z - at.z) < 26) n.dissolving = true;
     return true;
   }
