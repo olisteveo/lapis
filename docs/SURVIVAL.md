@@ -179,6 +179,15 @@ tuning drifts out of range):
 - Adaptive resolution now budgets for the display's refresh rate, so 75, 90, 120 and 144 Hz screens don't drop to
   minimum resolution.
 
+## Polish pass
+
+- The night is saved (progress, warmth, carried light, rest streak) every 10 s, on rest, collapse and waking, and
+  when the page closes; it's restored when play resumes, without replaying cues already heard. Reloading is no
+  longer a way out of the cold.
+- Cold shows on her too: breath puffs in front of the view once warmth drops (quicker when running), and the held
+  keepsake trembles when it's bad.
+- Drawn glow visibly dims: plants and surf in an area the lantern has drained stay low until they regrow.
+
 Not yet: low islands submerging (the terrain doesn't change).
 
 Not yet (phase 1): drawn sources dimming visibly (they run dry, but don't look it), visible breath and trembling hands at low

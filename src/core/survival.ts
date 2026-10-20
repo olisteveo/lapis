@@ -170,6 +170,21 @@ export class Sources {
     return Math.min(1, Math.max(0, (now - at) / this.regrowSeconds));
   }
 
+  /** Areas still regrowing: their centres and how much light is back (0..1), most drained first. */
+  drained(now: number) {
+    const out: { x: number; z: number; left: number }[] = [];
+    for (const [key, at] of this.drawn) {
+      const left = Math.min(1, Math.max(0, (now - at) / this.regrowSeconds));
+      if (left >= 1) {
+        this.drawn.delete(key);
+        continue;
+      }
+      const [i, j] = key.split(',').map(Number);
+      out.push({ x: (i + 0.5) * this.cell, z: (j + 0.5) * this.cell, left });
+    }
+    return out.sort((a, b) => a.left - b.left);
+  }
+
   /** Draw for dt seconds at drawRate; returns the light taken. The source dims as it gives. */
   draw(x: number, z: number, now: number, dt: number, rate: number) {
     const left = this.left(x, z, now);

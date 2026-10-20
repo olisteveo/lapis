@@ -279,6 +279,9 @@ export class Story {
   beginPlay() {
     this.stars.showPillars(true);
     this.stars.land(0);
+    this.restoreNight();
+    // Leaving mid-night keeps the night as it was.
+    addEventListener('pagehide', () => settings.nights && this.saveNight());
   }
 
   /** Yaw that faces the sea from the spawn: the boat, the footprints and The Boat overhead. */
@@ -500,7 +503,9 @@ export class Story {
     this.night.reset();
     this.rests.clear();
     this.warmth.reset();
+    this.light.value = this.light.cap;
     this.onNewNight?.();
+    this.saveNight();
     const b = this.save.lastBeacon;
     // You wake where you last rested: up on the gallery of that lighthouse.
     const spot = this.climb && b !== undefined && b >= 0 ? this.climb.gallerySpot(b) : this.layout.spawn;
@@ -530,7 +535,7 @@ export class Story {
     this.onNewNight?.();
     this.onRest?.(share, first);
     if (!first) this.narrative.say(share < 1 ? LINES.restShallow : LINES.rest);
-    this.persist();
+    this.saveNight();
   }
 
   /** Warmth ran out: what you carried falls back, and you wake warm at your last light. */
@@ -540,6 +545,7 @@ export class Story {
     this.night.progress = Math.min(0.97, this.night.progress + 0.08);
     this.warmth.reset();
     this.onNewNight?.();
+    this.saveNight();
     const b = this.save.lastBeacon;
     const spot = this.climb && b !== undefined && b >= 0 ? this.climb.gallerySpot(b) : this.layout.spawn;
     this.onWake?.(spot);
@@ -646,8 +652,37 @@ export class Story {
     return this.prompt;
   }
 
+  /** Saves the night in progress, so reloading the page is no escape from the cold. */
+  saveNight() {
+    this.save.night = {
+      progress: this.night.progress,
+      warmth: this.warmth.value,
+      light: this.light.value,
+      restTower: this.rests.tower,
+      restStreak: this.rests.streak,
+    };
+    this.persist();
+  }
+
+  /** Picks up the night where the last session left it (called once survival is wired up). */
+  restoreNight() {
+    const n = this.save.night;
+    if (!n) return;
+    this.night.resume(Math.min(0.97, n.progress));
+    this.warmth.value = Math.min(1, Math.max(0.05, n.warmth));
+    this.light.value = Math.max(0, n.light);
+    this.rests.tower = n.restTower;
+    this.rests.streak = n.restStreak;
+  }
+
+  private nightSaveT = 0;
+
   update(dt: number, player: PlayerController, camera: THREE.Camera, playing: boolean) {
     this.narrative.update(dt);
+    if (playing && settings.nights && (this.nightSaveT += dt) > 10) {
+      this.nightSaveT = 0;
+      this.saveNight();
+    }
     for (const c of this.skies) c.update(dt, camera);
     if (playing) this.puzzles.update(dt, player);
     if (playing) this.echoes?.update(dt, camera.position);

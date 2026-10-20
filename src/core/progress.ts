@@ -14,6 +14,8 @@ export interface Save {
   lit?: number[];
   lastBeacon?: number;
   keepsakes?: KeepsakeId[];
+  /** The night in progress, so a reload can't reset the cold (docs/SURVIVAL.md). */
+  night?: { progress: number; warmth: number; light: number; restTower: number; restStreak: number };
 }
 
 export interface SaveStore {

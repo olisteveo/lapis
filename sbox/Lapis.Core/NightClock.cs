@@ -42,6 +42,15 @@ public sealed class NightClock
         _fired.Clear();
     }
 
+    /// <summary>Pick up a saved night: cues already passed count as heard, so none replay.</summary>
+    public void Resume(double progress)
+    {
+        Progress = Math.Min(1, Math.Max(0, progress));
+        _fired.Clear();
+        foreach (var (at, cue) in Cues)
+            if (at <= Progress) _fired.Add(cue);
+    }
+
     /// <summary>Give back a share of the elapsed night (1 = a fresh night); cues not yet reached fire again.</summary>
     public void Rewind(double share)
     {

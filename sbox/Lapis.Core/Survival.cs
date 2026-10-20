@@ -173,6 +173,26 @@ public sealed class Sources
         return Math.Min(1, Math.Max(0, (now - at) / RegrowSeconds));
     }
 
+    /// <summary>Areas still regrowing: their centres and how much light is back (0..1), most drained first.</summary>
+    public List<(double X, double Z, double Left)> Drained(double now)
+    {
+        var outList = new List<(double X, double Z, double Left)>();
+        var done = new List<(long, long)>();
+        foreach (var kv in _drawn)
+        {
+            var left = Math.Min(1, Math.Max(0, (now - kv.Value) / RegrowSeconds));
+            if (left >= 1)
+            {
+                done.Add(kv.Key);
+                continue;
+            }
+            outList.Add(((kv.Key.Item1 + 0.5) * Cell, (kv.Key.Item2 + 0.5) * Cell, left));
+        }
+        foreach (var k in done) _drawn.Remove(k);
+        outList.Sort((a, b) => a.Left.CompareTo(b.Left));
+        return outList;
+    }
+
     /// <summary>Draw for dt seconds at rate; returns the light taken. The source dims as it gives.</summary>
     public double Draw(double x, double z, double now, double dt, double rate)
     {
