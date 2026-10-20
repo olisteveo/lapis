@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  cameraFar, cameraNear, cameraPosition, color, dot, float, max, mix, mx_noise_float, normalize, perspectiveDepthToViewZ,
+  cameraFar, cameraNear, cameraPosition, color, dot, float, fwidth, max, mix, mx_noise_float, normalize, perspectiveDepthToViewZ,
   positionView, positionWorld, pow, reflect, reflector, saturate, sin, smoothstep, time, vec2, vec3, viewportDepthTexture,
 } from 'three/tsl';
 import { PALETTE, QUALITY, SKY, onQualityChange } from '../config';
@@ -33,9 +33,13 @@ export function createWater() {
   reflection.uvNode = reflection.uvNode!.add(vec2(n.x.mul(0.035), n.z.mul(0.08)).mul(smoothstep(2500, 60, dist).mul(0.75).add(0.25)));
   const reflected = reflection.rgb;
 
-  // Water depth behind this fragment, in view-space metres, from the opaque depth buffer.
+  // Vertical water depth: how far below the surface the ground is where this pixel's ray meets it.
+  // Measured along the view axis it changed as the camera turned, and the shallows' fade swam.
   const sceneZ = perspectiveDepthToViewZ(viewportDepthTexture(), cameraNear, cameraFar);
-  const depth = max(positionView.z.sub(sceneZ), 0).mul(ndv.mul(0.7).add(0.3));
+  const depth = max(sceneZ.div(positionView.z).sub(1).mul(cameraPosition.y.sub(positionWorld.y)), 0);
+  // How much depth changes across a pixel: far shores fit a whole fade inside one, so every edge
+  // below is widened to at least a couple of pixels instead of snapping on and off.
+  const px = fwidth(depth).max(1e-4);
 
   const body = mix(color(PALETTE.shallowSea), color(PALETTE.deepSea), smoothstep(0.5, 14, depth));
   // Moon-path sheen toward the bright one; the sparkle sprites add the star glints on top.
@@ -51,8 +55,10 @@ export function createWater() {
   // Far terrain is coarse: whole triangles sit just under the surface and would foam as flat
   // polygons, so the lip is thin, noise-broken, and fades out with distance.
   const lipBreak = mx_noise_float(vec3(p.mul(0.9), t.mul(0.4)));
-  const lip = smoothstep(0.28, 0.03, depth.add(fn.mul(0.12)).add(lipBreak.mul(0.1))).mul(smoothstep(260, 60, dist));
-  const rolling = smoothstep(0.62, 0.92, bands).mul(smoothstep(3.2, 0.4, depth)).mul(smoothstep(-0.3, 0.3, fn));
+  const lip = smoothstep(px.mul(1.5).max(0.28), 0.03, depth.add(fn.mul(0.12)).add(lipBreak.mul(0.1))).mul(smoothstep(260, 60, dist));
+  // Rolling bands only where a band spans a few pixels; finer than that they just crawl.
+  const resolved = smoothstep(0.8, 0.25, px.mul(2.6));
+  const rolling = smoothstep(0.62, 0.92, bands).mul(smoothstep(3.2, 0.4, depth)).mul(smoothstep(-0.3, 0.3, fn)).mul(resolved);
   const foam = saturate(max(lip, rolling.mul(0.85)));
   col = mix(col, color(PALETTE.foam).mul(0.9), foam);
 
@@ -64,7 +70,7 @@ export function createWater() {
   const lagoonCol = mix(color(0x0d4f66), color(0x6ff4ee), smoothstep(2.8, 0.1, depth).mul(0.55).add(glowBand.mul(0.45))).mul(1.7);
   col = mix(col, mix(lagoonCol, reflected, fresnel.mul(0.35)), lagoon.mul(0.9));
   mat.colorNode = col;
-  mat.opacityNode = max(smoothstep(0.0, 0.5, depth), foam).mul(0.97);
+  mat.opacityNode = max(smoothstep(0.0, px.mul(2).max(0.5), depth), foam).mul(0.97);
 
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
   mesh.rotation.x = -Math.PI / 2;
