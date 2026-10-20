@@ -186,6 +186,8 @@ export const LINES = {
   lightHint: 'A lighthouse. Its lamp is cold.',
   lit: 'The lamp catches. The light goes out across the water.',
   rest: 'She sleeps more deeply. The night begins again.',
+  restShallow: 'She sleeps, but only lightly here. Another light would hold her longer.',
+  collapse: 'The cold closes over you, and the dream lets go.',
   late: 'The night grows late. Find a light.',
   cold: "I'm so cold.",
   eyes: "I'll just close my eyes for a bit.",

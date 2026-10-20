@@ -70,6 +70,8 @@ function applyRadii() {
 }
 applyRadii();
 
+// Plants whose light can be drawn into the lantern (docs/SURVIVAL.md).
+const GLOWING = ['GiantMushroomA', 'GiantMushroomB', 'MushroomCluster', 'LanternTree', 'Moonflowers', 'CrystalA', 'CrystalB'];
 const GLOW_PARTS = new Set(['trunk', 'frond', 'fruit', 'flower']);
 // Each region glows in its own colour: teal spores, gold lanterns, pale petals, icy crystal.
 const REGION_GLOW: Record<string, [number, number]> = {
@@ -424,6 +426,23 @@ export class Flora implements Colliders {
       }
     }
     return false;
+  }
+
+  /** How many glowing plants (mushrooms, lantern trees, moonflowers, crystals) stand within r of (x, z). */
+  glowNear(x: number, z: number, r: number) {
+    const B = FLORA.blockSize;
+    let n = 0;
+    for (let dj = -1; dj <= 1; dj++)
+      for (let di = -1; di <= 1; di++) {
+        const b = this.blocks.get(`${Math.floor((x + WORLD_HALF) / B) + di},${Math.floor((z + WORLD_HALF) / B) + dj}`);
+        if (!b?.sets) continue;
+        for (const type of GLOWING) {
+          const set = b.sets[type];
+          if (!set) continue;
+          for (let k = 0; k < set.length; k += 5) if (Math.hypot(set[k] - x, set[k + 2] - z) < r + set[k + 4]) n++;
+        }
+      }
+    return n;
   }
 
   near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void) {

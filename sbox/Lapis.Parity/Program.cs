@@ -20,7 +20,7 @@ foreach (var file in files)
     using var doc = JsonDocument.Parse(File.ReadAllText(file));
     var root = doc.RootElement;
     var name = root.GetProperty("name").GetString()!;
-    var result = name == "night" ? RunNight(root) : RunPlayer(root);
+    var result = name == "night" ? RunNight(root) : name.StartsWith("survival-") ? RunSurvival(root) : RunPlayer(root);
     if (result.Divergence != null) failures++;
     var status = result.Divergence == null ? "PASS" : "FAIL";
     Console.WriteLine($"{status}  {name,-14} {result.Steps,5} steps  max err {result.MaxError:0.0e+0}");
@@ -120,11 +120,53 @@ static Result RunNight(JsonElement root)
     {
         cues.Clear();
         if (s.GetProperty("reset").GetBoolean()) night.Reset();
+        var rewind = s.GetProperty("rewind").GetDouble();
+        if (rewind > 0) night.Rewind(rewind);
         night.Update(s.GetProperty("dt").GetDouble());
         check.Step = i;
         check.Num("progress", s, night.Progress);
         check.Str("phrase", s, night.Phrase);
         check.Equal("cues", string.Join(",", s.GetProperty("cues").EnumerateArray().Select(e => e.GetString())), string.Join(",", cues));
+        i++;
+    }
+    return new Result(i, check.MaxError, check.Divergence);
+}
+
+static Result RunSurvival(JsonElement root)
+{
+    var t = root.GetProperty("mode").GetString() == "story" ? SurvivalTuning.Story : SurvivalTuning.Survival;
+    var warmth = new Warmth();
+    var light = new LightStore(t.WispCap);
+    var rests = new RestReturns();
+    var sources = new Sources();
+    var check = new Checker();
+    var i = 0;
+    var now = 0.0;
+    foreach (var s in root.GetProperty("steps").EnumerateArray())
+    {
+        var dt = s.GetProperty("dt").GetDouble();
+        now += dt;
+        var e = new Exposure(s.GetProperty("lit").GetDouble(), s.GetProperty("inWater").GetBoolean(), s.GetProperty("wind").GetDouble(), s.GetProperty("night").GetDouble());
+        var collapsed = warmth.Update(dt, e, t);
+        if (collapsed) warmth.Reset();
+        light.Update(dt);
+        if (i == 1200) light.Cap = t.LanternCap;
+        var flare = i % 400 == 0 && light.Flare(t);
+        var drawn = i % 300 < 150 ? sources.Draw(12.5, -3, now, dt, t.DrawRate) : 0;
+        light.Gain(drawn + t.MoteRate * dt * 0.5);
+        var rest = i % 500 == 0 ? rests.RestAt(i % 1500 == 0 ? 2 : 1) : 0;
+        if (i == 2500) rests.Clear();
+        check.Step = i;
+        check.Num("warmth", s, warmth.Value);
+        check.Equal("collapsed", s.GetProperty("collapsed").GetBoolean().ToString(), collapsed.ToString());
+        check.Num("light", s, light.Value);
+        check.Num("cap", s, light.Cap);
+        check.Equal("ready", s.GetProperty("ready").GetBoolean().ToString(), light.Ready.ToString());
+        check.Equal("flare", s.GetProperty("flare").GetBoolean().ToString(), flare.ToString());
+        check.Num("drawn", s, drawn);
+        check.Num("left", s, sources.Left(12.5, -3, now));
+        check.Num("rest", s, rest);
+        check.Num("streak", s, rests.Streak);
         i++;
     }
     return new Result(i, check.MaxError, check.Divergence);

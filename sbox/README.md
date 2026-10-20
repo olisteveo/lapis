@@ -44,6 +44,7 @@ dotnet run --project sbox/Lapis.Parity
 # Re-record the traces from the TypeScript (only needed after changing player.ts/night.ts or the scenarios)
 cp src/core/player.ts tools/parity/ts/player.ts
 cp src/core/night.ts tools/parity/ts/night.ts
+cp src/core/survival.ts tools/parity/ts/survival.ts
 node --experimental-transform-types --no-warnings tools/parity/trace.ts
 ```
 

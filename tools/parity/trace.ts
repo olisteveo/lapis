@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PlayerController, type PlayerEvent, type PlayerInput } from './ts/player.ts';
 import { NightClock, type NightCue } from './ts/night.ts';
+import { LightStore, RestReturns, Sources, TUNING, Warmth, type Exposure } from './ts/survival.ts';
 import { colliders, platforms, TOWER, world } from './world.ts';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '../../sbox/parity');
@@ -174,7 +175,7 @@ run('call_boat', { place: [18.5, 0, Math.PI / 2], boat: [21, 0, Math.PI / 2] }, 
   return { moveY: p.mode === 'walk' && t > 18 ? 1 : 0, cameraYaw: yawToward(1, 0), interact: t > 20 && t < 20.1 };
 });
 
-// Night clock: an uneven frame rate, a reset at a lighthouse, then a full night to waking.
+// Night clock: an uneven frame rate, a reset at a lighthouse, a partial rest, then a full night to waking.
 {
   const night = new NightClock(15);
   let cues: NightCue[] = [];
@@ -184,9 +185,50 @@ run('call_boat', { place: [18.5, 0, Math.PI / 2], boat: [21, 0, Math.PI / 2] }, 
     const dt = 1 / 60 + 0.01 * Math.sin(i * 0.37);
     cues = [];
     if (i === 800) night.reset();
+    // A partial rest late in the night: cues already passed come round again.
+    const rewind = i === 1500 ? 0.6 : 0;
+    if (rewind) night.rewind(rewind);
     night.update(dt);
-    steps.push({ dt, reset: i === 800, progress: night.progress, phrase: night.phrase, cues });
+    steps.push({ dt, reset: i === 800, rewind, progress: night.progress, phrase: night.phrase, cues });
   }
   writeFileSync(join(OUT, 'night.json'), JSON.stringify({ name: 'night', length: 15, steps }));
   console.log(`night            ${steps.length} steps  cues: ${steps.flatMap((s) => s.cues).join(',')}`);
+}
+
+// Survival: warmth through dark, water, wind and light; a light store gathering and flaring; rests
+// with diminishing returns; a glowing source drawn dry and regrowing. Both modes.
+for (const mode of ['survival', 'story'] as const) {
+  const t = TUNING[mode];
+  const warmth = new Warmth();
+  const light = new LightStore(t.wispCap);
+  const rests = new RestReturns();
+  const sources = new Sources();
+  const steps = [];
+  let now = 0;
+  for (let i = 0; i < 3000; i++) {
+    const dt = 1 / 30 + 0.008 * Math.sin(i * 0.41);
+    now += dt;
+    const e: Exposure = {
+      lit: i % 700 < 500 ? 0 : 0.8,
+      inWater: i % 900 > 700,
+      wind: 0.5 + 0.5 * Math.sin(i * 0.01),
+      night: (i / 3000) % 1,
+    };
+    const collapsed = warmth.update(dt, e, t);
+    if (collapsed) warmth.reset();
+    light.update(dt);
+    if (i === 1200) light.cap = t.lanternCap;
+    const flare = i % 400 === 0 ? light.flare(t) : false;
+    const drawn = i % 300 < 150 ? sources.draw(12.5, -3, now, dt, t.drawRate) : 0;
+    light.gain(drawn + t.moteRate * dt * 0.5);
+    const rest = i % 500 === 0 ? rests.restAt(i % 1500 === 0 ? 2 : 1) : 0;
+    if (i === 2500) rests.clear();
+    steps.push({
+      dt, lit: e.lit, inWater: e.inWater, wind: e.wind, night: e.night,
+      warmth: warmth.value, collapsed, light: light.value, cap: light.cap, ready: light.ready, flare,
+      drawn, left: sources.left(12.5, -3, now), rest, streak: rests.streak,
+    });
+  }
+  writeFileSync(join(OUT, `survival-${mode}.json`), JSON.stringify({ name: `survival-${mode}`, mode, steps }));
+  console.log(`survival-${mode.padEnd(8)} ${steps.length} steps  collapses: ${steps.filter((s) => s.collapsed).length}  flares: ${steps.filter((s) => s.flare).length}`);
 }

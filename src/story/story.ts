@@ -18,6 +18,7 @@ import type { Landmarks } from '../world/landmarks';
 import type { LighthouseClimb } from '../core/lighthouseClimb';
 import type { Wonders } from '../world/wonders';
 import { NightClock, type NightCue } from '../core/night';
+import { LightStore, RestReturns, Sources, TUNING, Warmth } from '../core/survival';
 import { Progress, type SaveStore } from '../core/progress';
 import { KEEPSAKES, Keepsakes, layoutKeepsakes, type KeepsakeId } from './keepsakes';
 import { SEE_RANGE } from './fallenStars';
@@ -60,6 +61,13 @@ export class Story {
   /** She wakes: move the Keeper to this spot (the last lit light, or the first beach). */
   onWake: ((spot: { x: number; z: number }) => void) | null = null;
   readonly night = new NightClock(20 * 60);
+  // Survival (docs/SURVIVAL.md): her warmth, the light the wisp carries, what each rest buys back.
+  readonly warmth = new Warmth();
+  readonly light = new LightStore(TUNING.survival.wispCap);
+  readonly rests = new RestReturns();
+  readonly sources = new Sources();
+  /** A rest began: share is the part of the night it gave back, 1 for a whole new night. */
+  onRest: ((share: number, lit: boolean) => void) | null = null;
   private landmarks: Landmarks | null = null;
   private wonders: Wonders | null = null;
   wisp: Wisp | null = null;
@@ -453,6 +461,8 @@ export class Story {
     const carried = this.stars.carriedIds;
     for (const id of carried) this.stars.drop(id);
     this.night.reset();
+    this.rests.clear();
+    this.warmth.reset();
     this.onNewNight?.();
     const b = this.save.lastBeacon;
     // You wake where you last rested: up on the gallery of that lighthouse.
@@ -473,10 +483,29 @@ export class Story {
       this.audio.chime(4);
     }
     this.bankCarried();
-    this.night.reset();
+    const share = this.rests.restAt(i);
+    this.night.rewind(share);
+    this.warmth.reset();
     this.onNewNight?.();
-    if (!first) this.narrative.say(LINES.rest);
+    this.onRest?.(share, first);
+    if (!first) this.narrative.say(share < 1 ? LINES.restShallow : LINES.rest);
     this.persist();
+  }
+
+  /** Warmth ran out: what you carried falls back, and you wake warm at your last light. */
+  collapse() {
+    const carried = this.stars.carriedIds;
+    for (const id of carried) this.stars.drop(id);
+    this.night.progress = Math.min(0.97, this.night.progress + 0.08);
+    this.warmth.reset();
+    this.onNewNight?.();
+    const b = this.save.lastBeacon;
+    const spot = this.climb && b !== undefined && b >= 0 ? this.climb.gallerySpot(b) : this.layout.spawn;
+    this.onWake?.(spot);
+    setTimeout(() => {
+      this.narrative.say(LINES.collapse);
+      if (carried.length) this.narrative.say(LINES.lost);
+    }, 3200);
   }
 
   /** A nightmare reached you: whatever you carried falls back, and she sleeps a little worse. */

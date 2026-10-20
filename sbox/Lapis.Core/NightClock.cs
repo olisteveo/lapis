@@ -42,6 +42,14 @@ public sealed class NightClock
         _fired.Clear();
     }
 
+    /// <summary>Give back a share of the elapsed night (1 = a fresh night); cues not yet reached fire again.</summary>
+    public void Rewind(double share)
+    {
+        Progress *= 1 - Math.Min(1, Math.Max(0, share));
+        foreach (var (at, cue) in Cues)
+            if (at > Progress) _fired.Remove(cue);
+    }
+
     public void Update(double dt)
     {
         Progress = Math.Min(1, Progress + dt / Length);

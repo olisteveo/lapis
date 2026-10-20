@@ -24,6 +24,12 @@ export class NightClock {
     this.fired.clear();
   }
 
+  /** Give back a share of the elapsed night (1 = a fresh night); cues not yet reached fire again. */
+  rewind(share: number) {
+    this.progress *= 1 - Math.min(1, Math.max(0, share));
+    for (const [at, cue] of CUES) if (at > this.progress) this.fired.delete(cue);
+  }
+
   update(dt: number) {
     this.progress = Math.min(1, this.progress + dt / this.length);
     for (const [at, cue] of CUES) {

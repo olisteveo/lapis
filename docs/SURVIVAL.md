@@ -14,7 +14,8 @@ cold tells you, on screen, how long you have left.
 - **Threat, never death.** Nightmares and the cold can beat you, but failure always costs something you carry, never
   your life. You wake on the beach (or at your last lighthouse) and the stars you were carrying scatter.
 - **Calm early, tense late.** The young night is for exploring. Danger rises as the night wears on.
-- **No HUD for survival.** Warmth is shown on the picture itself, the way the night already is.
+- **Warmth has no HUD.** It is shown on the picture itself, the way the night already is. The light you carry has a
+  small gauge above the keepsakes: one pip per flare's worth.
 - **The glow is the resource.** The light we added to every region (mushrooms, glow-worms, surf, moonflowers,
   crystals, sea light) is what you gather. Beauty and survival are the same thing.
 - **Story mode exists.** Anyone who wants the story can turn survival down.
@@ -45,12 +46,13 @@ line of text, so it feels like nothing happened. It becomes:
 - **Refills** near light: lighthouses, lit beacons, glowing flora, your own raised lantern (slowly).
 - **Shown on screen only**: frost creeping in from the edges (the existing frost pass), colour draining, visible
   breath, the held keepsake's hand trembling. Audio: the wind gets closer.
-- **At zero** you collapse: same as being caught. Carried stars scatter where you fell (recoverable), you wake at your
-  last lighthouse, warm.
+- **At zero** you collapse: same as being caught. Carried stars fall back to where they lay (recoverable), the night
+  moves on a little, and you wake at your last lighthouse, warm.
 
 ## Light
 
-- A carried store of light, from empty to full.
+- A carried store of light, from empty to full, shown as a row of pips above the keepsakes (one per flare). The wisp
+  holds one flare's worth from the start; the Paper Lantern raises it to three.
 - **Gathering, two ways:**
   - Drifting motes (spores, pollen, glitter, sea light) trickle in as you walk through them.
   - Hold the raised lantern to a big source (a glowing mushroom, the surf, a moonflower patch) and the light streams
@@ -104,9 +106,12 @@ Health bars, hunger, crafting, material inventories, combat, helpful creatures (
 beacons you light with your own light, and secrets revealed by light. Any of these can come back later if the core
 loop wants them.
 
-## Open questions
+## Phase 1 status
 
-- **Who holds the light before you find the Paper Lantern?** The lantern keepsake is found in the Lantern Wood, not at
-  the start. Proposal: the wisp holds a small store from the beginning (enough for one flare), and the lantern raises
-  the capacity and is what lets you harvest from big sources.
-- **Numbers.** Drain and refill rates, light per flare, rest returns: first guesses go in config and get tuned in play.
+Built: the sleep scene (a warm glow closing in, skippable with E or Space) and diminishing rests; warmth with frost
+on screen and collapse; the light store and gauge; gathering from motes and by holding the lantern to glowing plants
+or the surf, which run dry and regrow over three minutes; the flare costs light; Wander / Story / Survival in Play
+settings. Rules in `src/core/survival.ts`, ported to `sbox/Lapis.Core/Survival.cs` with parity traces.
+
+Not yet: drawn sources dimming visibly (they run dry, but don't look it), visible breath and trembling hands at low
+warmth. All numbers are first guesses in `TUNING` and want tuning in play.
