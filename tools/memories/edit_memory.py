@@ -26,8 +26,8 @@ def run(*args):
 
 
 # Drawn-ness of the memories: 0 is the raw footage, 1 the full painted treatment.
-STYLE = {"amount": 1.0, "brush": 3.2, "flatten": 0.75, "levels": 5.0, "ink": 0.85, "inkThreshold": 0.12, "boilFps": 8.0,
-         "saturation": 1.2, "posterize": 0.4, "haze": 0.7, "edgeBlur": 0.8}
+STYLE = {"amount": 1.0, "brush": 4.4, "flatten": 0.9, "levels": 4.0, "ink": 1.0, "inkThreshold": 0.1, "boilFps": 8.0,
+         "saturation": 1.25, "posterize": 0.65, "haze": 1.0, "edgeBlur": 1.0}
 # Overrides for trying a different balance without editing this file, e.g. MEMORY_STYLE='{"amount":0.6}'.
 STYLE.update(json.loads(os.environ.get("MEMORY_STYLE", "{}")))
 
