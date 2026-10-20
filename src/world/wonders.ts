@@ -1,6 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { atan, color, float, length, mix, normalWorld, positionWorld, smoothstep, saturate, sin, time, uniform, vec3, positionLocal } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { PropCollision } from '../core/propCollision';
+import { gridFromObject } from './propGrid';
 import { PALETTE } from '../config';
 import { drawnSurface, penLines } from '../render/drawn';
 import type { Colliders } from '../core/player';
@@ -48,6 +50,10 @@ export class Wonders implements Colliders {
     return mat;
   }
 
+  /** The wonders as solids you can stand on, walk under and bump into. */
+  readonly solids = new PropCollision();
+  private gridded = new Set<string>();
+
   async load(url: string) {
     const gltf = await new GLTFLoader().loadAsync(url);
     const pick: Record<string, string> = { moontree: 'MoonTree', ring: 'MushroomRing', whale: 'WhaleSkeleton', bell: 'BellTower', rocks: 'FloatingRocks' };
@@ -55,6 +61,11 @@ export class Wonders implements Colliders {
       const t = gltf.scene.getObjectByName(pick[w.id]);
       if (!t) continue;
       const obj = t.clone(true);
+      // The floating rocks drift, so they keep their simple footprint; the rest stand as built.
+      if (w.id !== 'rocks') {
+        this.solids.add(gridFromObject(t), w, w.id === 'moontree' ? 'wood' : w.id === 'ring' ? 'jungle' : 'stone');
+        this.gridded.add(w.id);
+      }
       obj.position.set(w.x, w.y, w.z);
       obj.rotation.set(0, w.yaw, 0);
       obj.scale.setScalar(w.scale);
@@ -75,7 +86,7 @@ export class Wonders implements Colliders {
   }
 
   near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void) {
-    for (const w of this.list) if (w.r > 0 && Math.abs(w.x - x) < reach + w.r && Math.abs(w.z - z) < reach + w.r) visit(w.x, w.z, w.r * w.scale);
+    for (const w of this.list) if (!this.gridded.has(w.id) && w.r > 0 && Math.abs(w.x - x) < reach + w.r && Math.abs(w.z - z) < reach + w.r) visit(w.x, w.z, w.r * w.scale);
   }
 
   /** The wonder whose discovery radius you are standing in, if any. */

@@ -441,6 +441,15 @@ float3 world = float3(lp.x*c + lp.z*s + sway.x, lp.y, lp.z*c - lp.x*s + sway.y) 
 float3 n = float3(ng.x*c + ng.z*s, ng.y, ng.z*c - ng.x*s);
 ```
 
+**Brushing through** (soft types only: FernA/B, Groundcover, Bush0/1, Moonflowers, MeadowGrass, DuneGrass, Vines). Uniform `walker` is the player's feet (parked far away in the boat):
+```hlsl
+float2 away = world.xz - walker.xz;
+float near = smoothstep(1.4, 0.25, length(away)) * smoothstep(0.0, 0.5, lp.y);
+float dy = world.y - walker.y;
+near *= smoothstep(2.3, 1.7, dy) * smoothstep(-0.6, -0.1, dy);
+world += float3(normalize(away).x * near * .55, -near * .12, normalize(away).y * near * .55);
+```
+
 **LOD radii** in metres. Radii × `QUALITY.flora` are uniforms `R_hi`/`R_far`. The CPU submits hi within `hi+12` and lo in `[hi-40, far+20]`; the shader's `step` does the exact cut. Distance fade is a *brightness* fade, not alpha: `col *= smoothstep(R_far, R_far*0.85, d)*0.3 + 0.7`.
 
 | type | hi | far | sway | type | hi | far | sway |

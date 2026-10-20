@@ -54,6 +54,9 @@ const TRUNKS: Record<string, number> = {
   GiantMushroomA: 0.7, GiantMushroomB: 0.7, LanternTree: 0.45, CrystalA: 0.6, CrystalB: 0.6,
 };
 
+// Soft plants you walk through: they part around you instead of stopping you.
+const SOFT = new Set(['FernA', 'FernB', 'Groundcover', 'Bush0', 'Bush1', 'Moonflowers', 'MeadowGrass', 'DuneGrass', 'Vines']);
+
 // Base radii; the live ones (and the shader uniforms) scale with the quality preset.
 const BASE = Object.fromEntries(Object.entries(TYPES).map(([k, c]) => [k, { hi: c.hi, far: c.far }]));
 const RADII = Object.fromEntries(Object.keys(TYPES).map((k) => [k, { hi: uniform(0), far: uniform(0) }]));
@@ -137,6 +140,8 @@ export class Flora implements Colliders {
   readonly group = new THREE.Group();
   /** Story hook: palms glow brighter as constellations are restored. */
   readonly glow = uniform(1);
+  /** Where the walker is, so soft plants part around them. */
+  readonly walker = uniform(new THREE.Vector3(1e6, 0, 1e6));
   private parts = new Map<string, { hi: Part[]; lo: Part[] }>();
   private batches = new Map<string, { hi: Batch[]; lo: Batch[] }>();
   private blocks = new Map<string, { x: number; z: number; sets: Record<string, Float32Array> | null }>();
@@ -230,13 +235,23 @@ export class Flora implements Colliders {
       sin(time.mul(0.93).add(inst.z.mul(0.07)).add(ph).add(1.3)),
     ).mul(swayW).mul(gust).mul(cfg.sway).mul(scl);
 
-    const world = vec3(
+    let world: any = vec3(
       lp.x.mul(c).add(lp.z.mul(s)).add(sway.x),
       lp.y,
       lp.z.mul(c).sub(lp.x.mul(s)).add(sway.y),
     ).mul(keep).add(inst.xyz);
+    if (SOFT.has(type)) {
+      // Brushing through: leaves within reach of the walker lean away, roots stay put, and only
+      // what is at body height moves (vines overhead and grass underfoot alike).
+      const away = world.xz.sub(this.walker.xz);
+      const near = smoothstep(1.4, 0.25, length(away));
+      const rooted = smoothstep(0.0, 0.5, lp.y);
+      const reach = smoothstep(2.3, 1.7, world.y.sub(this.walker.y)).mul(smoothstep(-0.6, -0.1, world.y.sub(this.walker.y)));
+      const bend = away.normalize().mul(near.mul(rooted).mul(reach).mul(0.55));
+      world = world.add(vec3(bend.x, near.mul(rooted).mul(reach).mul(-0.12), bend.y));
+    }
     mat.positionNode = world;
-    const wp = varying(world);
+    const wp: any = varying(world);
 
     const ng = normalGeometry;
     const n = vec3(ng.x.mul(c).add(ng.z.mul(s)), ng.y, ng.z.mul(c).sub(ng.x.mul(s)));
@@ -366,6 +381,22 @@ export class Flora implements Colliders {
     const list = this.clear.get(`${Math.floor(x / 64)},${Math.floor(z / 64)}`);
     if (!list) return false;
     for (let k = 0; k < list.length; k += 3) if (Math.hypot(list[k] - x, list[k + 1] - z) < list[k + 2]) return true;
+    return false;
+  }
+
+  /** Is a walker at (x, z), feet at y, brushing through a fern, bush, grass or flowers? */
+  softAt(x: number, z: number, y: number) {
+    const B = FLORA.blockSize;
+    const b = this.blocks.get(`${Math.floor((x + WORLD_HALF) / B)},${Math.floor((z + WORLD_HALF) / B)}`);
+    if (!b?.sets) return false;
+    for (const type of SOFT) {
+      const set = b.sets[type];
+      if (!set) continue;
+      for (let k = 0; k < set.length; k += 5) {
+        const r = 0.9 * Math.max(0.6, set[k + 4]);
+        if (Math.abs(set[k] - x) < r && Math.abs(set[k + 2] - z) < r && Math.abs(set[k + 1] - y) < 1.2) return true;
+      }
+    }
     return false;
   }
 

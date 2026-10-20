@@ -548,6 +548,55 @@ def loop_music(seconds=48.0):
         place(out, bell(f, 3.0) * 0.18, int(rng.uniform(0, seconds) * SR), wrap=True)
     return reverb(out, 0.55, 5.0, circular=True, damp=1.6)
 
+def ring(n, at, freq, decay, gain=1.0):
+    t = np.arange(n) / SR - at
+    return np.sin(2 * np.pi * freq * np.maximum(t, 0)) * np.exp(-np.maximum(t, 0) / decay) * (t >= 0) * gain
+
+
+def step_wood(i):
+    # A plank on posts: a hollow knock at heel and toe, a dry click, now and then a creak.
+    n = int(0.42 * SR)
+    heel_at = 0.03 + rng.uniform(-0.004, 0.008)
+    toe_at = heel_at + rng.uniform(0.09, 0.13)
+    f = rng.uniform(150, 210)
+    out = np.zeros(n)
+    for at, g in ((heel_at, 1.0), (toe_at, 0.55)):
+        out += ring(n, at, f, 0.045, 0.7 * g) + ring(n, at, f * rng.uniform(2.3, 2.7), 0.02, 0.25 * g)
+        click_n = int(0.012 * SR)
+        click = shaped_noise(click_n, band(1500, 5000)) * np.exp(-np.arange(click_n) / (0.002 * SR))
+        place(out, click * 0.3 * g, int(at * SR))
+    if rng.random() < 0.35:
+        cn = int(0.16 * SR)
+        t = np.arange(cn) / SR
+        creak = np.sin(2 * np.pi * np.cumsum(np.linspace(280, 420, cn)) / SR) * np.hanning(cn) * (0.5 + 0.5 * np.sign(np.sin(2 * np.pi * 38 * t)))
+        place(out, soften(creak, 2) * 0.08, int((toe_at + 0.04) * SR))
+    return fade_edges(soften(out, 2))
+
+
+def step_stone(i):
+    # Hard ground: a short tap and a little grit, no give.
+    n = int(0.36 * SR)
+    heel_at = 0.03
+    toe_at = heel_at + rng.uniform(0.08, 0.11)
+    pr = pressure(n, heel_at, toe_at, 0.015, 0.03, 0.5)
+    grit = grain_cloud(n, pr, 0.18, 2000, 7000, 3000) * 0.35
+    out = grit + thump(n, heel_at, rng.uniform(95, 120), 0.04) * 0.45
+    for at, g in ((heel_at, 1.0), (toe_at, 0.5)):
+        tn = int(0.01 * SR)
+        tap = shaped_noise(tn, band(1800, 7000)) * np.exp(-np.arange(tn) / (0.0015 * SR))
+        place(out, tap * 0.4 * g, int(at * SR))
+    return fade_edges(soften(out, 2))
+
+
+def brush(i):
+    # Pushing through leaves: a soft swish that swells and settles.
+    n = int(0.6 * SR)
+    t = np.arange(n) / SR
+    env = np.clip(t / rng.uniform(0.08, 0.14), 0, 1) * np.exp(-np.maximum(t - 0.15, 0) / rng.uniform(0.12, 0.2))
+    leaves = grain_cloud(n, env, rng.uniform(2.0, 3.2), 800, 6500, 2600)
+    hush = shaped_noise(n, band(600, 4000)) * env * 0.12
+    return fade_edges(soften(leaves * 0.6 + hush, 3))
+
 
 # ---------------------------------------------------------------- build
 
@@ -578,7 +627,15 @@ def main():
     write("loop_music", loop_music(), -3)
     write("loop_dread", loop_dread(), -3)
     write("loop_falls", loop_falls(), -3)
+    surfaces()
+
+
+def surfaces():
+    # New sounds only, without regenerating (and so re-rolling) everything else.
+    for name, fn in {"step_wood": step_wood, "step_stone": step_stone, "brush": brush}.items():
+        for i in range(6 if name.startswith("step") else 4):
+            write(f"{name}_{i}", fn(i), -3 if name.startswith("step") else -6)
 
 
 if __name__ == "__main__":
-    main()
+    surfaces() if os.environ.get("LAPIS_ONLY") == "surfaces" else main()
