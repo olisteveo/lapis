@@ -132,7 +132,11 @@ export function createTerrainMaterial(reflection: THREE.TextureNode) {
   const contour = penLines(h.add(wob).div(12), 1.3).mul(smoothstep(4, 20, h)).mul(smoothstep(0.03, 0.12, slope)).mul(smoothstep(2500, 300, camD)).mul(smoothstep(30, 90, camD)).mul(0.5);
   const strata = penLines(h.add(streak.mul(4)).div(2.6), 1.1).mul(smoothstep(0.5, 0.8, slope)).mul(smoothstep(500, 60, camD)).mul(0.45);
   const ink = color(0x0b1030);
-  const inked = mix(painted.mul(tone), ink, min(max(hatch, max(contour, strata)), float(0.85)).mul(float(1).sub(wetMask)));
+  let inked: N = mix(painted.mul(tone), ink, min(max(hatch, max(contour, strata)), float(0.85)).mul(float(1).sub(wetMask)));
+  // Far beaches sink into the dusk: a pale strip only a pixel tall against dark water and hills
+  // shimmers as the camera moves, so distant sand keeps its hue but loses its brightness.
+  const farSand = sandMask.mul(smoothstep(180, 700, camD)).mul(0.75);
+  inked = mix(inked, inked.mul(vec3(0.38, 0.38, 0.5)), farSand);
   mat.colorNode = painted.mul(0.12);
   mat.emissiveNode = inked.mul(0.5).add(vec3(0.3, 0.36, 0.7).mul(rim)).add(regionGlow);
   return mat;
