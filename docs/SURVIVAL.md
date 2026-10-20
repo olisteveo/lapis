@@ -113,5 +113,16 @@ on screen and collapse; the light store and gauge; gathering from motes and by h
 or the surf, which run dry and regrow over three minutes; the flare costs light; Wander / Story / Survival in Play
 settings. Rules in `src/core/survival.ts`, ported to `sbox/Lapis.Core/Survival.cs` with parity traces.
 
+## Phase 2 status
+
+Built: nightmares no longer know where you are. Each one prowls a ring around your part of the island and perceives
+you through `Senses`: a noise radius (still 0, creeping 3 m, walking 11 m, sprinting 26 m, louder wading, jumps and
+landings 16 m) and a visibility (light raises it; long grass, bushes, shadow, creeping and keeping still lower it),
+seen only within its gaze. Noticed enough it hunts; out of touch for 4 s it searches where it last knew you were for
+12 s, then gives up. Late in the night (threat above 0.65) they come in packs of two or three: when one finds you
+they all hunt, and flankers aim for the point between you and the nearest light. Hold C to creep. Hunting eyes blaze,
+prowling eyes smoulder; the view's edges close in while you're hidden; the wisp warns when you're found and when
+you've lost them. Rules in `src/core/nightmareBrain.ts` (not yet ported to C#).
+
 Not yet: drawn sources dimming visibly (they run dry, but don't look it), visible breath and trembling hands at low
 warmth. All numbers are first guesses in `TUNING` and want tuning in play.

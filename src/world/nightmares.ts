@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SKY } from '../config';
 import type { Heightfield } from '../core/heightfield';
 import { BlobShadows } from '../render/blobShadows';
-import { NightmareBrain, type LightSource, type NightmareKind, type NightmareState } from '../core/nightmareBrain';
+import { NightmareBrain, OBVIOUS, type LightSource, type NightmareKind, type NightmareState, type Senses } from '../core/nightmareBrain';
 
 type N = any;
 type Kind = NightmareKind;
@@ -16,11 +16,12 @@ interface View {
   thorns: THREE.Object3D;
   phase: { value: number };
   fade: { value: number };
+  alert: { value: number };
 }
 
 const key = vec3(SKY.keyLight.x, SKY.keyLight.y, SKY.keyLight.z);
 
-export type { LightSource } from '../core/nightmareBrain';
+export type { LightSource, Senses } from '../core/nightmareBrain';
 
 /**
  * Her despair, given shape. As the night grows late, ink creatures crawl out of thorn patches in
@@ -37,6 +38,10 @@ export class Nightmares {
   onCatch: ((kind: Kind) => void) | null = null;
   /** Called when one first comes into view, for a warning. */
   onSighted: (() => void) | null = null;
+  /** A nightmare (or a whole pack) has found you and begun to hunt. */
+  onAlerted: (() => void) | null = null;
+  /** A hunt ended with you lost. */
+  onLost: (() => void) | null = null;
   /** Pools of ink under each nightmare and its thorns. */
   private pools = new BlobShadows(24, true);
   /** Ink smoke left behind as they move: x, y, z, age 0..1 (1 = gone). */
@@ -111,7 +116,7 @@ export class Nightmares {
     return [...this.templates.keys()];
   }
 
-  private dress(template: THREE.Object3D, kind: Kind | 'thorns', phase: { value: number }, fade: { value: number }) {
+  private dress(template: THREE.Object3D, kind: Kind | 'thorns', phase: { value: number }, fade: { value: number }, alert: { value: number } = uniform(1)) {
     const obj = template.clone(true);
     obj.position.set(0, 0, 0);
     obj.traverse((o) => {
@@ -145,9 +150,9 @@ export class Nightmares {
       const pulse = sin(time.mul(1.7).add(P)).mul(0.35).add(0.75);
       const veins = smoothstep(0.07, 0.0, v).mul(pulse);
       if (name.includes('eye')) {
-        // Embers that flare and gutter, bright enough to bloom.
+        // Embers that flare and gutter: low and dull while it prowls, blazing once it hunts you.
         const flicker = sin(time.mul(7).add(P)).mul(0.5).add(sin(time.mul(17.3).add(P.mul(2))).mul(0.3));
-        mat.colorNode = color(0xff6a2a).mul(float(3.6).add(flicker));
+        mat.colorNode = mix(color(0x7a2a18).mul(float(0.9).add(flicker.mul(0.3))), color(0xff6a2a).mul(float(3.6).add(flicker)), alert as N);
       } else if (name.includes('edge')) mat.colorNode = mix(color(0x2a0c3a), color(0x7a1a3a), lambert).add(color(0xb0183a).mul(veins.mul(0.6)));
       else {
         // Glossy ink with a bruised crimson rim, so the silhouette reads against the night.
@@ -198,20 +203,21 @@ export class Nightmares {
     if (!body || !thornT) return;
     const phase = uniform(0);
     const fade = uniform(0);
-    const obj = this.dress(body, n.kind, phase, fade);
+    const alert = uniform(0);
+    const obj = this.dress(body, n.kind, phase, fade, alert);
     const thorns = this.dress(thornT, 'thorns', phase, fade);
     thorns.position.set(n.thorns.x, this.hf.height(n.thorns.x, n.thorns.z), n.thorns.z);
     thorns.rotation.y = n.thorns.yaw;
     thorns.scale.setScalar(n.thorns.scale);
     this.group.add(obj, thorns);
-    this.views.set(n.id, { obj, thorns, phase, fade });
+    this.views.set(n.id, { obj, thorns, phase, fade, alert });
   }
 
   /**
    * threat: 0 (none) to 1 (deep night). The player is caught on contact; lights repel.
    */
-  update(dt: number, player: THREE.Vector3, playerSpeed: number, threat: number, lights: LightSource[]) {
-    const ev = this.brain.update(dt, player, playerSpeed, threat, lights, this.templates.size > 0);
+  update(dt: number, player: THREE.Vector3, playerSpeed: number, threat: number, lights: LightSource[], senses: Senses = OBVIOUS) {
+    const ev = this.brain.update(dt, player, playerSpeed, threat, lights, this.templates.size > 0, senses);
     for (const n of ev.spawned) this.makeView(n);
     for (const n of ev.removed) {
       const v = this.views.get(n.id);
@@ -219,12 +225,16 @@ export class Nightmares {
       this.views.delete(n.id);
     }
     if (ev.sighted) this.onSighted?.();
+    if (ev.alerted) this.onAlerted?.();
+    if (ev.lost) this.onLost?.();
     for (const kind of ev.caught) this.onCatch?.(kind);
     for (const n of this.brain.live) {
       const v = this.views.get(n.id);
       if (!v) continue;
       v.fade.value = Math.max(0, n.presence);
       v.phase.value = n.phase;
+      const target = n.mode === 'hunt' ? 1 : n.mode === 'search' ? 0.45 : 0;
+      v.alert.value += (target - v.alert.value) * Math.min(1, dt * 3);
       v.obj.position.set(n.x, n.y, n.z);
       // Models face +X; heading 0 faces +Z.
       v.obj.rotation.y = n.yaw - Math.PI / 2;

@@ -132,11 +132,12 @@ The art direction comes from unseenai's paintings: ultramarine night, coral palm
 | W A S D | walk |
 | Mouse | look |
 | Shift | run |
+| C (hold) | creep: slow and quiet, hard to see in the dark grass |
 | Space | jump (hold in the air with moth wings to glide); long stroke in the boat as the oars dip |
 | E | gather, read, light a lamp, pick up, ring, turn; step into or out of the boat |
 | Hold E | at the water's edge: call the boat |
 | F | ask the little light what to do next |
-| Q | the little light flares: nearby nightmares burst |
+| Q | the little light flares: nearby nightmares burst (costs a pip of carried light) |
 | M | the chart |
 | I / Tab | the satchel: keepsakes, carried stars, her sky (click a keepsake to hold it) |
 | 1 to 5 | hold up a keepsake; press again to put it away |
