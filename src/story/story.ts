@@ -298,6 +298,11 @@ export class Story {
     return this.stars.waiting;
   }
 
+  /** The chapter (constellation id) whose region the player is in, for its colour grade. */
+  chapterAt(player: { x: number; z: number }) {
+    return CONSTELLATIONS[this.regionSky(player)].id;
+  }
+
   /** The constellation for wherever the player is standing: its region's, or The Boat on the shore. */
   private regionSky(player: { x: number; z: number }) {
     const s = this.hf.sample(player.x, player.z);

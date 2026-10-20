@@ -30,6 +30,7 @@ import { Stones, layoutStones } from './world/stones';
 import { Currents } from './world/currents';
 import { Flora } from './world/flora';
 import { createPost } from './render/post';
+import { Grade } from './render/grade';
 import { PlayerController } from './core/player';
 import { Input } from './game/input';
 import { Avatar } from './game/avatar';
@@ -177,7 +178,9 @@ async function boot() {
 
   const input = new Input(renderer.domElement);
   const rig = new CameraRig(camera, hf);
-  let post = createPost(renderer, scene, camera);
+  const grade = new Grade();
+  void grade.loadAll();
+  let post = createPost(renderer, scene, camera, grade);
   let postSteps = QUALITY.strokeSteps;
   let memoryUntil = 0;
   let frostTarget = 0;
@@ -400,6 +403,8 @@ async function boot() {
           state = 'play';
           player.mode = 'boat';
         },
+        /** Try a .cube grade on a chapter live: lapis.grade('bell', '/grades/storm.cube'). */
+        grade: (chapter: string, url: string) => grade.load(chapter, url),
         /**
          * The finished, painted frame as a JPEG data URL, rendered into an offscreen target and
          * read back, so it works even when the canvas isn't presenting (a hidden tab). For films.
@@ -449,7 +454,7 @@ async function boot() {
     if (QUALITY.strokeSteps !== postSteps) {
       postSteps = QUALITY.strokeSteps;
       (post.pipeline as unknown as { dispose?: () => void }).dispose?.();
-      post = createPost(renderer, scene, camera);
+      post = createPost(renderer, scene, camera, grade);
     }
   });
   const applySettings = () => {
@@ -650,6 +655,8 @@ async function boot() {
     post.frost.value += (Math.max(0, (frostTarget - 0.55) / 0.45) - post.frost.value) * Math.min(1, dt * 0.8);
     const memTarget = performance.now() / 1000 < memoryUntil ? 1 : 0;
     post.memoryMix.value += (memTarget - post.memoryMix.value) * Math.min(1, dt * (memTarget ? 1.2 : 0.7));
+    grade.set(story.chapterAt(player));
+    grade.update(dt);
     const mix = { ...story.audioMix(player), dread: nightmares.dread, falls: waterfalls.loudness(camera.position) };
     audio.update(mix);
     // Score follows where you are; the opening theme carries the first half-minute of play.
