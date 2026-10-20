@@ -219,7 +219,8 @@ Six per constellation. Lines are Mara's voice at the age of the memory. "Scene" 
 - No dialogue trees, no NPCs, no exposition. Story through memory, environment and sound.
 - Minimal text: notes and single lines only.
 - The world's brightness is the progress bar.
-- Quiet, lonely, beautiful. Dread comes from loss, never from threat.
+- Quiet, lonely, beautiful. Dread comes from loss; threat is allowed, but failure always costs what you carry, never
+  your life (see `docs/SURVIVAL.md`).
 - No combat. No death screen.
 
 ---
