@@ -9,226 +9,628 @@
    "id": "boat-1",
    "age": "small",
    "seconds": 5,
-   "scene": "Night, a small bedroom in the keeper's cottage lit by a bedside lamp. Point of view of a four-year-old girl lying in bed looking up: a man's large hand pulls a patchwork blanket up to her chin; an old storybook rests on the quilt; lighthouse light sweeps faintly across the ceiling."
+   "scene": "Night, a small bedroom in the keeper's cottage lit by a bedside lamp. Point of view of a four-year-old girl lying in bed looking up: a man's large hand pulls a patchwork blanket up to her chin; an old storybook rests on the quilt; lighthouse light sweeps faintly across the ceiling.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ]
+   ]
   },
   {
    "id": "boat-2",
    "age": "small",
    "seconds": 5,
-   "scene": "Night. A small girl of four with a blonde ponytail kneels on a window seat, seen from behind, looking out of a cottage window at the sea glittering under a sky full of stars; a shooting star falls; the lighthouse beam passes."
+   "scene": "Night. A small girl of four with a blonde ponytail kneels on a window seat, seen from behind, looking out of a cottage window at the sea glittering under a sky full of stars; a shooting star falls; the lighthouse beam passes.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ]
+   ]
   },
   {
    "id": "boat-3",
    "age": "small",
    "seconds": 5,
-   "scene": "Dusk, ankle-deep shallows on a sandy cove. Close point of view of a four-year-old girl's small hands scooping at sparkling water, the glints slipping through her fingers; a man's large hand reaches in beside hers."
+   "scene": "Dusk, ankle-deep shallows on a sandy cove. Close point of view of a four-year-old girl's small hands scooping at sparkling water, the glints slipping through her fingers; a man's large hand reaches in beside hers.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.35
+    ],
+    [
+     "loop_wind",
+     0.1
+    ]
+   ]
+  },
+  {
+   "id": "boat-4",
+   "age": "small",
+   "seconds": 5,
+   "scene": "The pilot (tools/viggle/raw/video/boat-wobbly.mp4): a small girl in a rowing boat below the lighthouse, her father steadying it from the shallows.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.4
+    ],
+    [
+     "loop_wind",
+     0.15
+    ]
+   ]
   },
   {
    "id": "boat-5",
    "age": "small",
    "seconds": 5,
-   "scene": "Golden evening, calm water close to the island's shore. Point of view of a five-year-old girl at the oars of a small wooden rowing boat, the oars far too big for her, splashing; the lighthouse not far behind; a man's knees and hands resting in the stern, not helping."
+   "scene": "Golden evening, calm water close to the island's shore. Point of view of a five-year-old girl at the oars of a small wooden rowing boat, the oars far too big for her, splashing; the lighthouse not far behind; a man's knees and hands resting in the stern, not helping.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.4
+    ],
+    [
+     "loop_wind",
+     0.15
+    ]
+   ]
   },
   {
    "id": "boat-6",
    "age": "small",
    "seconds": 5,
-   "scene": "Close-up, warm afternoon light. A small child's hand, guided by a man's large weathered hand, scratches letters into the wooden seat of a rowing boat with a pocket knife, beside older carved initials; wood shavings."
+   "scene": "Close-up, warm afternoon light. A small child's hand, guided by a man's large weathered hand, scratches letters into the wooden seat of a rowing boat with a pocket knife, beside older carved initials; wood shavings.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.35
+    ],
+    [
+     "loop_wind",
+     0.1
+    ]
+   ]
   },
   {
    "id": "hand-1",
    "age": "small",
    "seconds": 5,
-   "scene": "Summer, a meadow of tall grass and wildflowers on the island's high ground. Low point of view of a five-year-old girl walking through grass taller than her, holding a man's big hand above her; the lighthouse on the skyline."
+   "scene": "Summer, a meadow of tall grass and wildflowers on the island's high ground. Low point of view of a five-year-old girl walking through grass taller than her, holding a man's big hand above her; the lighthouse on the skyline.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "hand-2",
    "age": "small",
    "seconds": 5,
-   "scene": "Cold blue evening on the shore. Close-up of a small girl's warm hands wrapping around a man's large cold weathered hand and rubbing it, her breath misting."
+   "scene": "Cold blue evening on the shore. Close-up of a small girl's warm hands wrapping around a man's large cold weathered hand and rubbing it, her breath misting.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.35
+    ],
+    [
+     "loop_wind",
+     0.1
+    ]
+   ]
   },
   {
    "id": "hand-3",
    "age": "small",
    "seconds": 5,
-   "scene": "Low tide, a rock pool. A five-year-old girl's small hand holds up a shiny pink shell toward a man's open palm, her point of view, sunlight sparkling on the wet shell."
+   "scene": "Low tide, a rock pool. A five-year-old girl's small hand holds up a shiny pink shell toward a man's open palm, her point of view, sunlight sparkling on the wet shell.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.35
+    ],
+    [
+     "loop_wind",
+     0.1
+    ]
+   ]
   },
   {
    "id": "hand-4",
    "age": "small",
    "seconds": 5,
-   "scene": "Sunny grassy clifftop by the lighthouse. Point of view of a laughing five-year-old girl being spun around by her arms, the sky, the white lighthouse and the sea wheeling past; a man's hands holding her wrists."
+   "scene": "Sunny grassy clifftop by the lighthouse. Point of view of a laughing five-year-old girl being spun around by her arms, the sky, the white lighthouse and the sea wheeling past; a man's hands holding her wrists.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "hand-5",
    "age": "small",
    "seconds": 6,
-   "scene": "Clear night on a grassy hill. Point of view of a five-year-old girl lying on her back on a blanket looking up at a sky crowded with stars and the Milky Way; a man's arm beside her points up at one bright star."
+   "scene": "Clear night on a grassy hill. Point of view of a five-year-old girl lying on her back on a blanket looking up at a sky crowded with stars and the Milky Way; a man's arm beside her points up at one bright star.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "hand-6",
    "age": "small",
    "seconds": 5,
-   "scene": "Golden evening beside a huge old twisted tree on the island. A five-year-old girl stands on tiptoe reaching up to the lowest branch, seen from behind and a little below, a man's hand steadying her back."
+   "scene": "Golden evening beside a huge old twisted tree on the island. A five-year-old girl stands on tiptoe reaching up to the lowest branch, seen from behind and a little below, a man's hand steadying her back.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "hand-7",
    "age": "small",
    "seconds": 5,
-   "scene": "A kitchen table by a window, soft daylight. Close-up of a sheet of paper with a large hand outline traced in crayon and a small hand outline traced inside it; a small hand finishing the drawing."
+   "scene": "A kitchen table by a window, soft daylight. Close-up of a sheet of paper with a large hand outline traced in crayon and a small hand outline traced inside it; a small hand finishing the drawing.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ]
+   ]
   },
   {
    "id": "hand-8",
    "age": "small",
    "seconds": 5,
-   "scene": "Windy grey day, a narrow rocky causeway to the island with waves washing over the stones. Point of view of a small girl holding tight to a man's big hand as they step across slippery rocks."
+   "scene": "Windy grey day, a narrow rocky causeway to the island with waves washing over the stones. Point of view of a small girl holding tight to a man's big hand as they step across slippery rocks.",
+   "ambience": [
+    [
+     "loop_surf",
+     0.4
+    ],
+    [
+     "loop_wind",
+     0.3
+    ]
+   ]
   },
   {
    "id": "lantern-1",
    "age": "older",
    "seconds": 5,
-   "scene": "Night, a child's bedroom in the keeper's cottage. Point of view of a nine-year-old girl in bed watching a man's hand turn an oil lamp on the bedside table down to a small glow, not out; the door left open a crack."
+   "scene": "Night, a child's bedroom in the keeper's cottage. Point of view of a nine-year-old girl in bed watching a man's hand turn an oil lamp on the bedside table down to a small glow, not out; the door left open a crack.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ]
+   ]
   },
   {
    "id": "lantern-2",
    "age": "older",
    "seconds": 5,
-   "scene": "Night, the cottage's dark back garden. A nine-year-old girl holding a man's hand peers into deep darkness beyond the reach of a lantern held low; wind in the grass; the lighthouse beam crossing overhead."
+   "scene": "Night, the cottage's dark back garden. A nine-year-old girl holding a man's hand peers into deep darkness beyond the reach of a lantern held low; wind in the grass; the lighthouse beam crossing overhead.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "lantern-3",
    "age": "older",
    "seconds": 6,
-   "scene": "Night inside the lighthouse lamp room. A nine-year-old girl with her hands on the glass watches the great beam sweep out across black sea toward faint lights on a distant mainland; a man's silhouette tending the lamp behind her."
+   "scene": "Night inside the lighthouse lamp room. A nine-year-old girl with her hands on the glass watches the great beam sweep out across black sea toward faint lights on a distant mainland; a man's silhouette tending the lamp behind her.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ]
+   ]
   },
   {
    "id": "lantern-4",
    "age": "older",
    "seconds": 5,
-   "scene": "Night on the path up to the lighthouse. Point of view of a nine-year-old girl carrying a glowing oil lantern very carefully in both hands, step by step on the stone path, a man's boots walking slowly beside her."
+   "scene": "Night on the path up to the lighthouse. Point of view of a nine-year-old girl carrying a glowing oil lantern very carefully in both hands, step by step on the stone path, a man's boots walking slowly beside her.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "lantern-5",
    "age": "older",
    "seconds": 5,
-   "scene": "Night, a warm lantern hanging by the cottage door with moths circling it. A nine-year-old girl watches them, seen from behind, the dark sea beyond."
+   "scene": "Night, a warm lantern hanging by the cottage door with moths circling it. A nine-year-old girl watches them, seen from behind, the dark sea beyond.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "lantern-6",
    "age": "older",
    "seconds": 5,
-   "scene": "Twilight in a ring of wild mushrooms in the grass. A ten-year-old girl stands in the middle of the ring with her eyes shut, making a wish, seen from a little way off, the lighthouse lit on the hill."
+   "scene": "Twilight in a ring of wild mushrooms in the grass. A ten-year-old girl stands in the middle of the ring with her eyes shut, making a wish, seen from a little way off, the lighthouse lit on the hill.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "lantern-7",
    "age": "older",
    "seconds": 5,
-   "scene": "Night. Point of view of a ten-year-old girl in pyjamas, torch in hand, peering down the dark spiral stairs of the lighthouse; the torch beam shaking slightly on the stone steps."
+   "scene": "Night. Point of view of a ten-year-old girl in pyjamas, torch in hand, peering down the dark spiral stairs of the lighthouse; the torch beam shaking slightly on the stone steps.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ]
+   ]
   },
   {
    "id": "lantern-8",
    "age": "older",
    "seconds": 5,
-   "scene": "Night in the lamp room. Close-up of a ten-year-old girl's hands turning the brass winding handle of the lighthouse lamp mechanism, a man's hands guiding hers; brass gears and the great lens glowing."
+   "scene": "Night in the lamp room. Close-up of a ten-year-old girl's hands turning the brass winding handle of the lighthouse lamp mechanism, a man's hands guiding hers; brass gears and the great lens glowing.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ]
+   ]
   },
   {
    "id": "whale-1",
    "age": "older",
    "seconds": 5,
-   "scene": "Calm grey evening at sea in a small wooden rowing boat. Point of view of a twelve-year-old girl watching the long dark back of a whale surface and slide under not far away, spray hanging in the air; a man's hands resting on the oars."
+   "scene": "Calm grey evening at sea in a small wooden rowing boat. Point of view of a twelve-year-old girl watching the long dark back of a whale surface and slide under not far away, spray hanging in the air; a man's hands resting on the oars.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.4
+    ],
+    [
+     "loop_wind",
+     0.15
+    ],
+    [
+     "whale_song",
+     0.2
+    ]
+   ]
   },
   {
    "id": "whale-2",
    "age": "older",
    "seconds": 5,
-   "scene": "Night in the cottage kitchen. A twelve-year-old girl sits at the table with headphones made from an old radio, eyes closed, listening; a book about whales open in front of her; lamp light."
+   "scene": "Night in the cottage kitchen. A twelve-year-old girl sits at the table with headphones made from an old radio, eyes closed, listening; a book about whales open in front of her; lamp light.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ],
+    [
+     "whale_song",
+     0.25
+    ]
+   ]
   },
   {
    "id": "whale-3",
    "age": "older",
    "seconds": 5,
    "scene": "Pitch-dark night, no daylight at all, stars overhead. On the iron gallery of the lighthouse, a thirteen-year-old girl seen from behind leans on the rail, her hands empty, looking across black sea at a faint orange glow of a distant city on the horizon; the lighthouse beam sweeps over her.",
-   "night": true
+   "night": true,
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "whale-4",
    "age": "older",
    "seconds": 5,
-   "scene": "Morning at the island's small harbour. A fourteen-year-old girl walks away down the stone jetty ahead of the camera, turning her head to say something back over her shoulder, a little annoyed; a man's hand lowers from where it had reached for her."
+   "scene": "Morning at the island's small harbour. A fourteen-year-old girl walks away down the stone jetty ahead of the camera, turning her head to say something back over her shoulder, a little annoyed; a man's hand lowers from where it had reached for her.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.35
+    ],
+    [
+     "loop_wind",
+     0.1
+    ]
+   ]
   },
   {
    "id": "whale-5",
    "age": "older",
    "seconds": 6,
-   "scene": "Bright windy day on the high rocks of the island. A fourteen-year-old girl stands at the edge with her arms spread, hair blowing, looking out at endless open ocean, seen from behind."
+   "scene": "Bright windy day on the high rocks of the island. A fourteen-year-old girl stands at the edge with her arms spread, hair blowing, looking out at endless open ocean, seen from behind.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "whale-6",
    "age": "older",
    "seconds": 5,
-   "scene": "Overcast day on a pebble beach. A thirteen-year-old girl kneels beside the bleached rib bones of a long-dead whale half buried in the stones, touching one gently, seen from beside her."
+   "scene": "Overcast day on a pebble beach. A thirteen-year-old girl kneels beside the bleached rib bones of a long-dead whale half buried in the stones, touching one gently, seen from beside her.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.35
+    ],
+    [
+     "loop_wind",
+     0.1
+    ]
+   ]
   },
   {
    "id": "whale-7",
    "age": "older",
    "seconds": 5,
-   "scene": "Dusk on the cottage step. Point of view of a fourteen-year-old girl looking at a man sitting on the step with his back to her, staring out at the sea; only his shoulders and the back of his head in a knitted hat."
+   "scene": "Dusk on the cottage step. Point of view of a fourteen-year-old girl looking at a man sitting on the step with his back to her, staring out at the sea; only his shoulders and the back of his head in a knitted hat.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "whale-8",
    "age": "older",
    "seconds": 5,
-   "scene": "Daylight at the kitchen door. A fifteen-year-old girl in a rain jacket pulls her arm free and walks out alone into the wind, seen from inside; a man's hand on the door frame."
+   "scene": "Daylight at the kitchen door. A fifteen-year-old girl in a rain jacket pulls her arm free and walks out alone into the wind, seen from inside; a man's hand on the door frame.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ]
+   ]
   },
   {
    "id": "bell-1",
    "age": "older",
    "seconds": 5,
-   "scene": "Morning in the cottage kitchen. Close-up of a seventeen-year-old girl's hands holding an opened acceptance letter from a mainland college, trembling a little, sunlight across the table; a man's hand on the table nearby."
+   "scene": "Morning in the cottage kitchen. Close-up of a seventeen-year-old girl's hands holding an opened acceptance letter from a mainland college, trembling a little, sunlight across the table; a man's hand on the table nearby.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ]
+   ]
   },
   {
    "id": "bell-2",
    "age": "older",
    "seconds": 5,
-   "scene": "Evening on the lighthouse gallery. A seventeen-year-old girl turns from the rail toward a man standing in the lamp-room doorway, seen only as a dark silhouette against the lamp."
+   "scene": "Evening on the lighthouse gallery. A seventeen-year-old girl turns from the rail toward a man standing in the lamp-room doorway, seen only as a dark silhouette against the lamp.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "bell-3",
    "age": "older",
    "seconds": 5,
-   "scene": "Night in the lamp room. Point of view of a seventeen-year-old girl watching a man's hands write the night's entry in a thick lighthouse logbook by lamp light, neat columns of entries."
+   "scene": "Night in the lamp room. Point of view of a seventeen-year-old girl watching a man's hands write the night's entry in a thick lighthouse logbook by lamp light, neat columns of entries.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.08
+    ],
+    [
+     "loop_surf",
+     0.06
+    ]
+   ]
   },
   {
    "id": "bell-4",
    "age": "older",
    "seconds": 5,
-   "scene": "Late afternoon at a small old bell hung on a post by the island's landing. A seventeen-year-old girl reaches up and rings it once, the bell swinging, the sea behind; seen from just behind her."
+   "scene": "Late afternoon at a small old bell hung on a post by the island's landing. A seventeen-year-old girl reaches up and rings it once, the bell swinging, the sea behind; seen from just behind her.",
+   "ambience": [
+    [
+     "loop_wind",
+     0.25
+    ],
+    [
+     "loop_surf",
+     0.15
+    ]
+   ]
   },
   {
    "id": "bell-5",
    "age": "older",
    "seconds": 5,
-   "scene": "Evening at the island's landing. Bags are loaded into a small wooden rowing boat by a man's hands; a seventeen-year-old girl in a coat stands holding a small bundle of envelopes and stamps, the lighthouse behind."
+   "scene": "Evening at the island's landing. Bags are loaded into a small wooden rowing boat by a man's hands; a seventeen-year-old girl in a coat stands holding a small bundle of envelopes and stamps, the lighthouse behind.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.35
+    ],
+    [
+     "loop_wind",
+     0.1
+    ]
+   ]
   },
   {
    "id": "bell-6",
    "age": "older",
    "seconds": 5,
-   "scene": "Dusk at sea in the rowing boat. Point of view of a seventeen-year-old girl looking back over the stern at the island and its lighthouse growing small across the water, a distant bell ringing faintly on the wind."
+   "scene": "Dusk at sea in the rowing boat. Point of view of a seventeen-year-old girl looking back over the stern at the island and its lighthouse growing small across the water, a distant bell ringing faintly on the wind.",
+   "ambience": [
+    [
+     "loop_lapping",
+     0.4
+    ],
+    [
+     "loop_wind",
+     0.15
+    ]
+   ]
   },
   {
    "id": "bell-7",
    "age": "older",
    "seconds": 6,
    "scene": "Pitch-dark night in a raging storm, no daylight at all. Point of view of a seventeen-year-old girl in the stern of a small wooden rowing boat: a man in a dark wet oilskin coat rows hard, seen only from the shoulders down; behind him a huge black wall of storm cloud fills the horizon, lightning flashing inside it, heavy rain, the swell rising high.",
-   "night": true
+   "night": true,
+   "ambience": [
+    [
+     "loop_wind",
+     0.55
+    ],
+    [
+     "loop_surf",
+     0.5
+    ],
+    [
+     "loop_dread",
+     0.25
+    ]
+   ]
   },
   {
    "id": "bell-8",
    "age": "older",
    "seconds": 6,
    "scene": "Pitch-dark night, a violent storm at sea, driving rain and spray, no daylight at all. Point of view of a seventeen-year-old girl clinging to the side of a small swamped wooden tender among huge black waves; a man's hand on the edge of the tender pushes it away from him into the dark; a lightning flash lights the churning water for an instant.",
-   "night": true
+   "night": true,
+   "ambience": [
+    [
+     "loop_wind",
+     0.65
+    ],
+    [
+     "loop_surf",
+     0.6
+    ],
+    [
+     "loop_dread",
+     0.3
+    ]
+   ]
   }
  ],
  "nightStyle": "Shot at night in near darkness on 35mm film, low-key moonlight and lightning only, deep blue-black shadows, handheld camera, soft grain. The father is never seen in the face: only his hands, forearms, his back, or a silhouette. The girl has a blonde ponytail."
