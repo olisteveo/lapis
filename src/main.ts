@@ -134,6 +134,7 @@ async function boot() {
   const audio = new Audio();
   const story = new Story(layout, hf, flora, sky.shooting, audio, layoutRegionStars(hf, wonders.list, puzzleSites), puzzles);
   story.attachWonders(wonders);
+  props.push(story.keepsakeSolids);
   const wisp = new Wisp();
   story.wisp = wisp;
   scene.add(story.group, wisp.group);
@@ -207,6 +208,7 @@ async function boot() {
     optional(fauna.load('/models/fauna.glb').then((t) => debug && console.log('fauna', t)), 'fauna'),
     optional(nightmares.load('/models/nightmares.glb').then((t) => debug && console.log('nightmares', t)), 'nightmares'),
     optional(wonders.load('/models/wonders.glb').then((t) => debug && console.log('wonders', t)), 'wonders'),
+    optional(story.loadKeepsakes('/models/keepsakes.glb'), 'keepsakes'),
     avatar.load('/models/keeper.glb', '/models/boat.glb').then(() => {
       if (!avatar.keeperGltf) return;
       story.loadFigure(avatar.keeperGltf);
