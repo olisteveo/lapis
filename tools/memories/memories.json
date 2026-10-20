@@ -147,7 +147,8 @@
    "id": "whale-3",
    "age": "older",
    "seconds": 5,
-   "scene": "Clear night on the lighthouse gallery. A thirteen-year-old girl leans on the rail looking across black sea at the glow of a distant city on the horizon, seen from behind."
+   "scene": "Pitch-dark night, no daylight at all, stars overhead. On the iron gallery of the lighthouse, a thirteen-year-old girl seen from behind leans on the rail, her hands empty, looking across black sea at a faint orange glow of a distant city on the horizon; the lighthouse beam sweeps over her.",
+   "night": true
   },
   {
    "id": "whale-4",
@@ -219,13 +220,16 @@
    "id": "bell-7",
    "age": "older",
    "seconds": 6,
-   "scene": "Night at sea in a small wooden rowing boat. Point of view of a seventeen-year-old girl in the stern: a man in a dark oilskin coat rows, seen only from the shoulders down; behind him a vast black wall of storm cloud is swallowing the stars across the whole horizon, lightning flickering inside it, the swell rising."
+   "scene": "Pitch-dark night in a raging storm, no daylight at all. Point of view of a seventeen-year-old girl in the stern of a small wooden rowing boat: a man in a dark wet oilskin coat rows hard, seen only from the shoulders down; behind him a huge black wall of storm cloud fills the horizon, lightning flashing inside it, heavy rain, the swell rising high.",
+   "night": true
   },
   {
    "id": "bell-8",
    "age": "older",
    "seconds": 6,
-   "scene": "Night, a violent storm at sea, rain and spray. Point of view of a seventeen-year-old girl clinging to the side of a small swamped tender; a man's hand on the edge of the tender pushes it away from him into the dark waves; lightning lights the churning water for an instant."
+   "scene": "Pitch-dark night, a violent storm at sea, driving rain and spray, no daylight at all. Point of view of a seventeen-year-old girl clinging to the side of a small swamped wooden tender among huge black waves; a man's hand on the edge of the tender pushes it away from him into the dark; a lightning flash lights the churning water for an instant.",
+   "night": true
   }
- ]
+ ],
+ "nightStyle": "Shot at night in near darkness on 35mm film, low-key moonlight and lightning only, deep blue-black shadows, handheld camera, soft grain. The father is never seen in the face: only his hands, forearms, his back, or a silhouette. The girl has a blonde ponytail."
 }
