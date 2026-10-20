@@ -25,6 +25,35 @@ def run(*args):
     return out.stdout
 
 
+# Drawn-ness of the memories: 0 is the raw footage, 1 the full painted treatment.
+STYLE = {"amount": 1.0, "brush": 3.2, "flatten": 0.75, "levels": 5.0, "ink": 0.85, "inkThreshold": 0.12, "boilFps": 8.0,
+         "saturation": 1.2, "posterize": 0.4, "haze": 0.7, "edgeBlur": 0.8}
+# Overrides for trying a different balance without editing this file, e.g. MEMORY_STYLE='{"amount":0.6}'.
+STYLE.update(json.loads(os.environ.get("MEMORY_STYLE", "{}")))
+
+
+def painterly():
+    wgsl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "painterly.wgsl")).read()
+    p = lambda name, desc, lo, hi: {"name": name, "description": desc, "min": lo, "max": hi, "default": STYLE.get(name, 0)}
+    return {"type": "customShader", "name": "memoryPainterly",
+            "description": "Paints real footage like the game's drawing: Kuwahara brushwork, banded gouache tones, inked edges, paper grain and a hand-drawn boil.",
+            "wgsl": wgsl,
+            "params": [
+                p("animationTime", "Engine-driven layer clock, in seconds.", 0, 3600),
+                p("amount", "How drawn: 0 is the raw footage, 1 the full painted look.", 0, 1),
+                p("brush", "Brush size in pixels per Kuwahara step; larger melts more detail.", 0.5, 6),
+                p("flatten", "How strongly lightness is pulled into flat gouache bands.", 0, 1),
+                p("levels", "Number of tonal bands.", 2, 12),
+                p("ink", "Strength of the inked outlines.", 0, 1),
+                p("inkThreshold", "Edge strength needed before ink is drawn; higher draws fewer lines.", 0.02, 0.6),
+                p("boilFps", "How many times a second the drawing wobbles, like redrawn frames.", 0, 24),
+                p("saturation", "Colour richness after painting; above 1 for a storybook palette.", 0, 2),
+                p("posterize", "How strongly colours snap to a reduced set of flat colours.", 0, 1),
+                p("haze", "Milky glow and lifted shadows: how hazy the memory feels.", 0, 1),
+                p("edgeBlur", "How strongly the frame melts into soft focus toward its edges.", 0, 1),
+            ]}
+
+
 def main():
     fid, clip = sys.argv[1], os.path.abspath(sys.argv[2])
     work = os.path.join(ROOT, "tools", "memories", fid)
@@ -61,6 +90,8 @@ def main():
              "activeRange": {"start": 0, "duration": D},
              "transform": {"anchorPoint": [0, 0], "position": [0, 0], "scale": [100, 100], "rotation": 0, "opacity": 100},
              "effects": [
+                 # Half real, half drawn: the footage is painted over before the finishing grade.
+                 eff(20, painterly()),
                  eff(21, {"type": "primaryGrade", "semanticVersion": 1, "temperature": 0.04, "tint": 0, "exposure": 0,
                           "contrast": -0.06, "highlights": -0.06, "shadows": 0.04, "whites": 0, "blacks": 0.05,
                           "saturation": -0.06, "vibrance": 0}),
@@ -94,10 +125,13 @@ def main():
     json.dump(actions, open(acts, "w"))
     run("project", "apply", "--project", proj, "--actions", acts)
     os.makedirs(os.path.join(ROOT, "public", "memories"), exist_ok=True)
-    out = os.path.join(ROOT, "public", "memories", f"{fid}.mp4")
+    out = os.environ.get("MEMORY_OUT") or os.path.join(ROOT, "public", "memories", f"{fid}.mp4")
     run("export", "--project", proj, "--output", out, "--resolution", "1080p", "--fps", "30")
     run("filmstrip", "--project", proj, "--timestamps-ms", f"300,{D // 3},{2 * D // 3},{D - 300}",
         "--tile-width", "480", "--tile-height", "270", "--output", os.path.join(work, "filmstrip.png"))
+    if os.environ.get("MEMORY_OUT"):
+        print(f"{fid}: {out} (trial)")
+        return
     # The game lists which fragments have films.
     index = os.path.join(ROOT, "public", "memories", "index.json")
     ids = set(json.load(open(index))) if os.path.exists(index) else set()

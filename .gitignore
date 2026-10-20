@@ -10,3 +10,4 @@ tools/memories/frames/
 tools/memories/work/
 tools/memories/*/
 !tools/memories/refs/
+tools/memories/*.mp4
