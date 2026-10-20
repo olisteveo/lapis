@@ -33,6 +33,7 @@ import { Currents } from './world/currents';
 import { Flora } from './world/flora';
 import { createPost } from './render/post';
 import { Grade } from './render/grade';
+import { DynamicResolution } from './render/dynamicResolution';
 import { PlayerController } from './core/player';
 import { Input } from './game/input';
 import { Avatar } from './game/avatar';
@@ -59,6 +60,7 @@ if (new URLSearchParams(location.search).has('reset')) {
 async function boot() {
   if (!('gpu' in navigator)) console.warn('WebGPU unavailable; three.js will fall back to WebGL2.');
   const renderer = new THREE.WebGPURenderer({ antialias: false });
+  const dynRes = new DynamicResolution();
   renderer.setPixelRatio(Math.min(devicePixelRatio, RENDER.maxPixelRatio));
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -510,6 +512,7 @@ async function boot() {
 
   // Settings apply live: resolution, paint detail, volumes, mouse.
   onQualityChange(() => {
+    dynRes.reset();
     renderer.setPixelRatio(Math.min(devicePixelRatio, RENDER.maxPixelRatio));
     renderer.setSize(innerWidth, innerHeight);
     settleFrames = 3;
@@ -847,7 +850,7 @@ async function boot() {
     fpsT += dt;
     if (debug && fpsT > 0.5) {
       const info = renderer.info;
-      statsEl.textContent = `${Math.round(frames / fpsT)} fps  draws ${info.render.drawCalls}  tris ${(info.render.triangles / 1e6).toFixed(2)}M  jobs ${pool.busy}  terrain ${(terrain.loadedRatio * 100).toFixed(0)}%  pos ${player.x.toFixed(0)},${player.z.toFixed(0)}`;
+      statsEl.textContent = `${Math.round(frames / fpsT)} fps  res ${(dynRes.scale * 100).toFixed(0)}%  draws ${info.render.drawCalls}  tris ${(info.render.triangles / 1e6).toFixed(2)}M  jobs ${pool.busy}  terrain ${(terrain.loadedRatio * 100).toFixed(0)}%  pos ${player.x.toFixed(0)},${player.z.toFixed(0)}`;
       frames = 0;
       fpsT = 0;
     }
@@ -857,6 +860,12 @@ async function boot() {
   renderer.setAnimationLoop((t: number) => {
     const cap = !document.hasFocus() ? 8 : menu.open || chart.open || satchel.open || film.open ? 30 : QUALITY.fps;
     if (t - lastRender < 1000 / cap - 2) return;
+    // Only judge the GPU while playing at the full frame rate (menus and background run capped).
+    if (cap === QUALITY.fps && state === 'play' && lastRender > 0 && dynRes.update(t - lastRender, 1000 / cap, t)) {
+      renderer.setPixelRatio(Math.min(devicePixelRatio, RENDER.maxPixelRatio) * dynRes.scale);
+      renderer.setSize(innerWidth, innerHeight);
+      settleFrames = 3;
+    }
     lastRender = t;
     frame();
   });

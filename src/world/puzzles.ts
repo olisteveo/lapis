@@ -99,6 +99,8 @@ export class Puzzles implements Colliders {
 
   update(dt: number, player: PlayerState) {
     for (const p of this.impls) {
+      // Far puzzles cost no draw calls; their solved light (a scene light) is handled elsewhere.
+      p.group.visible = Math.hypot(p.site.x - player.x, p.site.z - player.z) < 800;
       if (!this.discovered.has(p.site.id) && Math.hypot(p.site.x - player.x, p.site.z - player.z) < 22) {
         this.discovered.add(p.site.id);
         if (!p.solved) this.onDiscover?.(p.site);

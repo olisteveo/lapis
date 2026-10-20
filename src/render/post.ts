@@ -101,6 +101,8 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
     const a = mx_noise_float(p.mul(0.0025)).mul(0.9);
     return vec2(a.cos(), a.sin());
   };
+  // The swirl is so slow across the screen that one lookup per pixel serves every step of the stroke.
+  const swirlHere = swirl(screenUV.mul(screenSize));
   const flowAt = (uvp: N): N => {
     const t = tensor.sample(uvp) as N;
     const E = t.x;
@@ -111,7 +113,7 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
     const tang = vec2(l1.sub(E), F.negate());
     const strength = smoothstep(0.0004, 0.004, disc);
     const dir = select(length(tang).greaterThan(1e-5), normalize(tang), vec2(1, 0));
-    return normalize(mix(swirl(uvp.mul(screenSize)), dir, strength));
+    return normalize(mix(swirlHere, dir, strength));
   };
 
   // ---- 3. Line integral along the flow: smears colour into strokes and carries a bristle
