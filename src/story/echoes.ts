@@ -29,7 +29,7 @@ interface Live {
   fade: { value: number };
   mixers: THREE.AnimationMixer[];
   overrides: (() => void)[];
-  state: 'waiting' | 'dissolving' | 'gone';
+  state: 'waiting' | 'dissolving' | 'gone' | 'staged';
 }
 
 /**
@@ -80,7 +80,9 @@ export class Echoes {
         // Sanitised glTF bone names drop the dot: "upperarm.R" -> "upperarmR".
         const bone = (n: string) => body.getObjectByName(n);
         if (performed) {
-          // The motion carries the pose itself.
+          // The motion carries the pose itself, grounded on the floor: echoes placed for the old
+          // seat-on-the-edge sit are 0.42 m low, so lift these back up.
+          if (pose === 'sit') body.position.y = 0.42;
         } else if (pose === 'point') {
           const arm = bone('upperarmR');
           const fore = bone('forearmR');
@@ -121,9 +123,33 @@ export class Echoes {
     return mat;
   }
 
+  /**
+   * For filming a memory: the echo stays put as two solid figures drawn in the world's ink, rather
+   * than light that dissolves as you approach. Returns its group, or null.
+   */
+  stage(id: string) {
+    const e = this.live.find((l) => l.def.id === id);
+    if (!e) return null;
+    e.state = 'staged';
+    e.group.visible = true;
+    const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+    // Backlit by the moon path: near-black figures with a warm rim where the lamp catches them.
+    const rim = float(1).sub(abs(normalView.z)).pow(2.2);
+    mat.colorNode = mix(color(0x0a0c22), color(0xffc888).mul(0.55), rim);
+    e.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) m.material = mat;
+    });
+    return e.group;
+  }
+
   update(dt: number, player: THREE.Vector3) {
     for (const e of this.live) {
       if (e.state === 'gone') continue;
+      if (e.state === 'staged') {
+        for (const m of e.mixers) m.update(dt);
+        continue;
+      }
       const d = Math.hypot(e.def.x - player.x, e.def.z - player.z);
       for (const m of e.mixers) m.update(dt);
       for (const o of e.overrides) o();

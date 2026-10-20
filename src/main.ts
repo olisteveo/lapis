@@ -5,6 +5,7 @@ import { PauseMenu } from './ui/menu';
 import { JournalMap } from './ui/map';
 import { Satchel } from './ui/satchel';
 import { Hotbar } from './ui/hotbar';
+import { MemoryFilm } from './ui/memoryFilm';
 import { HeldKeepsake } from './game/held';
 import { KEEPSAKES } from './story/keepsakes';
 import { LAGOONS } from './core/heightfield';
@@ -301,6 +302,10 @@ async function boot() {
       if (menu.open) menu.back();
       else openMenu();
     }
+    if (film.open && (e.code === 'KeyE' || e.code === 'Space' || e.code === 'Escape') && !e.repeat) {
+      film.close();
+      return;
+    }
     if (e.code === 'KeyE' && !e.repeat) ePressed = true;
     const slot = /^Digit([1-5])$/.exec(e.code);
     if (slot && !e.repeat && state === 'play' && !menu.open && !chart.open) {
@@ -370,6 +375,7 @@ async function boot() {
 
   if (debug) {
     // Console handle for art direction: lapis.view(x, z, yaw, pitch), lapis.player, etc.
+    const capture: { target?: THREE.RenderTarget } = {};
     Object.assign(window, {
       lapis: {
         player, input, camera, hf, flora, sparkles, story, layout, audio, landmarks, wildlife, currents, stones, fauna, wonders, nightmares, puzzles, climb, renderer, waterfalls,
@@ -393,6 +399,32 @@ async function boot() {
         boat() {
           state = 'play';
           player.mode = 'boat';
+        },
+        /**
+         * The finished, painted frame as a JPEG data URL, rendered into an offscreen target and
+         * read back, so it works even when the canvas isn't presenting (a hidden tab). For films.
+         */
+        async captureFrame(width = 1920, height = 1080, quality = 0.93) {
+          capture.target ??= new THREE.RenderTarget(width, height);
+          capture.target.setSize(width, height);
+          // three counts frames from its animation loop, which stalls in a hidden tab, and the scene
+          // pass renders once per counted frame; step the counter so this render sees the new camera.
+          (renderer as unknown as { _nodes: { nodeFrame: { update(): void } } })._nodes.nodeFrame.update();
+          renderer.setRenderTarget(capture.target);
+          post.pipeline.render();
+          renderer.setRenderTarget(null);
+          const px = (await renderer.readRenderTargetPixelsAsync(capture.target, 0, 0, width, height)) as Uint8Array;
+          const canvas = new OffscreenCanvas(width, height);
+          const ctx = canvas.getContext('2d')!;
+          const img = ctx.createImageData(width, height);
+          img.data.set(px.subarray(0, width * height * 4));
+          ctx.putImageData(img, 0, 0);
+          const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
+          return await new Promise<string>((done) => {
+            const r = new FileReader();
+            r.onload = () => done(r.result as string);
+            r.readAsDataURL(blob);
+          });
         },
       },
     });
@@ -436,6 +468,18 @@ async function boot() {
     satchel.refresh(story.satchelState());
   };
   const hotbar = new Hotbar();
+  const film = new MemoryFilm();
+  story.onMemoryFilm = (id, after) => {
+    if (!film.has(id)) return false;
+    // The world goes quiet and still behind the film.
+    audio.setPaused(true);
+    if (document.pointerLockElement) document.exitPointerLock();
+    return film.play(id, audio.effectsVolume, () => {
+      audio.setPaused(false);
+      after();
+      Promise.resolve(renderer.domElement.requestPointerLock?.()).catch(() => {});
+    });
+  };
   // The seashell's hum, seen as well as heard: a pink shimmer at the edge of the view, on the star's side.
   const shellCue = document.createElement('div');
   shellCue.id = 'shell-cue';
@@ -527,7 +571,7 @@ async function boot() {
 
     const pressed = ePressed;
     ePressed = false;
-    if (menu.open || chart.open || satchel.open) {
+    if (menu.open || chart.open || satchel.open || film.open) {
       // Frozen world behind the menu: keep drawing it, but nothing moves or happens.
       camera.updateMatrixWorld();
       if (renderer.domElement.clientWidth > 0 && settleFrames < 3) post.pipeline.render();
@@ -678,7 +722,7 @@ async function boot() {
   // Capped: a 120Hz display would otherwise render twice as many frames for no visible gain.
   // Unfocused windows drop to a trickle so the game doesn't heat the machine in the background.
   renderer.setAnimationLoop((t: number) => {
-    const cap = !document.hasFocus() ? 8 : menu.open || chart.open || satchel.open ? 30 : QUALITY.fps;
+    const cap = !document.hasFocus() ? 8 : menu.open || chart.open || satchel.open || film.open ? 30 : QUALITY.fps;
     if (t - lastRender < 1000 / cap - 2) return;
     lastRender = t;
     frame();
