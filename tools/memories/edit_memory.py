@@ -5,12 +5,14 @@ Usage: python3 tools/memories/edit_memory.py <fragment-id> <clip.mp4>
 Creates tools/memories/<id>/<id>.tsrct (kept local: it embeds the source media) and exports
 public/memories/<id>.mp4. The treatment is the same for every memory, so they read as one film:
 a light finishing grade over the clip's own look, fine grain, a soft vignette and halation, a
-gentle fade up and out, the clip's own sound under the game's memory swell.
+gentle fade up and out. The clip's own sound is muted (its generated speech isn't English); the
+scene's ambience beds from tools/memories/memories.json play under the game's memory swell.
 """
 import json
 import os
 import subprocess
 import sys
+import wave
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TSRCT = os.path.expanduser("~/Library/Application Support/Tesseract/bin/tsrct")
@@ -63,8 +65,11 @@ def main():
         os.remove(proj)
     run("project", "create", "--project", proj)
     meta = json.loads(run("project", "import-video", "--project", proj, "--file", clip, "--asset-id", "footage"))
-    run("project", "import-asset", "--project", proj, "--file", os.path.join(ROOT, "public", "audio", "memory_swell.wav"),
-        "--asset-id", "swell", "--kind", "audio")
+    beds = next(m for m in json.load(open(os.path.join(ROOT, "tools", "memories", "memories.json")))["memories"]
+                if m["id"] == fid)["ambience"]
+    for name in {"memory_swell", *(b[0] for b in beds)}:
+        run("project", "import-asset", "--project", proj, "--file", os.path.join(ROOT, "public", "audio", f"{name}.wav"),
+            "--asset-id", name, "--kind", "audio")
     editable = os.path.join(work, ".tesseract-work", "editable.json")
     run("project", "checkout", "--project", proj, "--output", editable)
 
@@ -82,7 +87,7 @@ def main():
     # Fit the clip's frame to 1920 wide, centred vertically (sources are often 1088 tall).
     fh = round(h * 1920 / w)
     video = {"type": "Video", "id": 1, "name": "Memory", "playback": window(0, D), "sourceRange": {"start": 0, "duration": D},
-             "sourceIntrinsicDuration": src_ms, "volume": 0.8,
+             "sourceIntrinsicDuration": src_ms, "volume": 0,
              "transform": {"anchorPoint": [0, 0], "position": [0, (1080 - fh) / 2], "scale": [100, 100], "rotation": 0, "opacity": 100},
              "source": {"assetId": "footage", "fit": "cover", "sourceRect": {"x": 0, "y": 0, "width": 1920, "height": fh}}}
     eff = lambda i, x: {"id": i, "effect": x, "enabled": True}
@@ -102,9 +107,13 @@ def main():
     fade = {"type": "Rect", "id": 3, "name": "Fade", "blendMode": "normal", "activeRange": {"start": 0, "duration": D},
             "transform": {"anchorPoint": [0, 0], "position": [0, 0], "scale": [100, 100], "rotation": 0, "opacity": 100},
             "effects": [], "rect": {"size": [1920, 1080], "fillColor": [0.01, 0.01, 0.02, 1]}}
-    swell = {"type": "Audio", "id": 90, "name": "Memory swell", "playback": window(0, D), "sourceRange": {"start": 0, "duration": D},
-             "sourceIntrinsicDuration": 11000, "source": {"assetId": "swell"}, "volume": 0.4, "captionsEnabled": False}
-    e["composition"]["layers"] = [fade, grade, video, swell]
+    def audio(i, name, gain):
+        w = wave.open(os.path.join(ROOT, "public", "audio", f"{name}.wav"))
+        ms = w.getnframes() * 1000 // w.getframerate()
+        return {"type": "Audio", "id": i, "name": name, "playback": window(0, D), "sourceRange": {"start": 0, "duration": D},
+                "sourceIntrinsicDuration": ms, "source": {"assetId": name}, "volume": gain, "captionsEnabled": False}
+    sound = [audio(90, "memory_swell", 0.4)] + [audio(91 + i, name, gain) for i, (name, gain) in enumerate(beds)]
+    e["composition"]["layers"] = [fade, grade, video, *sound]
     json.dump(e, open(editable, "w"), indent=1)
     run("project", "commit", "--project", proj, "--file", editable)
 
@@ -118,9 +127,9 @@ def main():
                                             "; function k(a,b,p){return a+(b-a)*Math.max(0,Math.min(1,p));}\n" + code}, "dependencies": []}
     actions = [
         k(3, "opacity", [(0, 100, lin), (700, 0, ease), (D - 700, 0, lin), (D, 100, ease)], "fade"),
-        vol(1, "if (t < 0.6) return k(0, 0.8, t / 0.6); if (t > D - 0.8) return k(0.8, 0, (t - D + 0.8) / 0.8); return 0.8;"),
         vol(90, "if (t > D - 1.2) return k(0.4, 0, (t - D + 1.2) / 1.2); return 0.4;"),
-    ]
+    ] + [vol(91 + i, f"var g = {gain}; if (t < 0.6) return k(0, g, t / 0.6); if (t > D - 0.8) return k(g, 0, (t - D + 0.8) / 0.8); return g;")
+         for i, (_, gain) in enumerate(beds)]
     acts = os.path.join(work, ".tesseract-work", "actions.json")
     json.dump(actions, open(acts, "w"))
     run("project", "apply", "--project", proj, "--actions", acts)
