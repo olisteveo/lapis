@@ -61,6 +61,11 @@ export function createWater() {
   const rolling = smoothstep(0.62, 0.92, bands).mul(smoothstep(3.2, 0.4, depth)).mul(smoothstep(-0.3, 0.3, fn)).mul(resolved);
   const foam = saturate(max(lip, rolling.mul(0.85)));
   col = mix(col, color(PALETTE.foam).mul(0.9), foam);
+  // Bioluminescent surf: breaking waves stir up the sea's light, so each rolling band burns cyan
+  // as it comes in, flickering where the water churns hardest.
+  const churn = mx_noise_float(vec3(p.mul(0.7), t.mul(1.1))).mul(0.5).add(0.5);
+  const stirred = rolling.mul(smoothstep(0.35, 0.9, churn)).mul(smoothstep(160, 30, dist));
+  col = col.add(color(0x48d8ff).mul(stirred).mul(1.4));
 
   // Secret lagoons: still, luminous turquoise water, lit from below.
   let lagoon: any = float(0);
