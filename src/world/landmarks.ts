@@ -7,6 +7,8 @@ import { drawnSurface } from '../render/drawn';
 import { interiorShade, masonry } from '../render/lighthouseShading';
 import { BIOMES, LIGHTHOUSE, WORLD_HALF, type Heightfield } from '../core/heightfield';
 import type { Colliders } from '../core/player';
+import { PropCollision, type ColumnGrid } from '../core/propCollision';
+import { gridFromObject } from './propGrid';
 
 export interface Placed {
   type: string;
@@ -114,7 +116,8 @@ export function layoutLandmarks(hf: Heightfield, spawn: { x: number; z: number }
       if (placed === 0 && (d0 < 60 || d0 > 450)) continue;
       if (!far(c.x, c.z, placed === 0 ? 40 : spacing)) continue;
       const yaw = Math.atan2(c.sea.z, c.sea.x);
-      if (type === 'Jetty') out.push({ type, x: c.x, y: h(c.x, c.z) - 0.3, z: c.z, yaw: -yaw, scale: 1 });
+      // The deck's shore end is 1.2 m up the model: sunk so it meets the sand as a single step.
+      if (type === 'Jetty') out.push({ type, x: c.x, y: h(c.x, c.z) - 0.8, z: c.z, yaw: -yaw, scale: 1 });
       else if (type === 'Wreck') {
         const x = c.x + c.sea.x * 8;
         const z = c.z + c.sea.z * 8;
@@ -174,6 +177,8 @@ export function layoutLandmarks(hf: Heightfield, spawn: { x: number; z: number }
 }
 
 // Footprint radius per landmark for collision (scaled by placement scale).
+/** What each prop sounds like underfoot; anything not listed is stone. */
+const WOODEN = new Set(['Jetty', 'Wreck', 'Hut', 'Swing']);
 const SOLID: Record<string, number> = { Lighthouse: 0, Beacon: 0, Hut: 2.2, Cairn: 0.5, StoneLantern: 0.35, Wreck: 0, RuinColumn: 0.7, RuinColumnBroken: 0.7 };
 /** Lamp-room height of the lighthouse model, before placement scale. */
 const LAMP_Y = 25;
@@ -269,6 +274,10 @@ export class Landmarks implements Colliders {
     return mat;
   }
 
+  /** Every prop except the lighthouses (which have their own climb) as a standable solid. */
+  readonly solids = new PropCollision();
+  private gridded = new Set<string>();
+
   /** Loads templates from each file; a missing file just leaves its props out. */
   async load(...urls: string[]) {
     const mats = new Map<string, THREE.Material>();
@@ -280,10 +289,16 @@ export class Landmarks implements Colliders {
       gltf.scene.updateMatrixWorld(true);
       for (const child of gltf.scene.children) templates.set(child.name, child);
     }
+    const grids = new Map<string, ColumnGrid>();
     for (const p of this.placed) {
       const isLight = p.type === 'Beacon' || p.type === 'Lighthouse';
       const t = isLight ? templates.get('DreamLighthouse') ?? templates.get('Lighthouse') : templates.get(p.type);
       if (!t) continue;
+      if (!isLight) {
+        if (!grids.has(p.type)) grids.set(p.type, gridFromObject(t));
+        this.solids.add(grids.get(p.type)!, p, WOODEN.has(p.type) ? 'wood' : 'stone');
+        this.gridded.add(p.type);
+      }
       const obj = t.clone(true);
       const lamp = isLight ? uniform(0) : undefined;
       obj.traverse((o) => {
@@ -374,6 +389,7 @@ export class Landmarks implements Colliders {
 
   near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void) {
     for (const p of this.placed) {
+      if (this.gridded.has(p.type)) continue;
       const r = (SOLID[p.type] ?? 0) * p.scale;
       if (r > 0 && Math.abs(p.x - x) < reach + r && Math.abs(p.z - z) < reach + r) visit(p.x, p.z, r);
     }

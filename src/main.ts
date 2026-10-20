@@ -31,7 +31,7 @@ import { Input } from './game/input';
 import { Avatar } from './game/avatar';
 import { CameraRig } from './game/cameraRig';
 import { Wisp } from './game/wisp';
-import { Audio } from './audio/audio';
+import { Audio, type Surface } from './audio/audio';
 import { Story } from './story/story';
 import { layoutPrologue } from './core/placement';
 import { LINES, STORYBOOK } from './core/content';
@@ -95,16 +95,18 @@ async function boot() {
   const climb = new LighthouseClimb(
     landmarks.placed.filter((p) => p.type === 'Beacon' || p.type === 'Lighthouse').map((p) => ({ x: p.x, y: p.y, z: p.z, yaw: p.yaw, scale: p.scale })),
   );
+  const wonders = new Wonders(layoutWonders(hf));
+  // Props and wonders fill their solids in as their models load; until then they're simply empty.
+  const props = [landmarks.solids, wonders.solids];
   player.platforms = {
-    top: (x, z, y) => Math.max(stones.top(x, z), climb.top(x, z, y)),
-    blocksBoat: (x, z, r) => stones.blocksBoat(x, z, r),
-    blocked: (x, z, y, body) => climb.blocked(x, z, y, body),
-    ceiling: (x, z, y) => climb.ceiling(x, z, y),
+    top: (x, z, y) => Math.max(stones.top(x, z), climb.top(x, z, y), ...props.map((s) => s.top(x, z, y))),
+    blocksBoat: (x, z, r) => stones.blocksBoat(x, z, r) || props.some((s) => s.blocksBoat(x, z, r)),
+    blocked: (x, z, y, body) => climb.blocked(x, z, y, body) || props.some((s) => s.blocked(x, z, y, body)),
+    ceiling: (x, z, y) => Math.min(climb.ceiling(x, z, y), ...props.map((s) => s.ceiling(x, z, y))),
     push: (x, z, y, body) => climb.push(x, z, y, body),
   };
   const wildlife = new Wildlife(hf);
   const fauna = new Fauna(hf);
-  const wonders = new Wonders(layoutWonders(hf));
   // The Boat hangs over the sea as seen from where you wake; the stones need its bearing too.
   const boatAz = ((THREE.MathUtils.radToDeg(Math.atan2(layout.seaward.x, -layout.seaward.z)) % 360) + 360) % 360;
   const puzzleSites = layoutPuzzles(hf, wonders.list, boatAz);
@@ -324,8 +326,11 @@ async function boot() {
   rig.onStep = (speed) => {
     const h = hf.height(player.x, player.z);
     const s = hf.sample(player.x, player.z);
-    const surface = h < -0.05 ? 'water' : h < 0.75 ? 'wet' : h < 2.8 && s.grove < 0.3 ? 'sand' : 'jungle';
+    // Up on something built (a deck, a stone, a tower's stair) the footstep is that, not the ground.
+    const built = player.y > h + 0.12 ? (props.map((p) => p.standingOn(player.x, player.z, player.y)).find(Boolean) ?? 'stone') : null;
+    const surface: Surface = (built as Surface | null) ?? (h < -0.05 ? 'water' : h < 0.75 ? 'wet' : h < 2.8 && s.grove < 0.3 ? 'sand' : 'jungle');
     audio.step(surface, speed);
+    if (flora.softAt(player.x, player.z, player.y)) audio.brush(speed);
   };
   let lastStroke = 0;
   let playStarted = 0;
@@ -587,6 +592,8 @@ async function boot() {
     focus.copy(camera.position);
     terrain.update(focus);
     flora.update(focus, now);
+    if (player.mode === 'walk') flora.walker.value.set(player.x, player.y, player.z);
+    else flora.walker.value.set(1e6, 0, 1e6);
     beams.update(dt, focus);
     landmarks.update(focus, dt);
     wildlife.update(dt, focus, camera, player.mode === 'boat' || story.audioMix(player).sea > 0.55);

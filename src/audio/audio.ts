@@ -2,7 +2,7 @@ import { MusicDirector } from './music';
 
 // Plays the pre-rendered sound set from tools/audio/build_sounds.py.
 
-type Surface = 'sand' | 'wet' | 'water' | 'jungle';
+export type Surface = 'sand' | 'wet' | 'water' | 'jungle' | 'wood' | 'stone';
 
 const LOOPS = ['surf', 'lapping', 'wind', 'jungle', 'music', 'dread', 'falls'] as const;
 type LoopName = (typeof LOOPS)[number];
@@ -50,7 +50,8 @@ export class Audio {
 
     const names = [
       ...LOOPS.map((l) => `loop_${l}`),
-      ...['sand', 'wet', 'water', 'jungle'].flatMap((s) => [0, 1, 2, 3, 4, 5].map((i) => `step_${s}_${i}`)),
+      ...[0, 1, 2, 3].map((i) => `brush_${i}`),
+      ...['sand', 'wet', 'water', 'jungle', 'wood', 'stone'].flatMap((s) => [0, 1, 2, 3, 4, 5].map((i) => `step_${s}_${i}`)),
       'oar_dip_0', 'oar_dip_1', 'oar_dip_2', 'oar_drip_0', 'oar_drip_1',
       ...[0, 1, 2, 3, 4, 5].map((i) => `chime_${i}`),
       'fairy_hey', 'fairy_listen', 'fairy_look', 'fairy_oh', 'fairy_hmm', 'fairy_watch',
@@ -100,6 +101,11 @@ export class Audio {
     const i = Math.floor(Math.random() * 6);
     const loud = Math.min(1, 0.35 + speed / 7);
     this.one(`step_${surface}_${i}`, loud * (surface === 'water' ? 0.45 : 0.32), 0.95 + Math.random() * 0.1);
+  }
+
+  /** Pushing through a bush or fern. */
+  brush(speed: number) {
+    this.one(`brush_${Math.floor(Math.random() * 4)}`, Math.min(1, 0.4 + speed / 6) * 0.5, 0.9 + Math.random() * 0.2);
   }
 
   oarDip() {
