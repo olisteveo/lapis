@@ -8,6 +8,7 @@ import { WORLD_HALF } from '../core/heightfield';
 import type { WorkerPool } from './terrain';
 import type { FloraResult } from './terrainWorker';
 import { darkAtNode } from '../render/darkWater';
+import { weather } from '../render/weather';
 import type { Colliders } from '../core/player';
 
 interface TypeCfg {
@@ -275,7 +276,7 @@ export class Flora implements Colliders {
     if (REGION_GLOW[partName]) {
       const [hex, k] = REGION_GLOW[partName];
       const breathe = sin(time.mul(0.7).add(variety.mul(20))).mul(0.15).add(0.9);
-      col = color(hex).mul(k).mul(vc.r.mul(0.4).add(0.7)).mul(breathe);
+      col = color(hex).mul(k).mul(vc.r.mul(0.4).add(0.7)).mul(breathe).mul(float(1).sub((weather.storm as any).mul(0.35)));
       if (partName === 'mushroom_glow') {
         // Gills drawn as fine radial ink lines; the light gathers at the rim and dies toward the stem.
         const rel = wp.xz.sub(inst.xz);
@@ -328,6 +329,8 @@ export class Flora implements Colliders {
       const grey = vec3(dot(col, vec3(0.3, 0.5, 0.2))).mul(0.25);
       // Only the shore palms: the dark is on the water, and inland groves stay lit.
       col = mix(col, grey, darkAtNode(inst.xz).mul(smoothstep(9, 2, inst.y)).mul(0.85));
+      // The rain dims them.
+      col = col.mul(float(1).sub((weather.storm as any).mul(0.35)));
     } else {
       const dark = partName.includes('core') || partName.includes('bark') || partName === 'trunk_dark';
       // Not one green: each plant takes a hue from a small palette, grouped into patches across the

@@ -10,6 +10,8 @@ export interface SurvivalTuning {
   drainWind: number;
   /** Extra drain per second at the heart of the Dark Water. */
   drainDarkWater: number;
+  /** Extra drain per second out in the full rain of a squall, unsheltered. */
+  drainRain: number;
   /** How much faster the dark drains at the very end of the night (1 = no change). */
   lateFactor: number;
   /** Warmth gained per second in full light. */
@@ -31,6 +33,7 @@ export const TUNING: Record<Exclude<SurvivalMode, 'wander'>, SurvivalTuning> = {
     drainWater: 1 / 60,
     drainWind: 1 / 240,
     drainDarkWater: 1 / 40,
+    drainRain: 1 / 90,
     lateFactor: 2.5,
     refill: 1 / 12,
     wispCap: 1,
@@ -46,6 +49,7 @@ export const TUNING: Record<Exclude<SurvivalMode, 'wander'>, SurvivalTuning> = {
     drainWater: 1 / 240,
     drainWind: 0,
     drainDarkWater: 1 / 160,
+    drainRain: 1 / 400,
     lateFactor: 1.5,
     refill: 1 / 6,
     wispCap: 1,
@@ -59,8 +63,10 @@ export const TUNING: Record<Exclude<SurvivalMode, 'wander'>, SurvivalTuning> = {
 
 /** What the Keeper is exposed to this frame, measured by the game. */
 export interface Exposure {
-  /** 0 in full dark, 1 standing in strong light. */
+  /** 0 in full dark, 1 standing in strong light (lamps, huts, lighthouses, your raised lantern). */
   lit: number;
+  /** 0..1: glowing plants around her. They soften the cold but, unlike a real light, never warm her back up. */
+  glow?: number;
   inWater: boolean;
   /** 0 sheltered, 1 out in the open wind (high ground, open dunes, at sea). */
   wind: number;
@@ -68,6 +74,8 @@ export interface Exposure {
   night: number;
   /** 0..1: how deep in the Dark Water (core/darkWater.ts). */
   dark?: number;
+  /** 0..1: how hard a squall's rain is falling on her (shelter already taken off). */
+  rain?: number;
 }
 
 /** How warm she is: 1 warm, 0 collapsed. Drains in the dark, water and wind; light warms her. */
@@ -76,9 +84,9 @@ export class Warmth {
 
   /** Returns true on the frame warmth runs out. */
   update(dt: number, e: Exposure, t: SurvivalTuning) {
-    const dark = 1 - Math.min(1, Math.max(0, e.lit));
+    const dark = 1 - Math.min(1, Math.max(0, e.lit + (e.glow ?? 0) * 0.6));
     const late = 1 + (t.lateFactor - 1) * e.night * e.night;
-    const drain = (t.drainDark * dark * late + (e.inWater ? t.drainWater : 0) + t.drainWind * e.wind * dark + t.drainDarkWater * (e.dark ?? 0)) * dt;
+    const drain = (t.drainDark * dark * late + (e.inWater ? t.drainWater : 0) + t.drainWind * e.wind * dark + t.drainDarkWater * (e.dark ?? 0) + t.drainRain * (e.rain ?? 0)) * dt;
     const gain = t.refill * Math.max(0, e.lit) * dt;
     const before = this.value;
     this.value = Math.min(1, Math.max(0, this.value - drain + gain));

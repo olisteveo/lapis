@@ -8,6 +8,9 @@ import { Hotbar } from './ui/hotbar';
 import { LightGauge } from './ui/lightGauge';
 import { TUNING } from './core/survival';
 import { darkAt, darkReach } from './core/darkWater';
+import { SquallClock } from './core/squalls';
+import { createRain } from './world/rain';
+import { weather } from './render/weather';
 import { setDarkWater } from './render/darkWater';
 import { MemoryFilm } from './ui/memoryFilm';
 import { HeldKeepsake } from './game/held';
@@ -83,7 +86,16 @@ async function boot() {
 
   const hf = createHeightfield(SEED);
   const currents = new Currents(hf);
-  const world = { height: (x: number, z: number) => hf.height(x, z), flow: (x: number, z: number) => currents.flow(x, z) };
+  // Squalls (docs/SURVIVAL.md, phase 4): their wind adds to the star currents, so it pushes the boat.
+  const squalls = new SquallClock();
+  const world = {
+    height: (x: number, z: number) => hf.height(x, z),
+    flow: (x: number, z: number) => {
+      const f = currents.flow(x, z);
+      const w = squalls.wind;
+      return { x: f.x + w.x * 2.4, z: f.z + w.z * 2.4 };
+    },
+  };
   const pool = new WorkerPool(Math.max(2, Math.min(6, (navigator.hardwareConcurrency || 4) - 2)));
 
   const water = createWater();
@@ -96,7 +108,8 @@ async function boot() {
   const flora = new Flora(pool, SEED);
   const avatar = new Avatar();
   // First person: the Keeper's body is never added to the scene.
-  scene.add(sky.group, terrain.group, water.mesh, water.target, sparkles.group, flora.group, avatar.boat, motes, beams.group);
+  const rain = createRain();
+  scene.add(sky.group, terrain.group, water.mesh, water.target, sparkles.group, flora.group, avatar.boat, motes, beams.group, rain);
 
   const spawn = findSpawn(hf);
   const layout = layoutPrologue(hf, spawn);
@@ -196,6 +209,27 @@ async function boot() {
   const surviving = () => settings.survival !== 'wander';
   let outOfLightSaid = 0;
   let glowCount = 0;
+  let lightningIn = 8;
+  let squallWarned = 0;
+  /** Squalls come more often and harder as the night grows late and as her sky is restored. */
+  const updateWeather = (dt: number) => {
+    const pressure = Math.min(1, story.night.progress * 0.6 + story.restoredShare * 0.6);
+    const entered = squalls.update(dt, pressure, settings.nights);
+    weather.storm.value = squalls.intensity;
+    weather.windX.value = squalls.wind.x;
+    weather.windZ.value = squalls.wind.z;
+    if (entered === 'building') {
+      if (squallWarned++ < 2) story.guide(player.mode === 'boat' ? "Look! A squall's coming in. Get to shore, quick!" : "Brr, a squall's coming in off the sea! Find a light to shelter by.", 'look', 'warn');
+      else wisp.speak(0.8, 'warn');
+    }
+    // Lightning only in the heart of a squall: a flash, and the night is darker after.
+    lightningIn -= dt;
+    if (squalls.phase === 'raging' && lightningIn <= 0) {
+      weather.flash.value = 1;
+      lightningIn = 5 + Math.random() * 10;
+    }
+    weather.flash.value = Math.max(0, weather.flash.value - dt * 4);
+  };
   let darkReachNow = Infinity;
   let refugesNow: ReturnType<typeof story.refuges> = [];
   // Stealth (docs/SURVIVAL.md, phase 2): how loud and how visible the Keeper is.
@@ -222,6 +256,9 @@ async function boot() {
     let visibility = 0.3 + 0.7 * litHere;
     if (cover) visibility *= 0.4;
     if (player.speed < 2) visibility *= player.speed < 0.3 ? 0.6 : 0.75;
+    // Rain drums over your footsteps and veils you: a squall is cover as well as danger.
+    noise *= 1 - squalls.intensity * 0.5;
+    visibility *= 1 - squalls.intensity * 0.4;
     return { noise, visibility: Math.min(1, visibility) };
   };
   story.onNight = (p) => (frostTarget = p);
@@ -471,6 +508,11 @@ async function boot() {
           state = 'play';
           player.mode = 'boat';
         },
+        squalls,
+        /** Bring the next squall in now. */
+        squall() {
+          (squalls as unknown as { t: number; length: number }).t = (squalls as unknown as { length: number }).length;
+        },
         /** Try a .cube grade on a chapter live: lapis.grade('bell', '/grades/storm.cube'). */
         grade: (chapter: string, url: string) => grade.load(chapter, url),
         /**
@@ -554,14 +596,18 @@ async function boot() {
     if (frames % 10 === 0) glowCount = flora.glowNear(player.x, player.z, 5);
     let lit = 0;
     for (const l of lights) lit = Math.max(lit, THREE.MathUtils.smoothstep(l.r - Math.hypot(l.x - player.x, l.z - player.z), 0, l.r * 0.65));
-    // Glowing plants warm a little, and the raised lantern a little more; neither replaces a real light.
-    lit = Math.min(1, lit + Math.min(0.5, glowCount * 0.12) + (held.raised === 'lantern' ? 0.25 : 0));
-    litHere = lit;
+    // The raised lantern is a small real light; glowing plants only soften the cold (glow, below).
+    lit = Math.min(1, lit + (held.raised === 'lantern' ? 0.25 : 0));
+    const glow = Math.min(1, glowCount * 0.15);
+    litHere = Math.min(1, lit + glow * 0.5);
     const ground = hf.height(player.x, player.z);
     const exposure = {
       lit,
+      glow,
       inWater: player.mode === 'walk' && ground < -0.3 && player.y < 0.3,
-      wind: Math.max(here.dunes * 0.8, THREE.MathUtils.smoothstep(player.y, 40, 160), player.mode === 'boat' ? 0.6 : 0),
+      wind: Math.max(here.dunes * 0.8, THREE.MathUtils.smoothstep(player.y, 40, 160), player.mode === 'boat' ? 0.6 : 0, squalls.intensity * 0.9),
+      // Near a real light (a lamp, a hut, a lighthouse) she shelters from the rain.
+      rain: squalls.intensity * (lit > 0.5 ? 0.2 : 1),
       night: story.night.progress,
       // On or beside the Dark Water it chills fast; inland it only reaches you faintly.
       dark: darkAt(player.x, player.z, darkReachNow, refugesNow) * (player.mode === 'boat' || ground < 1 ? 1 : 0.3),
@@ -780,7 +826,7 @@ async function boot() {
     }
     grade.set(story.chapterAt(player));
     grade.update(dt);
-    const mix = { ...story.audioMix(player), dread: nightmares.dread, falls: waterfalls.loudness(camera.position) };
+    const mix = { ...story.audioMix(player), dread: nightmares.dread, falls: waterfalls.loudness(camera.position), storm: squalls.intensity };
     audio.update(mix);
     // Score follows where you are; the opening theme carries the first half-minute of play.
     const area =
@@ -826,6 +872,7 @@ async function boot() {
         if (p.type === 'StoneLantern' || p.type === 'Hut' || p.type === 'Cairn') lights.push({ x: p.x, z: p.z, r: p.type === 'Hut' ? 12 : 8 });
       for (const p of puzzleSites) if (story.hasSeen(p.id)) lights.push({ x: p.reward?.x ?? p.x, z: p.reward?.z ?? p.z, r: 16 });
       story.light.update(dt);
+      updateWeather(dt);
       // Dark Water creeps in as the night wears on; restored regions hold it back.
       darkReachNow = settings.nights ? darkReach(story.night.progress, settings.survival) : Infinity;
       refugesNow = story.refuges();
@@ -837,6 +884,12 @@ async function boot() {
       if (story.hasKeepsake('lantern')) lights.push({ x: player.x, z: player.z, r: held.raised === 'lantern' ? 12 : 6 });
       player.canGlide = story.hasKeepsake('wings');
       player.glideSink = held.raised === 'wings' ? 0.9 : 1.6;
+      // Gliding, the squall carries you: harder to land where you aimed, or a lift if it's behind you.
+      if (player.mode === 'walk' && player.canGlide && input.down('Space') && Math.abs(player.vy + player.glideSink) < 0.05 && squalls.intensity > 0.05) {
+        const w = squalls.wind;
+        player.x += w.x * 2.2 * dt;
+        player.z += w.z * 2.2 * dt;
+      }
       const threat = settings.nights ? Math.min(1, Math.max(0, (story.night.progress - 0.45) / 0.4)) : 0;
       const sense = senses();
       nightmares.update(dt, camera.position, player.mode === 'walk' ? player.speed : 0, player.mode === 'boat' ? 0 : threat, lights, sense);

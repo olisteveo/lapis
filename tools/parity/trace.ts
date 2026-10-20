@@ -10,6 +10,7 @@ import { PlayerController, type PlayerEvent, type PlayerInput } from './ts/playe
 import { NightClock, type NightCue } from './ts/night.ts';
 import { LightStore, RestReturns, Sources, TUNING, Warmth, type Exposure } from './ts/survival.ts';
 import { darkAt, darkReach, type Refuge } from './ts/darkWater.ts';
+import { SquallClock } from './ts/squalls.ts';
 import { colliders, platforms, TOWER, world } from './world.ts';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '../../sbox/parity');
@@ -215,6 +216,8 @@ for (const mode of ['survival', 'story'] as const) {
       wind: 0.5 + 0.5 * Math.sin(i * 0.01),
       night: (i / 3000) % 1,
       dark: 0.5 + 0.5 * Math.sin(i * 0.013),
+      rain: 0.5 + 0.5 * Math.cos(i * 0.007),
+      glow: i % 1100 < 400 ? 0.7 : 0,
     };
     const collapsed = warmth.update(dt, e, t);
     if (collapsed) warmth.reset();
@@ -226,7 +229,7 @@ for (const mode of ['survival', 'story'] as const) {
     const rest = i % 500 === 0 ? rests.restAt(i % 1500 === 0 ? 2 : 1) : 0;
     if (i === 2500) rests.clear();
     steps.push({
-      dt, lit: e.lit, inWater: e.inWater, wind: e.wind, night: e.night, dark: e.dark,
+      dt, lit: e.lit, inWater: e.inWater, wind: e.wind, night: e.night, dark: e.dark, rain: e.rain, glow: e.glow,
       warmth: warmth.value, collapsed, light: light.value, cap: light.cap, ready: light.ready, flare,
       drawn, left: sources.left(12.5, -3, now), rest, streak: rests.streak,
     });
@@ -250,4 +253,20 @@ for (const mode of ['survival', 'story'] as const) {
   }
   writeFileSync(join(OUT, 'darkwater.json'), JSON.stringify({ name: 'darkwater', refuges, steps }));
   console.log(`darkwater        ${steps.length} steps`);
+}
+
+// Squalls: a long run at a rising pressure, with a spell of wandering (disabled) in the middle.
+{
+  const sq = new SquallClock(4242);
+  const steps = [];
+  for (let i = 0; i < 24000; i++) {
+    const dt = 1 / 20 + 0.01 * Math.sin(i * 0.29);
+    const pressure = Math.min(1, i / 18000);
+    const enabled = !(i > 9000 && i < 10200);
+    const entered = sq.update(dt, pressure, enabled);
+    if (i % 4 === 0 || entered) steps.push({ i, dt, pressure, enabled, entered, phase: sq.phase, intensity: sq.intensity, angle: sq.windAngle });
+    else steps.push({ i, dt, pressure, enabled });
+  }
+  writeFileSync(join(OUT, 'squalls.json'), JSON.stringify({ name: 'squalls', seed: 4242, steps }));
+  console.log(`squalls          ${steps.length} steps  squalls: ${steps.filter((s) => s.entered === 'building').length}`);
 }
