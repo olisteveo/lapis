@@ -11,6 +11,7 @@
     "assets": "sh tools/blender/build.sh",
     "map": "node tools/map.ts",
     "check:core": "node tools/check-core.mjs",
+    "check:survival": "node --experimental-transform-types --no-warnings --import ./tools/node/register.mjs tools/survival-check.ts",
     "probe:lighthouse": "node --experimental-transform-types --no-warnings --import ./tools/node/register.mjs tools/lighthouse-probe.ts",
     "playtest": "node --experimental-transform-types --no-warnings --import ./tools/node/register.mjs tools/playtest.ts"
   },

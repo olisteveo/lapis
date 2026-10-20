@@ -148,6 +148,22 @@ squall is cover as well as danger. The wisp warns as the first two squalls build
 Warmth now separates real light (lamps, huts, lighthouses, the raised lantern), which warms her back up, from
 glowing plants, which only soften the cold.
 
+## Refinement pass
+
+Measured with a bot playing whole nights and with `npm run check:survival` (headless rules checks that fail if
+tuning drifts out of range):
+
+- Lights are far apart (median distance to the nearest is 180 m in the meadows, 260 m on the shore and dunes,
+  365 m in the Lantern Wood), so the cold was eased: dark drains over 420 s at dusk and about 210 s late at night,
+  a late squall in the open over about 65 s, and rain drains at 1/150 per second.
+- Shelter: standing under a broad canopy or giant mushroom cuts the rain to a quarter and the wind by half, so a
+  squall is something to wait out, not just run from.
+- When warmth falls below 45% the wisp points to the nearest warm light and says how far it is.
+- One catch per encounter: after a catch there are 5 s of grace and the rest of the pack falls back to searching.
+- Story mode halves the nightmares' threat, so they're fewer and never come in packs.
+- Fixed: pressing E to end the rest scene rested again (spending a diminished rest); a squall's wind could carry a
+  glide through walls; the frame after an adaptive-resolution change could render with freed textures.
+
 Not yet: low islands submerging (the terrain doesn't change).
 
 Not yet (phase 1): drawn sources dimming visibly (they run dry, but don't look it), visible breath and trembling hands at low

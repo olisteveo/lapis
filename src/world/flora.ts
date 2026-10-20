@@ -57,6 +57,8 @@ const TRUNKS: Record<string, number> = {
 };
 
 // Soft plants you walk through: they part around you instead of stopping you.
+// Plants broad enough to stand under out of the rain.
+const SHELTER = ['CanopyA', 'CanopyB', 'GiantMushroomA', 'GiantMushroomB', 'LanternTree'];
 // Plants that carry flowers on their outer leaves.
 const FLOWERING = new Set(['Bush0', 'Bush1', 'Groundcover', 'Understory', 'Banana']);
 const SOFT = new Set(['FernA', 'FernB', 'Groundcover', 'Bush0', 'Bush1', 'Moonflowers', 'MeadowGrass', 'DuneGrass', 'Vines']);
@@ -468,13 +470,22 @@ export class Flora implements Colliders {
 
   /** How many glowing plants (mushrooms, lantern trees, moonflowers, crystals) stand within r of (x, z). */
   glowNear(x: number, z: number, r: number) {
+    return this.countNear(GLOWING, x, z, r);
+  }
+
+  /** How many sheltering plants (broad canopies, giant mushrooms) spread over (x, z), within r of their edge. */
+  coverNear(x: number, z: number, r: number) {
+    return this.countNear(SHELTER, x, z, r);
+  }
+
+  private countNear(types: readonly string[], x: number, z: number, r: number) {
     const B = FLORA.blockSize;
     let n = 0;
     for (let dj = -1; dj <= 1; dj++)
       for (let di = -1; di <= 1; di++) {
         const b = this.blocks.get(`${Math.floor((x + WORLD_HALF) / B) + di},${Math.floor((z + WORLD_HALF) / B) + dj}`);
         if (!b?.sets) continue;
-        for (const type of GLOWING) {
+        for (const type of types) {
           const set = b.sets[type];
           if (!set) continue;
           for (let k = 0; k < set.length; k += 5) if (Math.hypot(set[k] - x, set[k + 2] - z) < r + set[k + 4]) n++;

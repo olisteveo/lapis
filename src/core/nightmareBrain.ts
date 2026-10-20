@@ -96,6 +96,8 @@ export class NightmareBrain {
   private sighted = false;
   private nextId = 1;
   private nextPack = 1;
+  /** Seconds after a catch in which no other can touch you: one loss per encounter, not one per pack member. */
+  private graceT = 0;
   private t = 0;
   private rnd = mulberry32(6661);
 
@@ -170,6 +172,7 @@ export class NightmareBrain {
     const ev: BrainEvents = { spawned: [], removed: [], caught: [], sighted: false, alerted: 0, lost: 0 };
     this.t += dt;
     this.flareT = Math.max(0, this.flareT - dt);
+    this.graceT = Math.max(0, this.graceT - dt);
     const wanted = threat <= 0 ? 0 : Math.round(1 + threat * 4);
     const alive = this.live.filter((n) => !n.dissolving).length;
     this.spawnT -= dt;
@@ -334,9 +337,19 @@ export class NightmareBrain {
         this.sighted = true;
         ev.sighted = true;
       }
-      if (d < (n.kind === 'crawler' ? 1.6 : 1.4) + (playerSpeed > 0 ? 0 : 0.2)) {
+      if (this.graceT <= 0 && d < (n.kind === 'crawler' ? 1.6 : 1.4) + (playerSpeed > 0 ? 0 : 0.2)) {
         n.dissolving = true;
         ev.caught.push(n.kind);
+        this.graceT = 5;
+        // The rest of the hunt falls back, unsure, and has to find you again.
+        for (const o of this.live)
+          if (o !== n && !o.dissolving && Math.hypot(o.x - player.x, o.z - player.z) < 25) {
+            o.mode = 'search';
+            o.searchT = 6;
+            o.alert = 0.3;
+            o.lastX = player.x;
+            o.lastZ = player.z;
+          }
       }
     }
     // One of a pack found you: the whole pack hunts.

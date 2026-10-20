@@ -67,6 +67,7 @@ export class Story {
   readonly light = new LightStore(TUNING.survival.wispCap);
   readonly rests = new RestReturns();
   readonly sources = new Sources();
+  private restedAt = -Infinity;
   /** A rest began: share is the part of the night it gave back, 1 for a whole new night. */
   onRest: ((share: number, lit: boolean) => void) | null = null;
   private landmarks: Landmarks | null = null;
@@ -374,20 +375,34 @@ export class Story {
     this.wisp.speak(4.5, mood);
   }
 
+  /** Where (x, z) lies from a point, in words: "to the north-east, about 200 metres away". */
+  private compass(from: { x: number; z: number }, to: { x: number; z: number }) {
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const names = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+    const az = (Math.atan2(dx, -dz) + Math.PI * 2) % (Math.PI * 2);
+    const d = Math.hypot(dx, dz);
+    const dist = d < 60 ? 'close by' : `about ${Math.round(d / 50) * 50} metres away`;
+    return `to the ${names[Math.round(az / (Math.PI / 4)) % 8]}, ${dist}`;
+  }
+
+  /** She's growing cold: the wisp points to the nearest warm light and names where it is. */
+  warnCold(player: { x: number; z: number }, light: { x: number; z: number } | null) {
+    if (!this.wisp?.awake) return;
+    if (!light) {
+      this.guide("Brr! You're so cold. Find a light, any light!", 'oh', 'warn');
+      return;
+    }
+    this.point(new THREE.Vector3(light.x, this.hf.height(light.x, light.z) + 3, light.z));
+    this.guide(`Brr! You're getting so cold. There's a light ${this.compass(player, light)}. Warm up there!`, 'oh', 'warn');
+  }
+
   /** F: ask the light what to do next. */
   askGuide(player: PlayerController) {
     if (!this.wisp?.awake) return;
     const lm = this.landmarks;
     const carried = this.stars.carriedIds.length;
-    const compass = (to: { x: number; z: number }) => {
-      const dx = to.x - player.x;
-      const dz = to.z - player.z;
-      const names = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
-      const az = (Math.atan2(dx, -dz) + Math.PI * 2) % (Math.PI * 2);
-      const d = Math.hypot(dx, dz);
-      const dist = d < 60 ? 'close by' : `about ${Math.round(d / 50) * 50} metres away`;
-      return `to the ${names[Math.round(az / (Math.PI / 4)) % 8]}, ${dist}`;
-    };
+    const compass = (to: { x: number; z: number }) => this.compass(player, to);
     if (carried && settings.nights && lm) {
       const nb = lm.nearestBeacon(player.x, player.z);
       if (nb.index >= 0) {
@@ -497,6 +512,10 @@ export class Story {
 
   /** Light a beacon (first visit) or rest by it: bank carried stars and begin a new night. */
   private rest(i: number) {
+    // One rest per sleep: a second press straight after must not spend a diminished rest.
+    const now = performance.now();
+    if (now - this.restedAt < 5000) return;
+    this.restedAt = now;
     const first = this.progress.restAt(i);
     if (first) {
       this.landmarks!.lightBeacon(i);

@@ -27,14 +27,14 @@ export class DynamicResolution {
     if (p80 > budgetMs * 1.15 && this.scale > this.min) {
       // Behind: drop in proportion to how far behind, and don't come back above this for a while.
       this.ceiling = this.scale - 0.05;
-      this.ceilingUntil = now + 30000;
+      this.ceilingUntil = now + 20000;
       this.scale = Math.max(this.min, snap(this.scale * Math.sqrt(budgetMs / p80) * 0.95));
       this.calm = 0;
       return true;
     }
     if (p80 < budgetMs * 1.05) {
-      // On budget for about eight seconds: try a little more detail.
-      if (++this.calm >= 12 && this.scale < Math.min(1, this.ceiling)) {
+      // On budget for about four seconds: try a little more detail.
+      if (++this.calm >= 6 && this.scale < Math.min(1, this.ceiling)) {
         this.scale = Math.min(1, this.ceiling, snap(this.scale + 0.05));
         this.calm = 0;
         return true;
