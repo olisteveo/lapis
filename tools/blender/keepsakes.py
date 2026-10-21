@@ -340,6 +340,8 @@ def build():
     build_lantern()
     build_compass()
     build_ribbon()
+    import hand  # noqa: E402  the Keeper's ghostly hand, one pose per keepsake
+    hand.build_hands()
     B.export("keepsakes")
 
 
