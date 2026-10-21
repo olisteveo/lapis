@@ -15,6 +15,9 @@ public sealed class PlayerController
     public const double SprintSpeed = 6.5;
     public const double WadeDepth = -0.85;
     public const double MaxClimb = 1.05; // rise per metre travelled
+
+    /// <summary>Bare ground steeper than this (about 52 degrees) can't be walked up.</summary>
+    public const double MaxSlope = 1.3;
     public const double StepUp = 0.5; // a ledge you can step onto without jumping
     public const double JumpVelocity = 5.4;
     public const double Head = 1.75;
@@ -259,7 +262,7 @@ public sealed class PlayerController
             Y += (Math.Max(g, WadeDepth) - Y) * Math.Min(1, dt * 18);
             // Remember solid footing so a missed jump puts you back somewhere sensible.
             _safeTimer += dt;
-            if (g > -0.3 && _safeTimer > 0.25)
+            if (g > -0.3 && _world.Height(X, Z) > -0.3 && _safeTimer > 0.25)
             {
                 _safe = new Vec3(X, Y, Z);
                 _safeTimer = 0;
@@ -312,6 +315,10 @@ public sealed class PlayerController
         var g = Ground(x, z);
         if (Airborne) return g <= Y + 0.15; // only a wall stops you mid-air
         if (g < WadeDepth) return false; // deep water: jump it or stay out
+        // On bare ground the hill itself decides, measured on the terrain rather than the feet.
+        var t0 = _world.Height(X, Z);
+        var t1 = _world.Height(x, z);
+        if (g - t1 < 0.05 && t1 > t0 && (t1 - t0) / Math.Max(len, 1e-3) > MaxSlope) return false;
         return g - Y <= StepUp || (g - Y) / Math.Max(len, 1e-3) < MaxClimb;
     }
 

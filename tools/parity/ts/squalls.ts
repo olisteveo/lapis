@@ -6,7 +6,8 @@ import { mulberry32 } from '../../../src/core/heightfield.ts';
 
 export type SquallPhase = 'calm' | 'building' | 'raging' | 'passing';
 
-const BUILD = 14;
+// Long enough to see it coming and get under cover.
+const BUILD = 26;
 const PASS = 18;
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;

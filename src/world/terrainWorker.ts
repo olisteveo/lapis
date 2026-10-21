@@ -197,6 +197,15 @@ const RULES: Rule[] = [
     sink: 0.4,
   },
   {
+    // Shelter: broad trees scattered over all the open ground (shore, meadows, dunes, highlands), so a
+    // squall never catches you more than a short run from cover. Jungle and the Lantern Wood have their own.
+    cell: 46,
+    p: (s, sl) => smooth(1.5, 6, s.height) * (sl < 0.55 ? 1 : 0) * (1 - s.rock) * (1 - smooth(0.2, 0.6, s.grove)) * (1 - s.lantern) * (1 - s.drowned) * (0.75 + 0.2 * s.dunes),
+    types: [['CanopyA', 0.5], ['CanopyB', 0.5]],
+    scale: [1.0, 1.4],
+    sink: 0.4,
+  },
+  {
     // Lone trees on the meadow skyline.
     cell: 70,
     p: (s, sl) => s.meadow * smooth(4, 12, s.height) * (sl < 0.5 ? 1 : 0) * 0.35,

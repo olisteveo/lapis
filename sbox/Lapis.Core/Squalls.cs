@@ -35,7 +35,7 @@ public enum SquallPhase
 /// </summary>
 public sealed class SquallClock
 {
-    private const double Build = 14;
+    private const double Build = 26;
     private const double Pass = 18;
 
     private readonly Mulberry32 _rnd;

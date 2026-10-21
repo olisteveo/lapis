@@ -156,6 +156,8 @@ export class Flora implements Colliders {
   readonly glow = uniform(1);
   /** Where the walker is, so soft plants part around them. */
   readonly walker = uniform(new THREE.Vector3(1e6, 0, 1e6));
+  /** 0..1: how fast the walker is moving, so the leaves they push through shake. */
+  readonly walkerPace = uniform(0);
   private parts = new Map<string, { hi: Part[]; lo: Part[] }>();
   private batches = new Map<string, { hi: Batch[]; lo: Batch[] }>();
   private blocks = new Map<string, { x: number; z: number; sets: Record<string, Float32Array> | null }>();
@@ -258,12 +260,23 @@ export class Flora implements Colliders {
       // Brushing through: leaves within reach of the walker lean away, roots stay put, and only
       // what is at body height moves (vines overhead and grass underfoot alike).
       const away = world.xz.sub(this.walker.xz);
-      const near = smoothstep(1.4, 0.25, length(away));
-      const rooted = smoothstep(0.0, 0.5, lp.y);
-      const reach = smoothstep(2.3, 1.7, world.y.sub(this.walker.y)).mul(smoothstep(-0.6, -0.1, world.y.sub(this.walker.y)));
-      const bend = away.normalize().mul(near.mul(rooted).mul(reach).mul(0.55));
-      world = world.add(vec3(bend.x, near.mul(rooted).mul(reach).mul(-0.12), bend.y));
+      const dist = length(away);
+      const near = smoothstep(1.8, 0.2, dist);
+      const rooted = smoothstep(0.0, 0.4, lp.y);
+      const reach = smoothstep(2.4, 1.8, world.y.sub(this.walker.y)).mul(smoothstep(-0.6, -0.1, world.y.sub(this.walker.y)));
+      const k = near.mul(rooted).mul(reach);
+      // Parted: pushed out to the edge of the body and pressed down, so you wade through a gap in
+      // the leaves instead of a wall of them; shaken while you move, settling once you stop.
+      const dir = away.div(dist.max(1e-3));
+      const part = dir.mul(k.mul(float(1.1).sub(dist.mul(0.35)).max(0)));
+      const rustle = sin(time.mul(17).add(inst.x.mul(3.1)).add(lp.y.mul(6))).mul(this.walkerPace).mul(k).mul(0.09);
+      world = world.add(vec3(part.x.add(dir.y.mul(rustle)), k.mul(-0.28), part.y.sub(dir.x.mul(rustle))));
     }
+    // Leaves never come right up against the eye: in first person a bush you walk into would swell to
+    // fill the view, so anything nearer than ~0.8 m is pushed back out around the camera.
+    const toEye = world.sub(cameraPosition);
+    const eyeD = length(toEye);
+    world = cameraPosition.add(toEye.div(eyeD.max(1e-3)).mul(eyeD.max(smoothstep(0.0, 0.8, eyeD).mul(0.25).add(0.6))));
     mat.positionNode = world;
     const wp: any = varying(world);
 
@@ -480,6 +493,31 @@ export class Flora implements Colliders {
   /** How many sheltering plants (broad canopies, giant mushrooms) spread over (x, z), within r of their edge. */
   coverNear(x: number, z: number, r: number) {
     return this.countNear(SHELTER, x, z, r, CROWN);
+  }
+
+  /** The nearest sheltering plant (canopy or giant mushroom) within r of (x, z), or null. */
+  nearestCover(x: number, z: number, r: number) {
+    const B = FLORA.blockSize;
+    let best: { x: number; z: number } | null = null;
+    let bestD = r;
+    const reachB = Math.ceil(r / B);
+    for (let dj = -reachB; dj <= reachB; dj++)
+      for (let di = -reachB; di <= reachB; di++) {
+        const b = this.blocks.get(`${Math.floor((x + WORLD_HALF) / B) + di},${Math.floor((z + WORLD_HALF) / B) + dj}`);
+        if (!b?.sets) continue;
+        for (const type of SHELTER) {
+          const set = b.sets[type];
+          if (!set) continue;
+          for (let k = 0; k < set.length; k += 5) {
+            const d = Math.hypot(set[k] - x, set[k + 2] - z);
+            if (d < bestD) {
+              bestD = d;
+              best = { x: set[k], z: set[k + 2] };
+            }
+          }
+        }
+      }
+    return best;
   }
 
   /** reach: a plant's spread in metres at scale 1 (its crown), defaulting to 1. */

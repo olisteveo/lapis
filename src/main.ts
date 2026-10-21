@@ -215,7 +215,7 @@ async function boot() {
   let coverCount = 0;
   let coldWarned = false;
   let lightningIn = 8;
-  let squallWarned = 0;
+  let lastLights: LightSource[] = [];
   /** Squalls come more often and harder as the night grows late and as her sky is restored. */
   const updateWeather = (dt: number) => {
     const pressure = Math.min(1, story.night.progress * 0.6 + story.restoredShare * 0.6);
@@ -224,8 +224,18 @@ async function boot() {
     weather.windX.value = squalls.wind.x;
     weather.windZ.value = squalls.wind.z;
     if (entered === 'building') {
-      if (squallWarned++ < 2) story.guide(player.mode === 'boat' ? "Look! A squall's coming in. Get to shore, quick!" : "Brr, a squall's coming in off the sea! Find a light to shelter by.", 'look', 'warn');
-      else wisp.speak(0.8, 'warn');
+      // Every squall: point to the nearest cover, a sheltering tree or a lit light, whichever is closer.
+      const tree = flora.nearestCover(player.x, player.z, 160);
+      let best: { x: number; z: number; kind: 'tree' | 'light' } | null = tree ? { ...tree, kind: 'tree' } : null;
+      let bestD = tree ? Math.hypot(tree.x - player.x, tree.z - player.z) : 400;
+      for (const l of lastLights) {
+        const d = Math.hypot(l.x - player.x, l.z - player.z) - l.r;
+        if (d < bestD) {
+          best = { x: l.x, z: l.z, kind: 'light' };
+          bestD = d;
+        }
+      }
+      if (bestD > 4) story.warnSquall(player, best, player.mode === 'boat');
     }
     // Lightning only in the heart of a squall: a flash, and the night is darker after.
     lightningIn -= dt;
@@ -913,6 +923,7 @@ async function boot() {
     flora.update(focus, now);
     if (player.mode === 'walk') flora.walker.value.set(player.x, player.y, player.z);
     else flora.walker.value.set(1e6, 0, 1e6);
+    flora.walkerPace.value += (Math.min(1, player.mode === 'walk' ? player.speed / 3.2 : 0) - flora.walkerPace.value) * Math.min(1, dt * 6);
     beams.update(dt, focus);
     landmarks.update(focus, dt);
     wildlife.update(dt, focus, camera, player.mode === 'boat' || story.audioMix(player).sea > 0.55);
@@ -938,6 +949,7 @@ async function boot() {
       darkReachNow = nights ? darkReach(story.night.progress, settings.survival) : Infinity;
       refugesNow = story.refuges();
       setDarkWater(darkReachNow, refugesNow, settings.nights ? THREE.MathUtils.smoothstep(story.night.progress, 0.2, 0.95) * (1 - story.restoredShare * 0.8) : 0);
+      lastLights = lights;
       if (surviving() && !story.ending) surviveFrame(dt, lights);
       else cold = 0;
       // The paper lantern: a small circle of light that goes where you go.
