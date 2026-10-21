@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { KEEPSAKES, dressKeepsake, type KeepsakeId } from '../story/keepsakes';
-import { GhostHand } from './ghostHand';
+import { GhostHands } from './ghostHand';
 
 interface Pose {
   /** Where it sits in front of the eye, in camera space (x right, y up, -z ahead). */
@@ -17,25 +17,26 @@ const POSES: Record<KeepsakeId, Pose> = {
   shell: { at: [0.25, -0.06, -0.4], turn: [0.2, -0.9, 0.3], size: 0.14 },
   wings: { at: [0, -0.16, -0.8], turn: [-0.15, 0, 0], size: 0.45 },
   lantern: { at: [0.23, -0.14, -0.62], turn: [0, 0.3, 0], size: 0.2 },
-  compass: { at: [0.05, -0.13, -0.42], turn: [0.85, Math.PI, 0], size: 0.14 },
+  compass: { at: [0.05, -0.095, -0.42], turn: [0.85, Math.PI, 0], size: 0.14 },
   ribbon: { at: [0.2, -0.15, -0.55], turn: [0.1, -0.2, 0], size: 0.2 },
 };
 
 /**
- * How the ghostly hand holds each keepsake, in camera space: where the palm sits, its turn (x pitch,
- * y yaw, z roll; palm up at zero) and how far the fingers close round it.
+ * Where the ghostly hand (Hand_<id>, posed in Blender for each keepsake) sits in camera space, and its
+ * turn (x pitch, y yaw, z roll). At zero turn the palm faces up, the fingers point ahead and the thumb
+ * is to the right.
  */
-const GRIPS: Record<KeepsakeId, { at: [number, number, number]; turn: [number, number, number]; curl: number }> = {
+const GRIPS: Record<KeepsakeId, { at: [number, number, number]; turn: [number, number, number] }> = {
   // Cupped under the shell, tipped toward you as if lifting it to your ear.
-  shell: { at: [0.255, -0.115, -0.37], turn: [0.35, 0.5, 0.35], curl: 0.85 },
+  shell: { at: [0.25, -0.11, -0.36], turn: [0.45, 0.35, 0.3] },
   // A fist round the wings' staff, low in the middle.
-  wings: { at: [0.03, -0.2, -0.66], turn: [0.35, 0.2, -1.4], curl: 1.35 },
+  wings: { at: [0.19, -0.13, -0.6], turn: [0.25, -0.5, 1.55] },
   // Palm down, gripping the lantern's handle so it hangs.
-  lantern: { at: [0.235, -0.03, -0.6], turn: [0.1, 0.3, Math.PI], curl: 1.25 },
+  lantern: { at: [0.235, -0.045, -0.6], turn: [-0.2, 0.3, Math.PI] },
   // Flat under the compass, fingers barely closed.
-  compass: { at: [0.06, -0.152, -0.39], turn: [0.55, 0.15, 0.1], curl: 0.3 },
+  compass: { at: [0.065, -0.15, -0.35], turn: [0.45, 0.15, 0.0] },
   // The ribbon looped over half-closed fingers.
-  ribbon: { at: [0.2, -0.18, -0.52], turn: [0.3, 0.2, 0.2], curl: 0.65 },
+  ribbon: { at: [0.2, -0.13, -0.47], turn: [0.85, 0.15, 0.15] },
 };
 
 const NEEDLE_LIFT = 0.052;
@@ -54,7 +55,7 @@ export class HeldKeepsake {
   private raise = 0;
   private t = 0;
   private mirror = false;
-  private hand = new GhostHand();
+  private hand = new GhostHands();
 
   constructor() {
     this.group.name = 'held';
@@ -89,6 +90,7 @@ export class HeldKeepsake {
       this.holders.set(def.id, holder);
       this.group.add(holder);
     }
+    this.hand.setModels(templates, KEEPSAKES.map((k) => k.id));
   }
 
   setMirror(mirror: boolean) {
@@ -137,8 +139,8 @@ export class HeldKeepsake {
     const hoff = new THREE.Vector3(grip.at[0] + tremor * 0.004, grip.at[1] - (1 - ease) * 0.45 + bob + tremor * 0.006, grip.at[2]).applyQuaternion(camera.quaternion);
     this.hand.group.position.copy(camera.position).add(hoff);
     this.hand.group.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(grip.turn[0], grip.turn[1], grip.turn[2] + swing * 0.5)));
-    this.hand.curl = grip.curl;
-    this.hand.fade.value = ease * 0.85;
+    this.hand.show(this.showing);
+    this.hand.fade.value = ease;
     this.hand.group.updateMatrixWorld(true);
 
     if (this.needle && this.showing === 'compass') {
