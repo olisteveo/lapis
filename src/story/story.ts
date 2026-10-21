@@ -147,6 +147,12 @@ export class Story {
       const [text, call] = lines[site.kind];
       this.guide(text, call);
     };
+    puzzles.onSpotted = (site) => {
+      if (!this.wisp?.awake || this.hasSeen('puzzleThreadHint')) return;
+      this.seen('puzzleThreadHint');
+      this.point(new THREE.Vector3(site.x, site.y + 6, site.z));
+      this.guide('Look! A thread of light, rising over there. Something strange is waiting under it. A puzzle! Stars hide behind those.', 'look');
+    };
     puzzles.onNote = (k) => this.audio.note(k);
     puzzles.onFail = (site) => {
       if (site.kind === 'fireflies') {
@@ -401,6 +407,23 @@ export class Story {
     return true;
   }
 
+  /** A squall is coming: the wisp points to the nearest shelter and says where it is. */
+  warnSquall(player: { x: number; z: number }, shelter: { x: number; z: number; kind: 'tree' | 'light' } | null, inBoat: boolean) {
+    if (!this.wisp?.awake) return false;
+    if (inBoat) {
+      this.guide("Look! A squall's coming in. Get to shore, quick!", 'look', 'warn');
+      return true;
+    }
+    if (!shelter) {
+      this.guide("Brr, a squall's coming! Find a light or a big tree to shelter under!", 'look', 'warn');
+      return true;
+    }
+    this.point(new THREE.Vector3(shelter.x, this.hf.height(shelter.x, shelter.z) + 4, shelter.z));
+    const what = shelter.kind === 'tree' ? 'a big canopy to shelter under' : 'a light to shelter by';
+    this.guide(`A squall's coming! There's ${what} ${this.compass(player, shelter)}. Hurry!`, 'look', 'warn');
+    return true;
+  }
+
   /** F: ask the light what to do next. */
   askGuide(player: PlayerController) {
     if (!this.wisp?.awake) return;
@@ -450,6 +473,13 @@ export class Story {
       .map(({ c }) => ({ c, d: Math.hypot(BIOMES[c.region!].x - player.x, BIOMES[c.region!].z - player.z) }))
       .sort((a, b) => a.d - b.d)[0];
     const here = this.regionSky(player);
+    // Puzzles guard stars, and they're easy to walk past: point at the nearest unsolved one.
+    const puzzle = this.puzzles.nearestUnsolved(player.x, player.z, 900);
+    if (puzzle && (here <= 0 || this.asks % 2 === 0 || Math.hypot(puzzle.x - player.x, puzzle.z - player.z) < 300)) {
+      this.point(new THREE.Vector3(puzzle.x, puzzle.y + 6, puzzle.z));
+      this.guide(`Look! Something strange is waiting ${compass(puzzle)}. A puzzle, I think. See the thread of light? Stars hide behind those.`, 'look');
+      return;
+    }
     if (here > 0 && !this.skies[here].isComplete) {
       const c = CONSTELLATIONS[here];
       const left = c.fragments.length - this.skies[here].litCount;

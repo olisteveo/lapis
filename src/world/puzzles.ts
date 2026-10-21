@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { color, normalWorld, positionWorld, vec3 } from 'three/tsl';
+import { cameraPosition, color, length, normalWorld, positionLocal, positionWorld, sin, smoothstep, time, uniform, vec3 } from 'three/tsl';
 import { drawnSurface } from '../render/drawn';
 import { SKY } from '../config';
 import type { Colliders } from '../core/player';
@@ -51,6 +51,9 @@ export class Puzzles implements Colliders {
   onSolve: ((site: PuzzleSite) => void) | null = null;
   /** First time someone comes near an unsolved puzzle. */
   onDiscover: ((site: PuzzleSite) => void) | null = null;
+  /** First time an unsolved puzzle's thread of light comes within sight (350 m). */
+  onSpotted: ((site: PuzzleSite) => void) | null = null;
+  private spotted = new Set<string>();
 
   constructor(readonly sites: PuzzleSite[], solved: (id: string) => boolean, features: SkyFeature[]) {
     this.group.name = 'puzzles';
@@ -77,6 +80,38 @@ export class Puzzles implements Colliders {
       }
     });
     for (const p of this.impls) this.group.add(p.group);
+    // A thread of light over every unsolved puzzle, rising high enough to see across a region and
+    // fading as you arrive, so puzzles can be found by looking rather than stumbled on.
+    for (const p of this.impls) {
+      const fade = uniform(p.solved ? 0 : 1);
+      const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+      const h = positionLocal.y.div(70).add(0.5);
+      const d = length(positionWorld.xz.sub(cameraPosition.xz));
+      const shimmer = sin(time.mul(1.3).add(h.mul(9)).add(p.site.x)).mul(0.25).add(0.75);
+      mat.colorNode = color(0xbfe6ff).mul(smoothstep(1, 0.15, h).mul(smoothstep(0, 0.05, h)).mul(shimmer).mul(smoothstep(30, 90, d)).mul(smoothstep(1200, 700, d)).mul(fade).mul(0.55));
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.6, 70, 10, 1, true), mat);
+      beam.position.set(p.site.x, p.site.y + 35, p.site.z);
+      beam.frustumCulled = false;
+      this.group.add(beam);
+      this.markers.push({ impl: p, fade });
+    }
+  }
+
+  private markers: { impl: PuzzleImpl; fade: { value: number } }[] = [];
+
+  /** The nearest unsolved puzzle within r of (x, z), optionally in one region. */
+  nearestUnsolved(x: number, z: number, r: number, region?: string) {
+    let best: PuzzleSite | null = null;
+    let bestD = r;
+    for (const p of this.impls) {
+      if (p.solved || (region && p.site.region !== region)) continue;
+      const d = Math.hypot(p.site.x - x, p.site.z - z);
+      if (d < bestD) {
+        bestD = d;
+        best = p.site;
+      }
+    }
+    return best;
   }
 
   near(x: number, z: number, reach: number, visit: (cx: number, cz: number, r: number) => void) {
@@ -101,11 +136,16 @@ export class Puzzles implements Colliders {
     for (const p of this.impls) {
       // Far puzzles cost no draw calls; their solved light (a scene light) is handled elsewhere.
       p.group.visible = Math.hypot(p.site.x - player.x, p.site.z - player.z) < 800;
+      if (!p.solved && !this.spotted.has(p.site.id) && Math.hypot(p.site.x - player.x, p.site.z - player.z) < 350) {
+        this.spotted.add(p.site.id);
+        this.onSpotted?.(p.site);
+      }
       if (!this.discovered.has(p.site.id) && Math.hypot(p.site.x - player.x, p.site.z - player.z) < 22) {
         this.discovered.add(p.site.id);
         if (!p.solved) this.onDiscover?.(p.site);
       }
       p.update(dt, player);
     }
+    for (const m of this.markers) m.fade.value += ((m.impl.solved ? 0 : 1) - m.fade.value) * Math.min(1, dt * 0.5);
   }
 }

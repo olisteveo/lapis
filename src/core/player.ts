@@ -49,6 +49,8 @@ const WALK_SPEED = 3.2;
 const SPRINT_SPEED = 6.5;
 const WADE_DEPTH = -0.85;
 const MAX_CLIMB = 1.05; // rise per metre travelled
+// Bare ground steeper than this (about 52 degrees) can't be walked up: cliffs have to be jumped round.
+const MAX_SLOPE = 1.3;
 const STEP_UP = 0.5; // a ledge you can step onto without jumping
 const JUMP_V = 5.4;
 const HEAD = 1.75;
@@ -216,6 +218,11 @@ export class PlayerController {
       const g = this.ground(x, z);
       if (this.airborne) return g <= this.y + 0.15; // only a wall stops you mid-air
       if (g < WADE_DEPTH) return false; // deep water: jump it or stay out
+      // On bare ground the hill itself decides, measured on the terrain rather than your feet (which
+      // lag it, so the per-step allowance below would let you walk up a cliff in small steps).
+      const t0 = this.world.height(this.x, this.z);
+      const t1 = this.world.height(x, z);
+      if (g - t1 < 0.05 && t1 > t0 && (t1 - t0) / Math.max(len2, 1e-3) > MAX_SLOPE) return false;
       return g - this.y <= STEP_UP || (g - this.y) / Math.max(len2, 1e-3) < MAX_CLIMB;
     };
     if (canMoveTo(this.x + mx, this.z + mz, step)) {
@@ -277,9 +284,10 @@ export class PlayerController {
       this.pushOutOfWalls();
     } else {
       this.y += (Math.max(g, WADE_DEPTH) - this.y) * Math.min(1, dt * 18);
-      // Remember solid footing so a missed jump puts you back somewhere sensible.
+      // Remember solid footing so a missed jump puts you back somewhere sensible: dry land itself,
+      // never a stone or post standing in the water, so falling off stepping stones means starting over.
       this.safeTimer += dt;
-      if (g > -0.3 && this.safeTimer > 0.25) {
+      if (g > -0.3 && this.world.height(this.x, this.z) > -0.3 && this.safeTimer > 0.25) {
         this.safe = { x: this.x, y: this.y, z: this.z };
         this.safeTimer = 0;
       }

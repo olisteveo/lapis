@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { KEEPSAKES, dressKeepsake, type KeepsakeId } from '../story/keepsakes';
+import { GhostHand } from './ghostHand';
 
 interface Pose {
   /** Where it sits in front of the eye, in camera space (x right, y up, -z ahead). */
@@ -20,11 +21,28 @@ const POSES: Record<KeepsakeId, Pose> = {
   ribbon: { at: [0.2, -0.15, -0.55], turn: [0.1, -0.2, 0], size: 0.2 },
 };
 
+/**
+ * How the ghostly hand holds each keepsake, in camera space: where the palm sits, its turn (x pitch,
+ * y yaw, z roll; palm up at zero) and how far the fingers close round it.
+ */
+const GRIPS: Record<KeepsakeId, { at: [number, number, number]; turn: [number, number, number]; curl: number }> = {
+  // Cupped under the shell, tipped toward you as if lifting it to your ear.
+  shell: { at: [0.255, -0.115, -0.37], turn: [0.35, 0.5, 0.35], curl: 0.85 },
+  // A fist round the wings' staff, low in the middle.
+  wings: { at: [0.03, -0.2, -0.66], turn: [0.35, 0.2, -1.4], curl: 1.35 },
+  // Palm down, gripping the lantern's handle so it hangs.
+  lantern: { at: [0.235, -0.03, -0.6], turn: [0.1, 0.3, Math.PI], curl: 1.25 },
+  // Flat under the compass, fingers barely closed.
+  compass: { at: [0.06, -0.152, -0.39], turn: [0.55, 0.15, 0.1], curl: 0.3 },
+  // The ribbon looped over half-closed fingers.
+  ribbon: { at: [0.2, -0.18, -0.52], turn: [0.3, 0.2, 0.2], curl: 0.65 },
+};
+
 const NEEDLE_LIFT = 0.052;
 
 /**
  * A keepsake raised in first person. One at a time: switching lowers the current one out of view
- * before the next comes up. The Keeper's hands are never drawn, only the thing they hold.
+ * before the next comes up, held in a ghostly hand: the Keeper as she remembers them, half there.
  */
 export class HeldKeepsake {
   readonly group = new THREE.Group();
@@ -36,10 +54,12 @@ export class HeldKeepsake {
   private raise = 0;
   private t = 0;
   private mirror = false;
+  private hand = new GhostHand();
 
   constructor() {
     this.group.name = 'held';
     this.group.visible = false;
+    this.group.add(this.hand.group);
   }
 
   /** Builds the held versions from keepsakes.glb (Held_<id>, plus the compass's own needle). */
@@ -111,6 +131,15 @@ export class HeldKeepsake {
     const swing = this.showing === 'lantern' ? Math.sin(this.t * 1.7) * 0.08 * (0.4 + walk) : 0;
     holder.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose.turn[0] + tremor * 0.03, pose.turn[1], pose.turn[2] + swing)));
     holder.updateMatrixWorld(true);
+
+    // The hand moves with the keepsake (same raise, bob and tremor) and fades in as it comes up.
+    const grip = GRIPS[this.showing];
+    const hoff = new THREE.Vector3(grip.at[0] + tremor * 0.004, grip.at[1] - (1 - ease) * 0.45 + bob + tremor * 0.006, grip.at[2]).applyQuaternion(camera.quaternion);
+    this.hand.group.position.copy(camera.position).add(hoff);
+    this.hand.group.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(grip.turn[0], grip.turn[1], grip.turn[2] + swing * 0.5)));
+    this.hand.curl = grip.curl;
+    this.hand.fade.value = ease * 0.85;
+    this.hand.group.updateMatrixWorld(true);
 
     if (this.needle && this.showing === 'compass') {
       let want = this.needleYaw + Math.sin(this.t * 0.9) * 0.6 * dt;
