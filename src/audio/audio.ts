@@ -41,7 +41,12 @@ export class Audio {
     this.ctx = ctx;
     this.master = ctx.createGain();
     this.master.gain.value = 0;
-    this.master.connect(ctx.destination);
+    // Underwater everything is heard through the water: a low-pass the dive closes down.
+    this.muffle = ctx.createBiquadFilter();
+    this.muffle.type = 'lowpass';
+    this.muffle.frequency.value = 20000;
+    this.master.connect(this.muffle);
+    this.muffle.connect(ctx.destination);
     this.master.gain.setTargetAtTime(this.volumes.master, ctx.currentTime + 0.5, 2.5);
     this.musicBus = ctx.createGain();
     this.sfxBus = ctx.createGain();
@@ -266,6 +271,14 @@ export class Audio {
   }
 
   /** The world goes quiet behind the pause menu; music stays faintly. */
+  private muffle!: BiquadFilterNode;
+
+  /** Head under the water: the world goes dull and far away. */
+  setUnderwater(under: boolean) {
+    if (!this.ctx) return;
+    this.muffle.frequency.setTargetAtTime(under ? 520 : 20000, this.ctx.currentTime, under ? 0.08 : 0.25);
+  }
+
   setPaused(paused: boolean) {
     this.pausedDuck = paused ? 0.35 : 1;
     const ctx = this.ctx;

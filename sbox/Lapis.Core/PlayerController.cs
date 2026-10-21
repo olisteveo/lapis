@@ -26,6 +26,15 @@ public sealed class PlayerController
     public const double StrokePeriod = 1.7;
     public const double BoatMax = 9;
 
+    // Swimming: feet hang this far below the surface (the eye just clears it), and how fast you go.
+    public const double SwimY = -1.42;
+    public const double SwimSpeed = 1.9;
+    public const double SwimSprint = 3.0;
+    public const double DiveSpeed = 1.5;
+    public const double RiseSpeed = 1.7;
+    public const double BreathSeconds = 30;
+    public const double ClimbOut = 2.25;
+
     private readonly IWorldQuery _world;
     private bool _interactLatch;
     private bool _jumpLatch;
@@ -36,6 +45,13 @@ public sealed class PlayerController
     private double _strokeUsed = -1;
     private Vec2? _boatCall;
     private bool _hasBoarded;
+    private bool _wasUnder;
+
+    /// <summary>0..1 breath left while swimming underwater; refills at the surface.</summary>
+    public double Breath { get; private set; } = 1;
+
+    /// <summary>True when the eye is below the water: diving.</summary>
+    public bool Underwater => Mode == PlayerMode.Swim && Y < SwimY - 0.2;
 
     public PlayerController(IWorldQuery world) => _world = world;
 
@@ -144,6 +160,7 @@ public sealed class PlayerController
         _jumpLatch = input.Jump;
         _holdE = input.Interact ? _holdE + dt : 0;
         if (Mode == PlayerMode.Walk) Walk(dt, input, pressed, jumped);
+        else if (Mode == PlayerMode.Swim) Swim(dt, input, pressed, jumped);
         else Row(dt, input, pressed, jumped);
         Boat.Bob = Math.Sin(_t * 1.3) * 0.04 + Math.Sin(_t * 0.7 + 1) * 0.03;
         GlideCalledBoat(dt);
@@ -241,15 +258,15 @@ public sealed class PlayerController
                 Y = Math.Max(ceiling - Head, Y - VerticalVelocity * dt);
                 VerticalVelocity = 0;
             }
+            if (Y <= Math.Max(g, SwimY) && VerticalVelocity <= 0 && g < WadeDepth)
+            {
+                // Into the water: you go under with the fall's momentum, then come up swimming.
+                EnterSwim(Math.Min(0, VerticalVelocity) * 0.25);
+                Event?.Invoke(PlayerEvent.Fall);
+                return;
+            }
             if (Y <= g && VerticalVelocity <= 0)
             {
-                if (g < WadeDepth)
-                {
-                    Falling = 1.3;
-                    Airborne = false;
-                    Event?.Invoke(PlayerEvent.Fall);
-                    return;
-                }
                 Y = g;
                 Airborne = false;
                 VerticalVelocity = 0;
@@ -259,6 +276,13 @@ public sealed class PlayerController
         }
         else
         {
+            if (g < WadeDepth)
+            {
+                // Walked off the shelf into deep water.
+                EnterSwim(0);
+                Event?.Invoke(PlayerEvent.Swim);
+                return;
+            }
             Y += (Math.Max(g, WadeDepth) - Y) * Math.Min(1, dt * 18);
             // Remember solid footing so a missed jump puts you back somewhere sensible.
             _safeTimer += dt;
@@ -302,6 +326,105 @@ public sealed class PlayerController
         }
     }
 
+    private void EnterSwim(double vy)
+    {
+        Mode = PlayerMode.Swim;
+        Airborne = false;
+        VerticalVelocity = vy;
+        Y = Math.Min(Y, SwimY);
+        Speed = Math.Min(Speed, SwimSprint);
+    }
+
+    private void Swim(double dt, in PlayerInput input, bool pressed, bool jumped)
+    {
+        var len = Hypot(input.MoveX, input.MoveY);
+        var target = len > 0.1 ? (input.Sprint ? SwimSprint : SwimSpeed) * Math.Min(1, len) : 0;
+        Speed += (target - Speed) * Math.Min(1, dt * 2.5);
+        if (len > 0.1)
+        {
+            var fx = -Math.Sin(input.CameraYaw);
+            var fz = -Math.Cos(input.CameraYaw);
+            var dx = fx * input.MoveY - fz * input.MoveX;
+            var dz = fz * input.MoveY + fx * input.MoveX;
+            var diff = Math.Atan2(dx, dz) - Heading;
+            diff = Math.Atan2(Math.Sin(diff), Math.Cos(diff));
+            Heading += diff * Math.Min(1, dt * 5);
+        }
+        var atSurface = Y > SwimY - 0.15;
+
+        var wantDown = input.Dive && Breath > 0;
+        var vyTarget = wantDown ? -DiveSpeed : input.Jump ? RiseSpeed : Y < SwimY ? 0.7 : 0;
+        VerticalVelocity += (vyTarget - VerticalVelocity) * Math.Min(1, dt * 4);
+
+        var step = Speed * dt;
+        var nx = X + Math.Sin(Heading) * step;
+        var nz = Z + Math.Cos(Heading) * step;
+        var terrain = _world.Height(nx, nz);
+        var top = Platforms?.Top(nx, nz, Y + ClimbOut) ?? double.NegativeInfinity;
+        var wall = Platforms?.Blocked(nx, nz, Y) ?? false;
+        if (atSurface && terrain >= WadeDepth && top < terrain + 0.05)
+        {
+            Mode = PlayerMode.Walk;
+            X = nx;
+            Z = nz;
+            Y = Math.Max(terrain, WadeDepth);
+            VerticalVelocity = 0;
+            Breath = 1;
+            Event?.Invoke(PlayerEvent.ClimbOut);
+            return;
+        }
+        if (atSurface && top > SwimY && top - Y <= ClimbOut && (jumped || pressed))
+        {
+            Mode = PlayerMode.Walk;
+            X = nx;
+            Z = nz;
+            Y = top;
+            VerticalVelocity = 0;
+            Breath = 1;
+            Event?.Invoke(PlayerEvent.ClimbOut);
+            return;
+        }
+        var swimmable = !wall && top <= Y + 0.2 && (atSurface || terrain < Y + 0.2);
+        if (swimmable)
+        {
+            X = nx;
+            Z = nz;
+        }
+        else Speed *= 0.5;
+        Resolve();
+
+        var floor = _world.Height(X, Z) + 0.3;
+        Y = Math.Min(SwimY, Math.Max(floor, Y + VerticalVelocity * dt));
+        if (Y >= SwimY && VerticalVelocity > 0) VerticalVelocity = 0;
+        var under = Y < SwimY - 0.2;
+        if (under) Breath = Math.Max(0, Breath - dt / BreathSeconds);
+        else Breath = Math.Min(1, Breath + dt / 4);
+        if (_wasUnder && !under) Event?.Invoke(PlayerEvent.Surface);
+        if (!_wasUnder && under) Event?.Invoke(PlayerEvent.Dive);
+        _wasUnder = under;
+        Anim = Speed > 0.2 ? PlayerAnim.Walk : PlayerAnim.Idle;
+        AnimRate = Math.Max(0.5, Speed / SwimSpeed) * 0.6;
+
+        var db = Hypot(Boat.X - X, Boat.Z - Z);
+        Prompt = "";
+        if (db < 3.6 && atSurface)
+        {
+            Prompt = "E   climb into the boat";
+            if (pressed)
+            {
+                Mode = PlayerMode.Boat;
+                Speed = 0;
+                Breath = 1;
+                _boatCall = null;
+                _hasBoarded = true;
+            }
+        }
+        else if (atSurface && !double.IsInfinity(top) && top > SwimY && top - Y <= ClimbOut)
+        {
+            Prompt = "Space   climb out";
+        }
+    }
+
     private bool CanMoveTo(double x, double z, double len)
     {
         // Never trap anyone: already overlapping something (a respawn, a jump's arc), you may move
@@ -314,7 +437,7 @@ public sealed class PlayerController
         }
         var g = Ground(x, z);
         if (Airborne) return g <= Y + 0.15; // only a wall stops you mid-air
-        if (g < WadeDepth) return false; // deep water: jump it or stay out
+        if (g < WadeDepth) return true; // deep water: wade on in and swim
         // On bare ground the hill itself decides, measured on the terrain rather than the feet.
         var t0 = _world.Height(X, Z);
         var t1 = _world.Height(x, z);

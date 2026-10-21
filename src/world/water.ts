@@ -1,12 +1,15 @@
 import * as THREE from 'three/webgpu';
 import {
   cameraFar, cameraNear, cameraPosition, color, dot, float, fwidth, max, mix, mx_noise_float, normalize, perspectiveDepthToViewZ,
-  positionView, positionWorld, pow, reflect, reflector, saturate, sin, smoothstep, time, vec2, vec3, viewportDepthTexture,
+  positionView, positionWorld, pow, reflect, reflector, saturate, sin, smoothstep, time, uniform, vec2, vec3, viewportDepthTexture,
 } from 'three/tsl';
 import { darkAtNode } from '../render/darkWater';
 import { glowLeftNode } from '../render/drained';
 import { PALETTE, QUALITY, SKY, onQualityChange } from '../config';
 import { LAGOONS } from '../core/heightfield';
+
+/** Each lagoon's stepping-stone channel (first stone x, z, last stone x, z): starlit, freezing water. */
+export const lagoonChannels = LAGOONS.map(() => uniform(new THREE.Vector4(1e6, 1e6, 1e6, 1e6)));
 
 export function createWater() {
   const reflection = reflector({ resolutionScale: QUALITY.reflection });
@@ -72,6 +75,15 @@ export function createWater() {
   // Secret lagoons: still, luminous turquoise water, lit from below.
   let lagoon: any = float(0);
   for (const L of LAGOONS) lagoon = max(lagoon, smoothstep(L.r - 4, L.r - 18, positionWorld.xz.sub(vec2(L.x, L.z)).length()));
+  // The starlight spills out along the channel the stones cross, a little fainter.
+  for (const ch of lagoonChannels) {
+    const c = ch as any;
+    const a = vec2(c.x, c.y);
+    const ab = vec2(c.z, c.w).sub(a);
+    const t = positionWorld.xz.sub(a).dot(ab).div(ab.dot(ab).max(1e-3)).clamp(0, 1);
+    const d = positionWorld.xz.sub(a.add(ab.mul(t))).length();
+    lagoon = max(lagoon, smoothstep(8, 3, d).mul(0.75));
+  }
   const glowBand = sin(depth.mul(1.6).sub(t.mul(0.6)).add(fn.mul(2))).mul(0.5).add(0.5);
   // Bright enough to bloom: the light comes up through the water, strongest in the shallows.
   const lagoonCol = mix(color(0x0d4f66), color(0x6ff4ee), smoothstep(2.8, 0.1, depth).mul(0.55).add(glowBand.mul(0.45))).mul(1.7);

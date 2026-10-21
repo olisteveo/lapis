@@ -4,6 +4,7 @@ import { hash } from '../render/seed';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PALETTE, SKY } from '../config';
 import type { Heightfield } from '../core/heightfield';
+import { SeaLife } from './seaLife';
 
 type N = any;
 
@@ -85,8 +86,15 @@ export class Wildlife {
   /** Called with (kind, world position) so audio can play splashes and song. */
   onEvent: ((kind: 'splash' | 'bigSplash' | 'whale', at: THREE.Vector3) => void) | null = null;
 
+  /** Life under the surface, for diving: shoals, kelp, plankton. */
+  readonly sea: SeaLife;
+  /** 0..1 how far under the camera is, set by the game each frame. */
+  underwater = 0;
+
   constructor(private hf: Heightfield) {
     this.group.name = 'wildlife';
+    this.sea = new SeaLife(hf);
+    this.group.add(this.sea.group);
     for (let i = 0; i < 10; i++) this.rings.push(this.makeRing());
   }
 
@@ -101,6 +109,7 @@ export class Wildlife {
     if (jelly) this.buildJellies(mergedGeometry(jelly));
     if (fish) {
       const geo = mergedGeometry(fish);
+      this.sea.buildShoals(geo);
       const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
       mat.colorNode = mix(color(0x9fb4ff), color(PALETTE.starWhite), vertexColor().g.mul(0.5)).mul(1.3);
       for (let i = 0; i < 4; i++) {
@@ -258,7 +267,9 @@ export class Wildlife {
         const h = this.hf.height(x, z);
         if (h > -0.7 || h < -9) continue;
         const ph = rnd(i + 17, j);
-        a.set([x, -0.35, z, ph], n * 4);
+        // Most drift just under the surface; some hang deeper, for divers to find.
+        const y = ph > 0.45 ? Math.max(h + 1.2, -0.35 - (ph - 0.45) * 12) : -0.35;
+        a.set([x, y, z, ph], n * 4);
         g.set([x, 0, z, ph], n * 4);
         n++;
       }
@@ -418,6 +429,7 @@ export class Wildlife {
   update(dt: number, focus: THREE.Vector3, camera: THREE.Camera, atSea: boolean) {
     this.updateBirds(focus);
     this.updateJellies(focus);
+    this.sea.update(focus, this.underwater);
     this.updateFish(dt, focus, camera);
     this.updateWhale(dt, focus, camera, atSea);
     for (const r of this.rings) {

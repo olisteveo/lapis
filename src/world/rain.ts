@@ -3,6 +3,10 @@ import { cameraPosition, color, float, fract, instancedBufferAttribute, length, 
 import { mulberry32 } from '../core/heightfield';
 import { QUALITY, onQualityChange } from '../config';
 import { weather } from '../render/weather';
+import { uniform } from 'three/tsl';
+
+/** 1 above the water, 0 with the eye under it: rain doesn't fall in the sea. */
+export const rainAbove = uniform(1);
 
 /**
  * A squall's rain: streaks falling in a box that travels with the camera, slanted by the wind and
@@ -30,7 +34,7 @@ export function createRain() {
   // Only some drops fall in a light shower; all of them in a full squall.
   const gate = fract(s.x.mul(7.31).add(s.y.mul(3.17))).mul(0.6);
   const on = smoothstep(gate, gate.add(0.1), weather.storm as any);
-  const fade = smoothstep(half, half.mul(0.5), d).mul(smoothstep(0.8, 2.5, d)).mul(on);
+  const fade = smoothstep(half, half.mul(0.5), d).mul(smoothstep(0.8, 2.5, d)).mul(on).mul(rainAbove);
   mat.scaleNode = vec2(0.028, 0.9).mul(fade.greaterThan(0.01).select(float(1), float(0))) as any;
   const u = uv();
   const streak = smoothstep(0.5, 0.0, abs(u.x.sub(0.5))).mul(smoothstep(0.0, 0.4, u.y)).mul(smoothstep(1.0, 0.6, u.y));

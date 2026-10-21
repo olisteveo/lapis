@@ -87,6 +87,12 @@ check('dark late at night: tighter (150-300 s)', late >= 150 && late <= 300, `${
 check('late squall in the open: a real danger (45-120 s)', squall >= 45 && squall <= 120, `${squall} s`);
 check('sheltering from a squall buys time (x1.5)', sheltered >= squall * 1.5, `${sheltered} s`);
 check('a glowing glade softens the cold (x2)', glade >= late * 2, `${glade} s`);
+const swim = collapseAfter('survival', dark(0.3, { inWater: true }));
+check('swimming in the sea: about a minute (40-90 s)', swim >= 40 && swim <= 90, `${swim} s`);
+const dive = collapseAfter('survival', dark(0.3, { inWater: true, submerged: true }));
+check('diving chills faster than swimming', dive < swim * 0.8, `${dive} s`);
+const lagoonSwim = collapseAfter('survival', dark(0.3, { inWater: true, lagoon: true }));
+check('a lagoon freezes you in seconds (3-10 s)', lagoonSwim >= 3 && lagoonSwim <= 10, `${lagoonSwim} s`);
 const lantern = collapseAfter('survival', dark(0.9, { glow: 0.45 }));
 check('the raised lantern alone never makes the dark safe', Number.isFinite(lantern), `${lantern} s`);
 check('Story mode is gentle (over 10 min, late night)', collapseAfter('story', dark(0.9)) > 600, `${collapseAfter('story', dark(0.9))} s`);

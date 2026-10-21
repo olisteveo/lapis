@@ -188,6 +188,16 @@ tuning drifts out of range):
   keepsake trembles when it's bad.
 - Drawn glow visibly dims: plants and surf in an area the lantern has drained stay low until they regrow.
 
+## Swimming and diving
+
+Deep water no longer lifts you back to the shore: you swim (`src/core/player.ts`, mode `swim`, ported to C# with a
+`swim_dive` parity trace). Space rises, C dives, breath lasts 30 s underwater and refills at the surface; you climb
+out onto shore, stones, piers and into the boat. The sea drains warmth (about 52 s from warm in Survival, 33 s
+diving); a lagoon's starlit water, and the channel its stones cross, about 6 s, so the stones stay the way in. A
+missed jump between stones means a few freezing seconds to haul back out, or a collapse. Underwater: teal murk with
+caustic light, ink and rain held off, sound muffled, and sea life (`src/world/seaLife.ts`): shoals, kelp, plankton,
+deeper jellyfish. Nightmares can't hear a diver.
+
 Not yet: low islands submerging (the terrain doesn't change).
 
 Not yet (phase 1): drawn sources dimming visibly (they run dry, but don't look it), visible breath and trembling hands at low

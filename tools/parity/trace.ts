@@ -40,14 +40,14 @@ function run(name: string, setup: Setup, seconds: number, drive: Driver) {
   const steps = [];
   const n = Math.round(seconds / DT);
   for (let i = 0; i < n; i++) {
-    const input: PlayerInput = { moveX: 0, moveY: 0, sprint: false, interact: false, jump: false, cameraYaw: 0, ...drive(p, i, i * DT) };
+    const input: PlayerInput = { moveX: 0, moveY: 0, sprint: false, interact: false, jump: false, cameraYaw: 0, dive: false, ...drive(p, i, i * DT) };
     events = [];
     p.update(DT, input);
     const b = p.boat;
     steps.push({
       in: input,
       x: p.x, y: p.y, z: p.z, heading: p.heading, speed: p.speed, vy: p.vy,
-      mode: p.mode, airborne: p.airborne, falling: p.falling, anim: p.anim, animRate: p.animRate, prompt: p.prompt,
+      mode: p.mode, airborne: p.airborne, falling: p.falling, anim: p.anim, animRate: p.animRate, prompt: p.prompt, breath: p.breath,
       boat: { x: b.x, z: b.z, heading: b.heading, speed: b.speed, stroke: b.stroke, rowing: b.rowing, bob: b.bob, current: b.current },
       events,
     });
@@ -122,6 +122,18 @@ run('deep_water', { place: [15, 12, Math.PI / 2], boat: farBoat }, 6, (p, _i, t)
     return { moveY: 1, sprint: true, cameraYaw: yaw, jump: !p.airborne && ahead < -0.7 };
   }
   return {};
+});
+
+// Swim: wade off the shelf, swim out, dive to the bottom and stay down, come back up, swim home
+// and wade out onto the shore.
+run('swim_dive', { place: [15, 12, Math.PI / 2], boat: farBoat }, 26, (p, _i, t) => {
+  const out = yawToward(1, 0);
+  const home = yawToward(-1, 0);
+  if (t < 5) return { moveY: 1, cameraYaw: out };
+  if (t < 9) return { moveY: 0.4, cameraYaw: out, dive: true };
+  if (t < 14) return { dive: true };
+  if (t < 16) return { jump: true };
+  return { moveY: 1, sprint: t < 20, cameraYaw: home };
 });
 
 // Moth wings: hop off the tall pillar and hold jump to glide down.
@@ -218,6 +230,8 @@ for (const mode of ['survival', 'story'] as const) {
       dark: 0.5 + 0.5 * Math.sin(i * 0.013),
       rain: 0.5 + 0.5 * Math.cos(i * 0.007),
       glow: i % 1100 < 400 ? 0.7 : 0,
+      submerged: i % 600 > 450,
+      lagoon: i % 1500 > 1440,
     };
     const collapsed = warmth.update(dt, e, t);
     if (collapsed) warmth.reset();
@@ -229,7 +243,7 @@ for (const mode of ['survival', 'story'] as const) {
     const rest = i % 500 === 0 ? rests.restAt(i % 1500 === 0 ? 2 : 1) : 0;
     if (i === 2500) rests.clear();
     steps.push({
-      dt, lit: e.lit, inWater: e.inWater, wind: e.wind, night: e.night, dark: e.dark, rain: e.rain, glow: e.glow,
+      dt, lit: e.lit, inWater: e.inWater, wind: e.wind, night: e.night, dark: e.dark, rain: e.rain, glow: e.glow, submerged: e.submerged, lagoon: e.lagoon,
       warmth: warmth.value, collapsed, light: light.value, cap: light.cap, ready: light.ready, flare,
       drawn, left: sources.left(12.5, -3, now), rest, streak: rests.streak,
     });

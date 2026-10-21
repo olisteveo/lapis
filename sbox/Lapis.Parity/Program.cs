@@ -76,6 +76,7 @@ static Result RunPlayer(JsonElement root)
             Interact = inp.GetProperty("interact").GetBoolean(),
             Jump = inp.GetProperty("jump").GetBoolean(),
             CameraYaw = inp.GetProperty("cameraYaw").GetDouble(),
+            Dive = inp.TryGetProperty("dive", out var dv) && dv.GetBoolean(),
         };
         events.Clear();
         p.Update(dt, input);
@@ -89,6 +90,7 @@ static Result RunPlayer(JsonElement root)
         check.Num("vy", s, p.VerticalVelocity);
         check.Num("falling", s, p.Falling);
         check.Num("animRate", s, p.AnimRate);
+        check.Num("breath", s, p.Breath);
         check.Str("mode", s, Camel(p.Mode));
         check.Str("anim", s, Camel(p.Anim));
         check.Str("prompt", s, p.Prompt);
@@ -146,7 +148,7 @@ static Result RunSurvival(JsonElement root)
     {
         var dt = s.GetProperty("dt").GetDouble();
         now += dt;
-        var e = new Exposure(s.GetProperty("lit").GetDouble(), s.GetProperty("inWater").GetBoolean(), s.GetProperty("wind").GetDouble(), s.GetProperty("night").GetDouble(), s.GetProperty("dark").GetDouble(), s.GetProperty("rain").GetDouble(), s.GetProperty("glow").GetDouble());
+        var e = new Exposure(s.GetProperty("lit").GetDouble(), s.GetProperty("inWater").GetBoolean(), s.GetProperty("wind").GetDouble(), s.GetProperty("night").GetDouble(), s.GetProperty("dark").GetDouble(), s.GetProperty("rain").GetDouble(), s.GetProperty("glow").GetDouble(), s.GetProperty("submerged").GetBoolean(), s.GetProperty("lagoon").GetBoolean());
         var collapsed = warmth.Update(dt, e, t);
         if (collapsed) warmth.Reset();
         light.Update(dt);
