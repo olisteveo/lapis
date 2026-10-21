@@ -13,7 +13,7 @@ public enum SurvivalMode
 /// <summary>Rates and capacities for one survival mode (docs/SURVIVAL.md).</summary>
 public sealed class SurvivalTuning
 {
-    public SurvivalTuning(double drainDark, double drainWater, double drainWind, double drainDarkWater, double drainRain, double lateFactor, double refill,
+    public SurvivalTuning(double drainDark, double drainWater, double drainWind, double drainDarkWater, double drainRain, double drainDive, double drainLagoon, double lateFactor, double refill,
         double wispCap, double lanternCap, double flareCost, double flareCooldown, double moteRate, double drawRate)
     {
         DrainDark = drainDark;
@@ -21,6 +21,8 @@ public sealed class SurvivalTuning
         DrainWind = drainWind;
         DrainDarkWater = drainDarkWater;
         DrainRain = drainRain;
+        DrainDive = drainDive;
+        DrainLagoon = drainLagoon;
         LateFactor = lateFactor;
         Refill = refill;
         WispCap = wispCap;
@@ -36,6 +38,8 @@ public sealed class SurvivalTuning
     public double DrainWind { get; }
     public double DrainDarkWater { get; }
     public double DrainRain { get; }
+    public double DrainDive { get; }
+    public double DrainLagoon { get; }
     public double LateFactor { get; }
     public double Refill { get; }
     public double WispCap { get; }
@@ -45,17 +49,19 @@ public sealed class SurvivalTuning
     public double MoteRate { get; }
     public double DrawRate { get; }
 
-    public static readonly SurvivalTuning Survival = new(1.0 / 420, 1.0 / 60, 1.0 / 240, 1.0 / 40, 1.0 / 150, 2.2, 1.0 / 12, 1, 3, 1, 3, 1.0 / 90, 1.0 / 8);
+    public static readonly SurvivalTuning Survival = new(1.0 / 420, 1.0 / 60, 1.0 / 240, 1.0 / 40, 1.0 / 150, 1.0 / 90, 1.0 / 7, 2.2, 1.0 / 12, 1, 3, 1, 3, 1.0 / 90, 1.0 / 8);
 
     /// <summary>The story without the struggle: the cold is slow, flares are free.</summary>
-    public static readonly SurvivalTuning Story = new(1.0 / 1200, 1.0 / 240, 0, 1.0 / 160, 1.0 / 400, 1.5, 1.0 / 6, 1, 3, 0, 20, 1.0 / 90, 1.0 / 8);
+    public static readonly SurvivalTuning Story = new(1.0 / 1200, 1.0 / 240, 0, 1.0 / 160, 1.0 / 400, 1.0 / 300, 1.0 / 14, 1.5, 1.0 / 6, 1, 3, 0, 20, 1.0 / 90, 1.0 / 8);
 }
 
 /// <summary>What the Keeper is exposed to this frame, measured by the game.</summary>
 public readonly struct Exposure
 {
-    public Exposure(double lit, bool inWater, double wind, double night, double dark = 0, double rain = 0, double glow = 0)
+    public Exposure(double lit, bool inWater, double wind, double night, double dark = 0, double rain = 0, double glow = 0, bool submerged = false, bool lagoon = false)
     {
+        Submerged = submerged;
+        Lagoon = lagoon;
         Glow = glow;
         Rain = rain;
         Lit = lit;
@@ -74,6 +80,8 @@ public readonly struct Exposure
 
     /// <summary>0..1: glowing plants around her. They soften the cold but never warm her back up.</summary>
     public double Glow { get; }
+    public bool Submerged { get; }
+    public bool Lagoon { get; }
 }
 
 /// <summary>How warm she is: 1 warm, 0 collapsed. Drains in the dark, water and wind; light warms her.</summary>
@@ -86,7 +94,7 @@ public sealed class Warmth
     {
         var dark = 1 - Math.Min(1, Math.Max(0, e.Lit + e.Glow * 0.6));
         var late = 1 + (t.LateFactor - 1) * e.Night * e.Night;
-        var drain = (t.DrainDark * dark * late + (e.InWater ? t.DrainWater : 0) + t.DrainWind * e.Wind * dark + t.DrainDarkWater * e.Dark + t.DrainRain * e.Rain) * dt;
+        var drain = (t.DrainDark * dark * late + (e.InWater ? t.DrainWater : 0) + t.DrainWind * e.Wind * dark + t.DrainDarkWater * e.Dark + t.DrainRain * e.Rain + (e.Submerged ? t.DrainDive : 0) + (e.Lagoon ? t.DrainLagoon : 0)) * dt;
         var gain = t.Refill * Math.Max(0, e.Lit) * dt;
         var before = Value;
         Value = Math.Min(1, Math.Max(0, Value - drain + gain));

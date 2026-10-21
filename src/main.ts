@@ -9,7 +9,7 @@ import { LightGauge } from './ui/lightGauge';
 import { TUNING } from './core/survival';
 import { darkAt, darkReach } from './core/darkWater';
 import { SquallClock } from './core/squalls';
-import { createRain } from './world/rain';
+import { createRain, rainAbove } from './world/rain';
 import { Breath } from './world/breath';
 import { weather } from './render/weather';
 import { setDarkWater } from './render/darkWater';
@@ -21,7 +21,7 @@ import { LAGOONS } from './core/heightfield';
 import { createHeightfield, findSpawn } from './core/heightfield';
 import { Terrain, WorkerPool } from './world/terrain';
 import { createReflectionProxy, createTerrainMaterial } from './world/terrainMaterial';
-import { createWater } from './world/water';
+import { createWater, lagoonChannels } from './world/water';
 import { createSky } from './world/sky';
 import { createSparkles } from './world/sparkles';
 import { createMotes, regionMotes } from './world/motes';
@@ -216,6 +216,29 @@ async function boot() {
   let coldWarned = false;
   let lightningIn = 8;
   let lastLights: LightSource[] = [];
+  // Each lagoon's stepping-stone path: the stones chained out from the one nearest its pool.
+  let lagoonStones: { x: number; z: number }[] | null = null;
+  const inLagoonWater = (x: number, z: number) => {
+    if (!lagoonStones) {
+      lagoonStones = [];
+      for (const g of LAGOONS) {
+        const near = [...stones.list].sort((a, b) => Math.hypot(a.x - g.x, a.z - g.z) - Math.hypot(b.x - g.x, b.z - g.z));
+        if (!near.length) continue;
+        const chain = [near[0]];
+        for (let grown = true; grown; ) {
+          grown = false;
+          for (const s of near) if (!chain.includes(s) && chain.some((c) => Math.hypot(c.x - s.x, c.z - s.z) < 6.5)) (chain.push(s), (grown = true));
+        }
+        lagoonStones.push(...chain);
+        const far = chain.reduce((b, c) => (Math.hypot(c.x - g.x, c.z - g.z) > Math.hypot(b.x - g.x, b.z - g.z) ? c : b), chain[0]);
+        lagoonChannels[LAGOONS.indexOf(g)].value.set(near[0].x, near[0].z, far.x, far.z);
+      }
+    }
+    return LAGOONS.some((g) => Math.hypot(g.x - x, g.z - z) < g.r + 4) || lagoonStones.some((s) => Math.hypot(s.x - x, s.z - z) < 8);
+  };
+  // Lay out the channels now, so their starlit water shows from the start.
+  inLagoonWater(0, 0);
+  let wasUnderwater = false;
   /** Squalls come more often and harder as the night grows late and as her sky is restored. */
   const updateWeather = (dt: number) => {
     const pressure = Math.min(1, story.night.progress * 0.6 + story.restoredShare * 0.6);
@@ -255,12 +278,14 @@ async function boot() {
   const hiddenVeil = document.createElement('div');
   hiddenVeil.id = 'hidden-veil';
   document.body.appendChild(hiddenVeil);
-  const creeping = () => input.down('KeyC');
+  // C: creep on land, dive in the water.
+  const creeping = () => input.down('KeyC') && player.mode === 'walk';
   /** Noise radius and visibility for the nightmares' senses, from how you move and where you are. */
   const senses = (): Senses => {
     const wet = player.mode === 'walk' && hf.height(player.x, player.z) < -0.3;
     let noise: number;
     if (player.mode === 'boat') noise = player.boat.rowing ? 14 : 4;
+    else if (player.mode === 'swim') noise = player.underwater ? 0 : player.speed > 0.3 ? 8 : 2;
     else if (player.speed < 0.3) noise = 0;
     else if (player.speed < 2) noise = 3;
     else if (player.speed < 4.5) noise = 11;
@@ -492,12 +517,15 @@ async function boot() {
     if (e === 'jump' || e === 'land') noiseBurst = Math.max(noiseBurst, 16);
     if (e === 'jump') audio.jump();
     else if (e === 'land') audio.land(hf.height(player.x, player.z) < 0);
-    else if (e === 'fall') {
-      audio.splash(2);
-      fade.style.transitionDuration = '1s';
-      fade.style.opacity = '0.85';
-      if (!story.narrative.busy) story.narrative.say(LINES.fell);
-    } else if (e === 'respawn') {
+    else if (e === 'fall' || e === 'swim') {
+      // Into the water: no more being lifted back to the shore; you swim.
+      audio.splash(e === 'fall' ? 1.5 : 3, e === 'fall');
+      noiseBurst = Math.max(noiseBurst, e === 'fall' ? 22 : 10);
+      if (story.once('swimHint')) story.guide("Brr! We can swim! Space to rise, hold C to dive. But it's so cold, don't stay in long.", 'oh', 'warn');
+    } else if (e === 'dive') audio.splash(4);
+    else if (e === 'surface') audio.splash(3);
+    else if (e === 'climbOut') audio.oarDrip();
+    else if (e === 'respawn') {
       fade.style.transitionDuration = '1.4s';
       fade.style.opacity = '0';
     } else if (e === 'powerStroke') audio.powerStroke();
@@ -634,7 +662,10 @@ async function boot() {
     const exposure = {
       lit,
       glow,
-      inWater: player.mode === 'walk' && ground < -0.3 && player.y < 0.3,
+      inWater: player.mode === 'swim' || (player.mode === 'walk' && ground < -0.3 && player.y < 0.3),
+      submerged: player.underwater,
+      // The starlit water fills the pool and the channel its stones cross; the sea beyond is only cold.
+      lagoon: (player.mode === 'swim' || (player.mode === 'walk' && ground < -0.3)) && inLagoonWater(player.x, player.z),
       wind: Math.max(here.dunes * 0.8, THREE.MathUtils.smoothstep(player.y, 40, 160), player.mode === 'boat' ? 0.6 : 0, squalls.intensity * 0.9) * (coverCount ? 0.5 : 1),
       // By a real light (a lamp, a hut, a lighthouse), or under a broad canopy or giant mushroom, she
       // shelters from the rain.
@@ -645,6 +676,7 @@ async function boot() {
     };
     if ((exposure.dark ?? 0) > 0.35 && story.once('darkWaterHint'))
       story.guide("Oh... the water's gone black out there, and so cold. Her lit skies hold it back. Don't stay on it long!", 'oh', 'warn');
+    if (exposure.lagoon && story.once('lagoonColdHint')) story.guide("It's freezing! The starlight in the lagoon water, it's ice! Get out, quick!", 'oh', 'warn');
     if (story.warmth.update(dt, exposure, t)) story.collapse();
     // Growing cold: once per cold spell the wisp points the way to the nearest warmth.
     if (story.warmth.value < 0.45 && !coldWarned) {
@@ -854,6 +886,7 @@ async function boot() {
         interact: (pressed && !storyUsed) || (input.down('KeyE') && !story.currentPrompt),
         jump: input.down('Space'),
         cameraYaw: input.yaw,
+        dive: input.down('KeyC'),
       });
       rig.follow(dt, player, input, avatar.boat);
       // At sea the glitter on the water gathers into a path toward the next fallen star.
@@ -880,6 +913,15 @@ async function boot() {
     post.frost.value += (Math.max(0, (frostTarget - 0.55) / 0.45, cold) - post.frost.value) * Math.min(1, dt * 0.8);
     const memTarget = performance.now() / 1000 < memoryUntil ? 1 : 0;
     post.memoryMix.value += (memTarget - post.memoryMix.value) * Math.min(1, dt * (memTarget ? 1.2 : 0.7));
+    // The eye going under: quick in, quick out, like breaking the surface.
+    const eyeUnder = camera.position.y < -0.05 && hf.height(camera.position.x, camera.position.z) < -0.4 ? 1 : 0;
+    post.underwater.value += (eyeUnder - post.underwater.value) * Math.min(1, dt * 10);
+    wildlife.underwater = post.underwater.value;
+    rainAbove.value = 1 - post.underwater.value;
+    if ((eyeUnder === 1) !== wasUnderwater) {
+      wasUnderwater = eyeUnder === 1;
+      audio.setUnderwater(wasUnderwater);
+    }
     const here = hf.sample(player.x, player.z);
     for (const [k, u] of Object.entries(regionMotes)) {
       const w = here[k as keyof typeof regionMotes] * (k === 'drowned' ? 1.5 : 1);
@@ -911,7 +953,7 @@ async function boot() {
     const chill = state === 'play' && surviving() ? Math.max(0, 1 - story.warmth.value) : 0;
     breath.update(dt, camera, chill, player.speed > 4.5);
     held.shiver = THREE.MathUtils.smoothstep(chill, 0.45, 0.95);
-    held.update(dt, camera, state === 'play' ? story.held : null, story.held === 'compass' ? story.compassTarget(player.x, player.z) : null, player.mode === 'walk' ? player.speed : 0);
+    held.update(dt, camera, state === 'play' && player.mode !== 'swim' ? story.held : null, story.held === 'compass' ? story.compassTarget(player.x, player.z) : null, player.mode === 'walk' ? player.speed : 0);
     const owned = KEEPSAKES.filter((k) => story.hasKeepsake(k.id)).map((k) => k.id);
     hotbar.visible = state === 'play' && owned.length > 0;
     gauge.visible = state === 'play' && surviving();

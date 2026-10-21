@@ -43,6 +43,8 @@ Mara is the only voice in the game. The Keeper never speaks and is never seen. T
 
 **The night has teeth.** As each night grows late, nightmares crawl out of black thorn patches in the dark: ink wraiths and crawlers that stalk and lunge. They don't know where you are: they prowl, and they hear and see you. Running is loud, wading louder; creeping (hold C) through dark grass and bushes keeps you hidden, and their eyes smoulder while they search and blaze once they hunt. Late in the night they come in packs that try to cut you off from the nearest light. Near them the whole picture curdles toward bruised crimson and the score sinks under a dread track. A touch scatters what you carry; light burns them.
 
+**Swim and dive.** Wade off the shore or fall from the stones and you swim; hold C to dive. Below the surface the world goes teal and muffled: shoals of fish wheel past, kelp sways on the seabed with glowing tips, jellyfish hang in the deep and plankton glints round you. Breath lasts about thirty seconds, and the sea is cold: about a minute of swimming, less diving, before you freeze and wake at your last light. The starlit water of the secret lagoons, and the channels their stepping stones cross, freezes you in seconds, so the stones are still the only way in.
+
 **The sea turns against her.** Dark Water, starless and reflectionless, creeps in from the horizon through the night, putting out the sparkles, greying the shore palms, thickening the mist and chilling anyone on it; every constellation you restore holds it back from that region. Squalls roll in off the sea, more often as the night wears on: slanting rain, roaring wind that pushes your boat and your glide, lightning, and a cold that sends you looking for shelter under a canopy or a giant mushroom. The rain also hides you from the nightmares.
 
 **Three ways to play.** Survival is all of the above. Story keeps the nights and the stars to carry home, but the cold is slow, flares are free and the nightmares are few. Wander turns the night off entirely. Choose in the pause menu; the design is in [docs/SURVIVAL.md](docs/SURVIVAL.md).
@@ -148,8 +150,8 @@ The art direction comes from unseenai's paintings: ultramarine night, coral palm
 | W A S D | walk |
 | Mouse | look |
 | Shift | run |
-| C (hold) | creep: slow and quiet, hard to see in the dark grass |
-| Space | jump (hold in the air with moth wings to glide); long stroke in the boat as the oars dip |
+| C (hold) | creep: slow and quiet, hard to see in the dark grass; in the water, dive |
+| Space | jump (hold in the air with moth wings to glide); in the water, rise or climb out onto a stone or pier; long stroke in the boat as the oars dip |
 | E | gather, read, light a lamp, pick up, ring, turn; step into or out of the boat |
 | Hold E | at the water's edge: call the boat |
 | F | ask the little light what to do next |

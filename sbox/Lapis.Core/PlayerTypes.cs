@@ -9,12 +9,17 @@ public enum PlayerEvent
     PowerStroke,
     WeakStroke,
     CallBoat,
+    Swim,
+    ClimbOut,
+    Dive,
+    Surface,
 }
 
 public enum PlayerMode
 {
     Walk,
     Boat,
+    Swim,
 }
 
 public enum PlayerAnim
@@ -41,6 +46,9 @@ public struct PlayerInput
 
     /// <summary>Camera yaw in radians; walking is camera-relative.</summary>
     public double CameraYaw;
+
+    /// <summary>In the water: dive down (held).</summary>
+    public bool Dive;
 }
 
 public sealed class BoatState

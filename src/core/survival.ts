@@ -12,6 +12,10 @@ export interface SurvivalTuning {
   drainDarkWater: number;
   /** Extra drain per second out in the full rain of a squall, unsheltered. */
   drainRain: number;
+  /** Extra drain per second with your head under the water, on top of being in it. */
+  drainDive: number;
+  /** Drain per second in a lagoon's starlit water: it freezes you in seconds. */
+  drainLagoon: number;
   /** How much faster the dark drains at the very end of the night (1 = no change). */
   lateFactor: number;
   /** Warmth gained per second in full light. */
@@ -34,6 +38,8 @@ export const TUNING: Record<Exclude<SurvivalMode, 'wander'>, SurvivalTuning> = {
     drainWind: 1 / 240,
     drainDarkWater: 1 / 40,
     drainRain: 1 / 150,
+    drainDive: 1 / 90,
+    drainLagoon: 1 / 7,
     lateFactor: 2.2,
     refill: 1 / 12,
     wispCap: 1,
@@ -50,6 +56,8 @@ export const TUNING: Record<Exclude<SurvivalMode, 'wander'>, SurvivalTuning> = {
     drainWind: 0,
     drainDarkWater: 1 / 160,
     drainRain: 1 / 400,
+    drainDive: 1 / 300,
+    drainLagoon: 1 / 14,
     lateFactor: 1.5,
     refill: 1 / 6,
     wispCap: 1,
@@ -76,6 +84,10 @@ export interface Exposure {
   dark?: number;
   /** 0..1: how hard a squall's rain is falling on her (shelter already taken off). */
   rain?: number;
+  /** Swimming with her head under. */
+  submerged?: boolean;
+  /** In a lagoon's starlit water. */
+  lagoon?: boolean;
 }
 
 /** How warm she is: 1 warm, 0 collapsed. Drains in the dark, water and wind; light warms her. */
@@ -86,7 +98,7 @@ export class Warmth {
   update(dt: number, e: Exposure, t: SurvivalTuning) {
     const dark = 1 - Math.min(1, Math.max(0, e.lit + (e.glow ?? 0) * 0.6));
     const late = 1 + (t.lateFactor - 1) * e.night * e.night;
-    const drain = (t.drainDark * dark * late + (e.inWater ? t.drainWater : 0) + t.drainWind * e.wind * dark + t.drainDarkWater * (e.dark ?? 0) + t.drainRain * (e.rain ?? 0)) * dt;
+    const drain = (t.drainDark * dark * late + (e.inWater ? t.drainWater : 0) + t.drainWind * e.wind * dark + t.drainDarkWater * (e.dark ?? 0) + t.drainRain * (e.rain ?? 0) + (e.submerged ? t.drainDive : 0) + (e.lagoon ? t.drainLagoon : 0)) * dt;
     const gain = t.refill * Math.max(0, e.lit) * dt;
     const before = this.value;
     this.value = Math.min(1, Math.max(0, this.value - drain + gain));

@@ -87,7 +87,15 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   // Luminous grain: glow arrives as coarse printed grain, not a smooth lens haze.
   const gcell = floor(px.div(2)) as N;
   const grainy = hash(gcell.x.add(gcell.y.mul(6151)).add(boil.mul(3.7))).mul(1.5).add(0.25);
-  const hdr = mix(sceneColor.rgb, mistCol, mistAmt).add(glow.rgb.mul(mix(float(1), grainy, 0.75)));
+  let hdr: N = mix(sceneColor.rgb, mistCol, mistAmt).add(glow.rgb.mul(mix(float(1), grainy, 0.75)));
+  // Underwater: the sea swallows distance in teal, light comes down from the surface overhead in
+  // shifting caustic bands, and the sky is only the bright, moving underside of the water.
+  const underwater = uniform(0);
+  const caustic = mx_noise_float(vec3(world.x.mul(0.35), world.z.mul(0.35), time.mul(0.6))).abs();
+  const surfaceLight = smoothstep(0.35, 1.0, screenUV.y.oneMinus()).mul(0.5).add(smoothstep(0.08, 0.0, caustic).mul(0.35));
+  const deep = vec3(0.012, 0.07, 0.11).add(vec3(0.05, 0.22, 0.3).mul(surfaceLight));
+  const murk = select(isSky, float(1), float(1).sub(exp(dist.mul(-0.048))));
+  hdr = mix(hdr.add(vec3(0.15, 0.45, 0.5).mul(smoothstep(0.1, 0.0, caustic)).mul(0.25).mul(underwater)), deep, murk.mul(underwater));
   const mapped = renderOutput(vec4(hdr, 1)).rgb as N;
   // Paint contrast: deepen the darks and lift the lights, the paintings never sit in mid-grey.
   const curved = mapped.mul(mapped).mul(float(3).sub(mapped.mul(2))).mul(0.55).add(mapped.mul(0.45));
@@ -197,7 +205,8 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   const ink = max(smoothstep(0.35, 0.9, dEdge), smoothstep(0.16, 0.42, tEdge).mul(0.55).mul(select(isSky, float(0), float(1)))).mul(lineNoise.mul(0.6).add(0.4));
   // The ink is this exact near-black: color(0x070b24) linearised but mixed in display space, kept as
   // the look the drawing was tuned to.
-  c = mix(c, vec3(0.0021, 0.0033, 0.0177), ink.mul(0.6).mul(paint));
+  // Underwater the ink thins to almost nothing: edges lost in the murk shouldn't be outlined through it.
+  c = mix(c, vec3(0.0021, 0.0033, 0.0177), ink.mul(0.6).mul(paint).mul(float(1).sub(underwater.mul(0.85))));
 
   // ---- 7. Canvas: emboss the weave, let pigment pool in the valleys.
   const canvasTex = new THREE.TextureLoader().load('/textures/canvas.png');
@@ -270,5 +279,5 @@ export function createPost(renderer: THREE.WebGPURenderer, scene: THREE.Scene, c
   pipeline.outputNode = vec4(min(c, vec3(1)), 1);
   pipeline.outputColorTransform = false;
   grade.attach({ lutA, lutB, sizeA, sizeB, blend: gradeBlend });
-  return { pipeline, paint, boilRate, memoryMix, frost, nightmare };
+  return { pipeline, paint, boilRate, memoryMix, frost, nightmare, underwater };
 }

@@ -1,4 +1,4 @@
-// Engine-agnostic player logic: walking, jumping, wading, boarding and rowing.
+// Engine-agnostic player logic: walking, jumping, wading, swimming and diving, boarding and rowing.
 // No three.js here on purpose; this maps 1:1 onto an s&box component later.
 
 export interface WorldQuery {
@@ -27,7 +27,7 @@ export interface Platforms {
   blocksBoat(x: number, z: number, radius: number): boolean;
 }
 
-export type PlayerEvent = 'jump' | 'land' | 'fall' | 'respawn' | 'powerStroke' | 'weakStroke' | 'callBoat';
+export type PlayerEvent = 'jump' | 'land' | 'fall' | 'respawn' | 'powerStroke' | 'weakStroke' | 'callBoat' | 'swim' | 'climbOut' | 'dive' | 'surface';
 
 export interface PlayerInput {
   /** Raw stick/keys: x = right, y = forward, each -1..1. */
@@ -39,9 +39,11 @@ export interface PlayerInput {
   jump: boolean;
   /** Camera yaw in radians; walking is camera-relative. */
   cameraYaw: number;
+  /** In the water: dive down (held). */
+  dive?: boolean;
 }
 
-export type Mode = 'walk' | 'boat';
+export type Mode = 'walk' | 'boat' | 'swim';
 export type Anim = 'idle' | 'walk' | 'row' | 'sit';
 
 const BODY_RADIUS = 0.35;
@@ -58,6 +60,16 @@ const GRAVITY = 14;
 const BOAT_DRAFT = -0.4;
 const STROKE_PERIOD = 1.7;
 const BOAT_MAX = 9;
+// Swimming: feet hang this far below the surface (the eye just clears it), and how fast you go.
+const SWIM_Y = -1.42;
+const SWIM_SPEED = 1.9;
+const SWIM_SPRINT = 3.0;
+const DIVE_SPEED = 1.5;
+const RISE_SPEED = 1.7;
+/** Seconds of breath underwater before you're carried back up. */
+const BREATH = 30;
+/** From the surface you can haul yourself onto a stone, pier or bank up to this far above your feet. */
+const CLIMB_OUT = 2.25;
 
 export interface BoatState {
   x: number;
@@ -94,6 +106,9 @@ export class PlayerController {
   onEvent: ((e: PlayerEvent) => void) | null = null;
   /** >0 while sinking after a missed jump; the view fades and you return to safe ground. */
   falling = 0;
+  /** 0..1 breath left while swimming underwater; refills at the surface. */
+  breath = 1;
+  private wasUnder = false;
   private interactLatch = false;
   private jumpLatch = false;
   private holdE = 0;
@@ -171,6 +186,7 @@ export class PlayerController {
     this.jumpLatch = input.jump;
     this.holdE = input.interact ? this.holdE + dt : 0;
     if (this.mode === 'walk') this.walk(dt, input, pressed, jumped);
+    else if (this.mode === 'swim') this.swim(dt, input, pressed, jumped);
     else this.row(dt, input, pressed, jumped);
     this.boat.bob = Math.sin(this.t * 1.3) * 0.04 + Math.sin(this.t * 0.7 + 1) * 0.03;
     this.glideCalledBoat(dt);
@@ -217,7 +233,7 @@ export class PlayerController {
       }
       const g = this.ground(x, z);
       if (this.airborne) return g <= this.y + 0.15; // only a wall stops you mid-air
-      if (g < WADE_DEPTH) return false; // deep water: jump it or stay out
+      if (g < WADE_DEPTH) return true; // deep water: wade on in and swim
       // On bare ground the hill itself decides, measured on the terrain rather than your feet (which
       // lag it, so the per-step allowance below would let you walk up a cliff in small steps).
       const t0 = this.world.height(this.x, this.z);
@@ -269,13 +285,13 @@ export class PlayerController {
         this.y = Math.max(ceiling - HEAD, this.y - this.vy * dt);
         this.vy = 0;
       }
+      if (this.y <= Math.max(g, SWIM_Y) && this.vy <= 0 && g < WADE_DEPTH) {
+        // Into the water: you go under with the fall's momentum, then come up swimming.
+        this.enterSwim(Math.min(0, this.vy) * 0.25);
+        this.onEvent?.('fall');
+        return;
+      }
       if (this.y <= g && this.vy <= 0) {
-        if (g < WADE_DEPTH) {
-          this.falling = 1.3;
-          this.airborne = false;
-          this.onEvent?.('fall');
-          return;
-        }
         this.y = g;
         this.airborne = false;
         this.vy = 0;
@@ -283,6 +299,12 @@ export class PlayerController {
       }
       this.pushOutOfWalls();
     } else {
+      if (g < WADE_DEPTH) {
+        // Walked off the shelf into deep water.
+        this.enterSwim(0);
+        this.onEvent?.('swim');
+        return;
+      }
       this.y += (Math.max(g, WADE_DEPTH) - this.y) * Math.min(1, dt * 18);
       // Remember solid footing so a missed jump puts you back somewhere sensible: dry land itself,
       // never a stone or post standing in the water, so falling off stepping stones means starting over.
@@ -317,6 +339,107 @@ export class PlayerController {
           this.onEvent?.('callBoat');
         }
       }
+    }
+  }
+
+  /** True when the eye is below the water: diving. */
+  get underwater() {
+    return this.mode === 'swim' && this.y < SWIM_Y - 0.2;
+  }
+
+  private enterSwim(vy: number) {
+    this.mode = 'swim';
+    this.airborne = false;
+    this.vy = vy;
+    this.y = Math.min(this.y, SWIM_Y);
+    this.speed = Math.min(this.speed, SWIM_SPRINT);
+  }
+
+  private swim(dt: number, input: PlayerInput, pressed: boolean, jumped: boolean) {
+    const len = Math.hypot(input.moveX, input.moveY);
+    const target = len > 0.1 ? (input.sprint ? SWIM_SPRINT : SWIM_SPEED) * Math.min(1, len) : 0;
+    // Water drags: speed builds and fades slowly.
+    this.speed += (target - this.speed) * Math.min(1, dt * 2.5);
+    if (len > 0.1) {
+      const fx = -Math.sin(input.cameraYaw);
+      const fz = -Math.cos(input.cameraYaw);
+      const dx = fx * input.moveY - fz * input.moveX;
+      const dz = fz * input.moveY + fx * input.moveX;
+      let diff = Math.atan2(dx, dz) - this.heading;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      this.heading += diff * Math.min(1, dt * 5);
+    }
+    const atSurface = this.y > SWIM_Y - 0.15;
+
+    // Up and down: Space rises, dive sinks, otherwise you float gently back to the surface. With no
+    // breath left you're carried up whatever you do.
+    const wantDown = !!input.dive && this.breath > 0;
+    const vyTarget = wantDown ? -DIVE_SPEED : input.jump ? RISE_SPEED : this.y < SWIM_Y ? 0.7 : 0;
+    this.vy += (vyTarget - this.vy) * Math.min(1, dt * 4);
+
+    const step = this.speed * dt;
+    const nx = this.x + Math.sin(this.heading) * step;
+    const nz = this.z + Math.cos(this.heading) * step;
+    const P = this.platforms;
+    const terrain = this.world.height(nx, nz);
+    const top = P?.top(nx, nz, this.y + CLIMB_OUT) ?? -Infinity;
+    const wall = P?.blocked?.(nx, nz, this.y) ?? false;
+    if (atSurface && terrain >= WADE_DEPTH && top < terrain + 0.05) {
+      // Swum into the shallows: stand up and wade out.
+      this.mode = 'walk';
+      this.x = nx;
+      this.z = nz;
+      this.y = Math.max(terrain, WADE_DEPTH);
+      this.vy = 0;
+      this.breath = 1;
+      this.onEvent?.('climbOut');
+      return;
+    }
+    if (atSurface && top > SWIM_Y && top - this.y <= CLIMB_OUT && (jumped || pressed)) {
+      // Haul yourself up onto a stone, a pier or a ledge.
+      this.mode = 'walk';
+      this.x = nx;
+      this.z = nz;
+      this.y = top;
+      this.vy = 0;
+      this.breath = 1;
+      this.onEvent?.('climbOut');
+      return;
+    }
+    // At the surface any water too deep to stand in can be swum; below it, rock above your feet stops you.
+    const swimmable = !wall && top <= this.y + 0.2 && (atSurface || terrain < this.y + 0.2);
+    if (swimmable) {
+      this.x = nx;
+      this.z = nz;
+    } else this.speed *= 0.5;
+    this.resolve();
+
+    const floor = this.world.height(this.x, this.z) + 0.3;
+    this.y = Math.min(SWIM_Y, Math.max(floor, this.y + this.vy * dt));
+    if (this.y >= SWIM_Y && this.vy > 0) this.vy = 0;
+    const under = this.y < SWIM_Y - 0.2;
+    if (under) this.breath = Math.max(0, this.breath - dt / BREATH);
+    else this.breath = Math.min(1, this.breath + dt / 4);
+    if (this.wasUnder && !under) this.onEvent?.('surface');
+    if (!this.wasUnder && under) this.onEvent?.('dive');
+    this.wasUnder = under;
+    this.anim = this.speed > 0.2 ? 'walk' : 'idle';
+    this.animRate = Math.max(0.5, this.speed / SWIM_SPEED) * 0.6;
+
+    // Boarding from the water.
+    const db = Math.hypot(this.boat.x - this.x, this.boat.z - this.z);
+    this.prompt = '';
+    if (db < 3.6 && atSurface) {
+      this.prompt = 'E   climb into the boat';
+      if (pressed) {
+        this.mode = 'boat';
+        this.speed = 0;
+        this.breath = 1;
+        this.boatCall = null;
+        this.hasBoarded = true;
+      }
+    } else if (atSurface && Number.isFinite(top) && top > SWIM_Y && top - this.y <= CLIMB_OUT) {
+      this.prompt = 'Space   climb out';
     }
   }
 
